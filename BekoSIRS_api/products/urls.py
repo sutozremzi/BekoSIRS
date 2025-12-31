@@ -1,7 +1,7 @@
 # products/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from products.views import my_products_direct, profile_view, notification_settings_view
+from products.views import my_products_direct, profile_view, notification_settings_view, DashboardSummaryView
 from .views import (
     ProductViewSet,
     CategoryViewSet,
@@ -40,6 +40,7 @@ urlpatterns = [
     path("my-products/", my_products_direct),
     path("profile/", profile_view),
     path("notification-settings/", notification_settings_view),
+    path("dashboard/summary/", DashboardSummaryView.as_view()),
 
     # 🔹 GİRİŞ (Login) - Müşteri kısıtlaması bu view içinde yapılıyor
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),

@@ -1,6 +1,7 @@
 # products/views.py
 
 from rest_framework import viewsets, status, exceptions
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
 from django.contrib.auth.models import Group
@@ -792,6 +793,48 @@ class NotificationViewSet(viewsets.ModelViewSet):
         """GET /api/notifications/unread-count/ - Okunmamış sayısı"""
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({'unread_count': count})
+
+
+# ----------------------------------------
+# 🔹 DASHBOARD SUMMARY (ÖZET)
+# ----------------------------------------
+class DashboardSummaryView(APIView):
+    permission_classes = [IsAdminUser]  # Sadece admin/satıcı görebilir
+
+    def get(self, request):
+        # 1. KPI Verileri
+        total_products = Product.objects.count()
+        out_of_stock = Product.objects.filter(stock=0).count()
+        low_stock = Product.objects.filter(stock__gt=0, stock__lt=10).count()
+        # total_value = Product.objects.aggregate(
+        #     total=Sum(F('price') * F('stock'))
+        # )['total'] or 0
+
+        # 2. Bekleyen Teslimatlar (ServiceRequest örnek alınarak)
+        # Şimdilik servis taleplerini 'aktif işler' olarak sayalım
+        pending_requests = ServiceRequest.objects.filter(status__in=['pending', 'in_progress', 'in_queue']).count()
+
+        # 3. Son Aktiviteler / Ürünler
+        # Product modelinde created_at yoksa id'ye göre sırala
+        recent_products = Product.objects.order_by('-id')[:5]
+        
+        # 4. Basit Grafik Verisi (Son 5 ürünün stoğu gibi - örnek)
+        # Gerçekte sipariş/satış tablosu olmadığı için ürün stok dağılımını verelim
+        chart_data = [
+            {"name": "Stokta", "value": total_products - out_of_stock},
+            {"name": "Tükendi", "value": out_of_stock},
+        ]
+
+        return Response({
+            "kpis": {
+                "total_products": total_products,
+                "out_of_stock": out_of_stock,
+                "low_stock": low_stock,
+                "pending_requests": pending_requests
+            },
+            "recent_products": ProductSerializer(recent_products, many=True).data,
+            "chart_data": chart_data
+        })
 
 
 # ----------------------------------------
