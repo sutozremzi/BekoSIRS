@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Security: Load from environment variables
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-dev-key-change-in-production')
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,192.168.0.105,0.0.0.0').split(',')
 
 # ------------------------------------------------------------
 # APPLICATIONS
@@ -83,8 +83,16 @@ WSGI_APPLICATION = 'bekosirs_backend.wsgi.application'
 # ------------------------------------------------------------
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'mssql',
+        'NAME': 'Beko_stok',
+        'USER': 'sa',
+        'PASSWORD': '1234',
+        'HOST': 'LAPTOP-1Q82AMBK',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'ODBC Driver 18 for SQL Server',
+            'extra_params': 'Encrypt=yes;TrustServerCertificate=yes',
+        },
     }
 }
 

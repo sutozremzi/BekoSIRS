@@ -4,10 +4,10 @@ import Constants from 'expo-constants';
 
 // 🔹 Get your computer's local IP address
 // Replace this with YOUR actual IP address from ipconfig/ifconfig
-const COMPUTER_IP = '192.168.1.7';
+const COMPUTER_IP = '192.168.0.105';
 
 // 🔹 Expo Go requires using your computer's local network IP
-const API_BASE_URL = __DEV__ 
+const API_BASE_URL = __DEV__
   ? `http://${COMPUTER_IP}:8000/`
   : 'https://your-production-api.com/';
 
@@ -17,7 +17,7 @@ console.log('🌐 Platform:', Constants.platform);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: { 
+  headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
@@ -36,7 +36,7 @@ api.interceptors.request.use(
     } catch (error) {
       console.error('❌ Error getting token:', error);
     }
-    
+
     console.log('📤 Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
@@ -77,12 +77,12 @@ api.interceptors.response.use(
       // Error in request setup
       console.error('❌ Request Setup Error:', error.message);
     }
-    
+
     // Return a more user-friendly error
-    const userError = error.response?.data?.message || 
-                      error.response?.statusText ||
-                      'Network connection error. Check your connection.';
-    
+    const userError = error.response?.data?.message ||
+      error.response?.statusText ||
+      'Network connection error. Check your connection.';
+
     return Promise.reject({
       ...error,
       userMessage: userError
