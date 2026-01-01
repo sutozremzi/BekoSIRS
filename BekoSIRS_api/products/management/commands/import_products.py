@@ -1,7 +1,7 @@
 import pandas as pd
 from django.core.management.base import BaseCommand
 from products.models import Product, Category
-
+#bu remzininki
 class Command(BaseCommand):
     help = "Beko Excel dosyasındaki ürünleri veritabanına aktarır"
 

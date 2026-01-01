@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Platform, // 1. Platform eklendi
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -106,7 +107,11 @@ const ProfileScreen = () => {
       const response = await api.patch('/api/profile/', updateData);
 
       if (response.data.success) {
-        Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi');
+        if (Platform.OS === 'web') {
+            window.alert('Profil bilgileriniz güncellendi');
+        } else {
+            Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi');
+        }
         setEditing(false);
         setShowPasswordChange(false);
         setCurrentPassword('');
@@ -115,25 +120,40 @@ const ProfileScreen = () => {
         fetchProfile();
       }
     } catch (error: any) {
-      Alert.alert('Hata', error.response?.data?.error || 'Güncelleme başarısız');
+      const errorMsg = error.response?.data?.error || 'Güncelleme başarısız';
+      if (Platform.OS === 'web') {
+          window.alert(errorMsg);
+      } else {
+          Alert.alert('Hata', errorMsg);
+      }
     } finally {
       setSaving(false);
     }
   };
 
+  // 2. Güvenli Çıkış Fonksiyonu (Web ve Mobil Uyumlu)
   const handleLogout = () => {
-    Alert.alert(
-      'Çıkış Yap',
-      'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Çıkış Yap',
-          style: 'destructive',
-          onPress: logout,
-        },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      // Web tarayıcıları için window.confirm kullanımı
+      const isConfirmed = window.confirm('Hesabınızdan çıkış yapmak istediğinize emin misiniz?');
+      if (isConfirmed) {
+        logout(); // useAuth içindeki logout fonksiyonunu çağırır
+      }
+    } else {
+      // Mobil cihazlar için Alert.alert kullanımı
+      Alert.alert(
+        'Çıkış Yap',
+        'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'Çıkış Yap',
+            style: 'destructive',
+            onPress: logout,
+          },
+        ]
+      );
+    }
   };
 
   const cancelEdit = () => {

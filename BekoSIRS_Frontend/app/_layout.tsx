@@ -1,44 +1,41 @@
+// app/_layout.tsx
 import React, { useEffect, useState } from 'react';
 import { Stack, useSegments, useRouter } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
-import { isAuthenticated } from '../storage/storage.native';
+import { isAuthenticated } from '../storage/storage'; // .native uzantısı yok
 
 export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-  const [hasToken, setHasToken] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const ok = await isAuthenticated();
-      setHasToken(ok);
+    const checkAuthAndNavigate = async () => {
+      // 1. Güncel durumu kontrol et
+      const hasToken = await isAuthenticated();
+      
+      // 2. Hangi sayfadayız?
+      const inAuthPage = segments[0] === 'login' || segments[0] === 'register';
+
+      // 3. Yönlendirme Mantığı
+      if (!hasToken && !inAuthPage) {
+        // Token yoksa ve içerideyse -> Login'e at
+        router.replace('/login');
+      } else if (hasToken && inAuthPage) {
+        // Token varsa ve Login'deyse -> İçeri al
+        router.replace('/(drawer)');
+      }
+
       setIsReady(true);
     };
-    checkAuth();
-  }, [segments]);
 
-  useEffect(() => {
-    if (!isReady) return;
-
-    const inAuthPage = segments[0] === 'login' || segments[0] === 'register';
-    const inDrawer = segments[0] === '(drawer)';
-
-    if (!hasToken && !inAuthPage) {
-      router.replace('/login');
-      return;
-    }
-
-    if (hasToken && inAuthPage) {
-      router.replace('/(drawer)');
-      return;
-    }
-  }, [hasToken, segments, isReady]);
+    checkAuthAndNavigate();
+  }, [segments]); // Sayfa her değiştiğinde bu kontrol çalışır
 
   if (!isReady) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" color="#E31E24" />
+        <ActivityIndicator size="large" color="#000000" />
       </View>
     );
   }
