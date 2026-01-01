@@ -23,9 +23,9 @@ interface Recommendation {
     price: string;
     stock: number;
     image?: string;
-    category_name?: string;
+    category_name?: string; // Ensure this matches your serializer
   };
-  score: number;
+  score: number; // This is the ML score (0.0 to 1.0)
   reason: string;
   is_shown: boolean;
   clicked: boolean;
@@ -80,7 +80,6 @@ const RecommendationsScreen = () => {
         recommendationAPI.recordClick(recommendation.id),
         viewHistoryAPI.recordView(recommendation.product.id),
       ]);
-      // Update local state
       setRecommendations((prev) =>
         prev.map((r) =>
           r.id === recommendation.id ? { ...r, clicked: true } : r
@@ -89,8 +88,6 @@ const RecommendationsScreen = () => {
     } catch (error) {
       console.log('Click recording failed:', error);
     }
-    // Navigate to product detail if you have that screen
-    // router.push(`/product/${recommendation.product.id}`);
   };
 
   const handleAddToWishlist = async (productId: number, productName: string) => {
@@ -107,14 +104,17 @@ const RecommendationsScreen = () => {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 0.8) return '#4CAF50';
-    if (score >= 0.5) return '#FF9800';
-    return '#2196F3';
+    if (score >= 0.8) return '#4CAF50'; // Green for high match
+    if (score >= 0.5) return '#FF9800'; // Orange for medium
+    return '#2196F3'; // Blue for base
   };
 
   const renderItem = ({ item }: { item: Recommendation }) => {
     const product = item.product;
     const isInStock = product.stock > 0;
+
+    // Convert ML score (0-1) to Percentage (0-100)
+    const matchPercentage = Math.round(item.score * 100);
 
     return (
       <TouchableOpacity
@@ -122,9 +122,9 @@ const RecommendationsScreen = () => {
         onPress={() => handleProductClick(item)}
         activeOpacity={0.7}
       >
-        {/* Match Score Badge */}
+        {/* Match Score Badge (ML Percentage) */}
         <View style={[styles.scoreBadge, { backgroundColor: getScoreColor(item.score) }]}>
-          <Text style={styles.scoreText}>{Math.round(item.score * 100)}%</Text>
+          <Text style={styles.scoreText}>%{matchPercentage} Eşleşme</Text>
         </View>
 
         <View style={styles.cardContent}>
@@ -140,10 +140,20 @@ const RecommendationsScreen = () => {
             <Text style={styles.productName} numberOfLines={2}>
               {product.name}
             </Text>
+            
+            {/* 🆕 ADDED: Category Name */}
+            {product.category_name && (
+              <Text style={styles.categoryText}>
+                {product.category_name}
+              </Text>
+            )}
+
             <Text style={styles.brand}>{product.brand}</Text>
+            
             <Text style={styles.reason} numberOfLines={2}>
               {item.reason}
             </Text>
+            
             <View style={styles.priceRow}>
               <Text style={styles.price}>
                 {parseFloat(product.price).toLocaleString('tr-TR', {
@@ -313,7 +323,7 @@ const styles = StyleSheet.create({
   },
   scoreText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
   },
   cardContent: {
@@ -338,6 +348,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  // 🆕 ADDED: Style for Category
+  categoryText: {
+    fontSize: 12,
+    color: '#0288D1',
+    fontWeight: '500',
+    marginTop: 2,
   },
   brand: {
     fontSize: 13,

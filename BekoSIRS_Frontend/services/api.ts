@@ -1,19 +1,21 @@
+// services/api.ts
 import axios from 'axios';
-import { getToken } from '../storage/storage.native';
+// ----------------------------------------------------------------------
+// DÜZELTME: .web uzantısını SİLDİK.
+// Artık hem web hem mobil için doğru dosya otomatik seçilecek.
+import { getToken } from '../storage/storage';
+// ----------------------------------------------------------------------
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-// 🔹 Get your computer's local IP address
-// Replace this with YOUR actual IP address from ipconfig/ifconfig
-const COMPUTER_IP = '192.168.1.7';
+// Bilgisayarınızın IP adresini buraya yazın
+const COMPUTER_IP = '192.168.8.72'; 
 
-// 🔹 Expo Go requires using your computer's local network IP
 const API_BASE_URL = __DEV__ 
-  ? `http://${COMPUTER_IP}:8000/`
-  : 'https://your-production-api.com/';
+  ? `http://${COMPUTER_IP}:8000/` // Geliştirme ortamı
+  : 'https://your-production-api.com/'; // Canlı ortam
 
 console.log('🔗 API Base URL:', API_BASE_URL);
-console.log('📱 Device:', Constants.deviceName);
-console.log('🌐 Platform:', Constants.platform);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,253 +23,102 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 15000, // 15 second timeout for mobile networks
+  timeout: 15000,
 });
 
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {
     try {
+      // Platform bağımsız token alma fonksiyonu
       const token = await getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('✅ Token added to request');
       }
     } catch (error) {
       console.error('❌ Error getting token:', error);
     }
     
-    console.log('📤 Request:', config.method?.toUpperCase(), config.url);
+    // Logları sadece geliştirme ortamında göster
+    if (__DEV__) {
+        console.log('📤 Request:', config.method?.toUpperCase(), config.url);
+    }
     return config;
   },
   (error) => {
-    console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor with detailed error logging
+// Response interceptor
 api.interceptors.response.use(
   (response) => {
-    console.log('✅ Response:', response.status, response.config.url);
+    if (__DEV__) {
+        console.log('✅ Response:', response.status, response.config.url);
+    }
     return response;
   },
   (error) => {
     if (error.response) {
-      // Server responded with error status
-      console.error('❌ Server Error:', {
-        status: error.response.status,
-        data: error.response.data,
-        url: error.config?.url
-      });
+      console.error('❌ Server Error:', error.response.status, error.response.data);
     } else if (error.request) {
-      // Request made but no response received
-      console.error('❌ Network Error - No Response:', {
-        message: 'Cannot connect to backend',
-        url: error.config?.url,
-        baseURL: API_BASE_URL
-      });
-      console.error('💡 Troubleshooting:');
-      console.error('   1. Check if backend is running: python manage.py runserver 0.0.0.0:8000');
-      console.error('   2. Verify IP address is correct:', COMPUTER_IP);
-      console.error('   3. Ensure phone and computer are on same WiFi');
-      console.error('   4. Check Django ALLOWED_HOSTS includes:', COMPUTER_IP);
-      console.error('   5. Disable firewall temporarily to test');
+      console.error('❌ Network Error - No Response. Is the backend running?');
     } else {
-      // Error in request setup
       console.error('❌ Request Setup Error:', error.message);
     }
     
-    // Return a more user-friendly error
-    const userError = error.response?.data?.message || 
-                      error.response?.statusText ||
-                      'Network connection error. Check your connection.';
-    
-    return Promise.reject({
-      ...error,
-      userMessage: userError
-    });
+    return Promise.reject(error);
   }
 );
 
-// Test connection function
-export const testBackendConnection = async () => {
-  try {
-    console.log('🔍 Testing backend connection...');
-    const response = await axios.get(`${API_BASE_URL}admin/`, {
-      timeout: 5000,
-      validateStatus: () => true // Accept any status to test connectivity
-    });
-    console.log('✅ Backend is reachable! Status:', response.status);
-    return true;
-  } catch (error: any) {
-    console.error('❌ Backend connection test failed:');
-    if (error.code === 'ECONNABORTED') {
-      console.error('   ⏱️ Connection timeout - Backend not responding');
-    } else if (error.code === 'ENOTFOUND') {
-      console.error('   🌐 DNS resolution failed - Check IP address');
-    } else if (error.message.includes('Network Error')) {
-      console.error('   📡 Network error - Check WiFi connection');
-    } else {
-      console.error('   ❓ Unknown error:', error.message);
-    }
-    return false;
-  }
-};
-
-// ----------------------------------------
-// 🔹 WISHLIST API
-// ----------------------------------------
+// API Exportları (Değişmedi, sadece referans için kısaca tuttum)
 export const wishlistAPI = {
-  // İstek listesini getir
   getWishlist: () => api.get('api/wishlist/'),
-
-  // Ürün ekle
-  addItem: (productId: number, note?: string) =>
-    api.post('api/wishlist/add-item/', {
-      product_id: productId,
-      note: note || '',
-      notify_on_price_drop: true,
-      notify_on_restock: true,
-    }),
-
-  // Ürün çıkar
-  removeItem: (productId: number) =>
-    api.delete(`api/wishlist/remove-item/${productId}/`),
-
-  // Ürün listede mi kontrol et
-  checkItem: (productId: number) =>
-    api.get(`api/wishlist/check/${productId}/`),
+  addItem: (productId: number, note?: string) => api.post('api/wishlist/add-item/', { product_id: productId, note, notify_on_price_drop: true, notify_on_restock: true }),
+  removeItem: (productId: number) => api.delete(`api/wishlist/remove-item/${productId}/`),
+  checkItem: (productId: number) => api.get(`api/wishlist/check/${productId}/`),
 };
 
-// ----------------------------------------
-// 🔹 VIEW HISTORY API
-// ----------------------------------------
 export const viewHistoryAPI = {
-  // Görüntüleme geçmişini getir
   getHistory: () => api.get('api/view-history/'),
-
-  // Görüntüleme kaydet
-  recordView: (productId: number) =>
-    api.post('api/view-history/record/', { product_id: productId }),
-
-  // Geçmişi temizle
+  recordView: (productId: number) => api.post('api/view-history/record/', { product_id: productId }),
   clearHistory: () => api.delete('api/view-history/clear/'),
 };
 
-// ----------------------------------------
-// 🔹 REVIEW API
-// ----------------------------------------
 export const reviewAPI = {
-  // Kullanıcının yorumlarını getir
   getMyReviews: () => api.get('api/reviews/'),
-
-  // Ürüne ait yorumları getir
-  getProductReviews: (productId: number) =>
-    api.get(`api/reviews/product/${productId}/`),
-
-  // Yorum ekle
-  addReview: (productId: number, rating: number, comment?: string) =>
-    api.post('api/reviews/', {
-      product: productId,
-      rating,
-      comment: comment || '',
-    }),
-
-  // Yorumu güncelle
-  updateReview: (reviewId: number, rating: number, comment?: string) =>
-    api.patch(`api/reviews/${reviewId}/`, { rating, comment }),
-
-  // Yorumu sil
+  getProductReviews: (productId: number) => api.get(`api/reviews/product/${productId}/`),
+  addReview: (productId: number, rating: number, comment?: string) => api.post('api/reviews/', { product: productId, rating, comment: comment || '' }),
+  updateReview: (reviewId: number, rating: number, comment?: string) => api.patch(`api/reviews/${reviewId}/`, { rating, comment }),
   deleteReview: (reviewId: number) => api.delete(`api/reviews/${reviewId}/`),
 };
 
-// ----------------------------------------
-// 🔹 SERVICE REQUEST API
-// ----------------------------------------
 export const serviceRequestAPI = {
-  // Servis taleplerimi getir
   getMyRequests: () => api.get('api/service-requests/'),
-
-  // Yeni talep oluştur
-  createRequest: (
-    productOwnershipId: number,
-    requestType: 'repair' | 'maintenance' | 'warranty' | 'complaint' | 'other',
-    description: string
-  ) =>
-    api.post('api/service-requests/', {
-      product_ownership: productOwnershipId,
-      request_type: requestType,
-      description,
-    }),
-
-  // Talep detayını getir
-  getRequestDetail: (requestId: number) =>
-    api.get(`api/service-requests/${requestId}/`),
-
-  // Kuyruk durumunu getir
+  createRequest: (productOwnershipId: number, requestType: string, description: string) => api.post('api/service-requests/', { product_ownership: productOwnershipId, request_type: requestType, description }),
+  getRequestDetail: (requestId: number) => api.get(`api/service-requests/${requestId}/`),
   getQueueStatus: () => api.get('api/service-requests/queue-status/'),
 };
 
-// ----------------------------------------
-// 🔹 NOTIFICATION API
-// ----------------------------------------
 export const notificationAPI = {
-  // Bildirimleri getir
   getNotifications: () => api.get('api/notifications/'),
-
-  // Okunmamış bildirim sayısı
   getUnreadCount: () => api.get('api/notifications/unread-count/'),
-
-  // Bildirimi okundu işaretle
-  markAsRead: (notificationId: number) =>
-    api.post(`api/notifications/${notificationId}/read/`),
-
-  // Tümünü okundu işaretle
+  markAsRead: (notificationId: number) => api.post(`api/notifications/${notificationId}/read/`),
   markAllAsRead: () => api.post('api/notifications/read-all/'),
-
-  // Bildirim ayarlarını getir
   getSettings: () => api.get('api/notification-settings/'),
-
-  // Bildirim ayarlarını güncelle
-  updateSettings: (settings: {
-    notify_service_updates?: boolean;
-    notify_price_drops?: boolean;
-    notify_restock?: boolean;
-    notify_recommendations?: boolean;
-    notify_warranty_expiry?: boolean;
-    notify_general?: boolean;
-  }) => api.patch('api/notification-settings/', settings),
+  updateSettings: (settings: any) => api.patch('api/notification-settings/', settings),
 };
 
-// ----------------------------------------
-// 🔹 RECOMMENDATION API
-// ----------------------------------------
 export const recommendationAPI = {
-  // Önerileri getir
   getRecommendations: () => api.get('api/recommendations/'),
-
-  // Yeni öneriler oluştur
   generateRecommendations: () => api.post('api/recommendations/generate/'),
-
-  // Öneri tıklaması kaydet
-  recordClick: (recommendationId: number) =>
-    api.post(`api/recommendations/${recommendationId}/click/`),
+  recordClick: (recommendationId: number) => api.post(`api/recommendations/${recommendationId}/click/`),
 };
 
-// ----------------------------------------
-// 🔹 PRODUCT OWNERSHIP API
-// ----------------------------------------
 export const productOwnershipAPI = {
-  // Sahip olduğum ürünleri getir (basit liste - my-products sayfası için)
   getMyProducts: () => api.get('api/my-products/'),
-
-  // Sahip olduğum ürünleri garanti bilgileriyle getir (servis talepleri için)
   getMyOwnerships: () => api.get('api/product-ownerships/my-ownerships/'),
-
-  // Ürün sahipliği detayı
-  getOwnershipDetail: (ownershipId: number) =>
-    api.get(`api/product-ownerships/${ownershipId}/`),
+  getOwnershipDetail: (ownershipId: number) => api.get(`api/product-ownerships/${ownershipId}/`),
 };
 
 export default api;

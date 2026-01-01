@@ -4,7 +4,7 @@ import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import api from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { saveTokens, clearAllTokens, isAuthenticated, getToken } from '../storage/storage.native';
+import { saveTokens, clearAllTokens, isAuthenticated, getToken } from '../storage/storage';
 
 export const useAuth = () => {
   const [loading, setLoading] = useState(false);
@@ -61,7 +61,7 @@ export const useAuth = () => {
       // 3. Başarılı girişte ana sayfaya yönlendir
       // Expo Router klasör yapınıza göre yolu doğrulayın
       
-      router.replace('/' as any); 
+      router.replace('/(drawer)' as any); 
 
     } catch (error: any) {
       console.error('❌ Login error:', error);

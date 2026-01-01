@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import api from '../services/api';
 import { router } from 'expo-router';
-import { saveToken, getToken, deleteToken } from '../storage/storage.native';
+import { saveToken, getToken, deleteToken } from '../storage/storage';
 
 interface AuthContextType {
   authToken: string | null;
