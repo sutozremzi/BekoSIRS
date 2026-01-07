@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import Drawer from "../components/Drawer";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { ToastContainer, type ToastType } from "../components/Toast";
+import api from "../services/api";
 
 // Safe Icon Imports with fallbacks
 const {
@@ -39,6 +40,12 @@ interface Product {
   warranty_duration_months: number;
   description?: string;
   image?: string;
+  // New fields
+  model_code?: string;
+  warranty_code?: string;
+  price_cash?: string;
+  price_list?: string;
+  campaign_tag?: string;
 }
 
 interface Category {
@@ -83,18 +90,30 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+
+    // Check for add query param
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("add") === "true") {
+      setEditingProduct(null);
+      setDrawerOpen(true);
+      // Clean up URL
+      window.history.replaceState({}, "", "/dashboard/products");
+    }
   }, []);
+
+  // Sync activeView with stockFilter
+  useEffect(() => {
+    if (stockFilter === 'out_of_stock') setActiveView('out_of_stock');
+    else if (stockFilter === 'low_stock') setActiveView('low_stock');
+    else if (stockFilter === 'all' && activeView !== 'recent') setActiveView('all');
+  }, [stockFilter]);
 
   // Fetch Functions
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const res = await fetch("http://127.0.0.1:8000/api/products/", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch products");
-      const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
+      const res = await api.get("/products/?page_size=1000");
+      setProducts(Array.isArray(res.data) ? res.data : res.data.results || []);
     } catch (error: any) {
       showToast('error', 'Ürünler yüklenemedi: ' + error.message);
     } finally {
@@ -104,13 +123,8 @@ export default function ProductsPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/categories/", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCategories(Array.isArray(data) ? data : []);
-      }
+      const res = await api.get("/categories/");
+      setCategories(Array.isArray(res.data) ? res.data : res.data.results || []);
     } catch (error) {
       console.error("Categories fetch failed", error);
     }
@@ -275,11 +289,8 @@ export default function ProductsPage() {
       message: `"${product.name}" ürününü silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
       action: async () => {
         try {
-          const res = await fetch(`http://127.0.0.1:8000/api/products/${product.id}/`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok || res.status === 204) {
+          const res = await api.delete(`/products/${product.id}/`);
+          if (res.status === 204 || res.status === 200) {
             showToast('success', 'Ürün başarıyla silindi');
             await fetchProducts();
           } else {
@@ -293,23 +304,30 @@ export default function ProductsPage() {
     setOpenDropdown(null);
   };
 
+  const handleDuplicate = (product: Product) => {
+    const copy = { ...product };
+    // @ts-ignore
+    delete copy.id;
+    copy.name = `${copy.name} (Kopyası)`;
+    setEditingProduct(copy as Product);
+    setDrawerOpen(true);
+    setOpenDropdown(null);
+  };
+
   const handleSaveProduct = async (formData: Partial<Product>) => {
     try {
       const isNew = !editingProduct?.id;
       const url = isNew
-        ? "http://127.0.0.1:8000/api/products/"
-        : `http://127.0.0.1:8000/api/products/${editingProduct.id}/`;
+        ? "/products/"
+        : `/products/${editingProduct.id}/`;
 
-      const res = await fetch(url, {
-        method: isNew ? "POST" : "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
+      if (isNew) {
+        await api.post(url, formData);
+      } else {
+        await api.put(url, formData);
+      }
 
-      if (!res.ok) throw new Error("Kaydetme başarısız");
+
 
       showToast('success', isNew ? 'Ürün başarıyla eklendi' : 'Ürün başarıyla güncellendi');
       setDrawerOpen(false);
@@ -330,11 +348,8 @@ export default function ProductsPage() {
         let successCount = 0;
         for (const id of selectedRows) {
           try {
-            const res = await fetch(`http://127.0.0.1:8000/api/products/${id}/`, {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok || res.status === 204) successCount++;
+            const res = await api.delete(`/products/${id}/`);
+            if (res.status === 204 || res.status === 200) successCount++;
           } catch (error) {
             console.error(`Failed to delete product ${id}`);
           }
@@ -508,7 +523,7 @@ export default function ProductsPage() {
                       key={filter}
                       onClick={() => setStockFilter(filter)}
                       className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${stockFilter === filter
-                        ? 'bg-blue-100 text-blue-700'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                     >
@@ -604,6 +619,7 @@ export default function ProductsPage() {
                       </th>
                       {[
                         { field: 'name', label: 'Ürün Adı' },
+                        { field: 'model_code', label: 'Model' },
                         { field: 'category', label: 'Kategori' },
                         { field: 'price', label: 'Fiyat' },
                         { field: 'stock', label: 'Stok' },
@@ -647,8 +663,17 @@ export default function ProductsPage() {
                           <td className={`px-4 ${densityPadding[density]}`}>
                             <div>
                               <p className="font-medium text-gray-900">{product.name}</p>
+                              <p className="text-xs text-blue-600 font-mono">{product.model_code}</p>
                               <p className="text-sm text-gray-500">{product.brand}</p>
+                              {product.campaign_tag && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 mt-1">
+                                  {product.campaign_tag}
+                                </span>
+                              )}
                             </div>
+                          </td>
+                          <td className={`px-4 ${densityPadding[density]} font-mono text-sm text-gray-600`}>
+                            {product.model_code || '-'}
                           </td>
                           <td className={`px-4 ${densityPadding[density]}`}>
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -699,20 +724,14 @@ export default function ProductsPage() {
                                     Düzenle
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      showToast('info', 'Fiyat güncelleme özelliği yakında eklenecek');
-                                      setOpenDropdown(null);
-                                    }}
+                                    onClick={() => handleEdit(product)}
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                                   >
                                     <DollarSign />
                                     Fiyat Güncelle
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      showToast('info', 'Çoğaltma özelliği yakında eklenecek');
-                                      setOpenDropdown(null);
-                                    }}
+                                    onClick={() => handleDuplicate(product)}
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                                   >
                                     <Copy />
@@ -811,12 +830,17 @@ export default function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Marka</label>
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 bg-gray-100 rounded-lg">
-                    <Package size={16} className="text-gray-500" />
-                  </span>
-                  <p className="font-medium text-gray-900">{viewingProduct.brand}</p>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Marka / Model</label>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 bg-gray-100 rounded-lg">
+                      <Package size={16} className="text-gray-500" />
+                    </span>
+                    <p className="font-medium text-gray-900">{viewingProduct.brand}</p>
+                  </div>
+                  {viewingProduct.model_code && (
+                    <p className="text-sm text-gray-500 font-mono ml-9">{viewingProduct.model_code}</p>
+                  )}
                 </div>
               </div>
 
@@ -831,12 +855,22 @@ export default function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Fiyat</label>
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 bg-green-50 rounded-lg">
-                    <DollarSign size={16} className="text-green-600" />
-                  </span>
-                  <p className="font-medium text-green-700">{parseFloat(viewingProduct.price || '0').toLocaleString('tr-TR')} ₺</p>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Fiyatlar</label>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 bg-green-50 rounded-lg">
+                      <DollarSign size={16} className="text-green-600" />
+                    </span>
+                    <p className="font-medium text-green-700">Peşin: {parseFloat(viewingProduct.price_cash || viewingProduct.price || '0').toLocaleString('tr-TR')} ₺</p>
+                  </div>
+                  {viewingProduct.price_list && (
+                    <p className="text-xs text-gray-500 line-through ml-9">Liste: {parseFloat(viewingProduct.price_list).toLocaleString('tr-TR')} ₺</p>
+                  )}
+                  {viewingProduct.campaign_tag && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 ml-9 w-fit">
+                      {viewingProduct.campaign_tag}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -914,6 +948,12 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
     stock: product?.stock || 0,
     warranty_duration_months: product?.warranty_duration_months || 24,
     description: product?.description || '',
+    // New
+    model_code: product?.model_code || '',
+    warranty_code: product?.warranty_code || '',
+    price_cash: product?.price_cash || '',
+    price_list: product?.price_list || '',
+    campaign_tag: product?.campaign_tag || '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -937,15 +977,26 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Marka *</label>
-        <input
-          type="text"
-          required
-          value={formData.brand}
-          onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Marka *</label>
+          <input
+            type="text"
+            required
+            value={formData.brand}
+            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Model Kodu</label>
+          <input
+            type="text"
+            value={formData.model_code}
+            onChange={(e) => setFormData({ ...formData, model_code: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+        </div>
       </div>
 
       <div>

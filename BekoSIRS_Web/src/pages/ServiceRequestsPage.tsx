@@ -12,6 +12,7 @@ import {
   ChevronDown,
   AlertCircle,
 } from "lucide-react";
+import api from "../services/api";
 
 interface ServiceRequest {
   id: number;
@@ -73,27 +74,18 @@ export default function ServiceRequestsPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("access");
-      if (!token) throw new Error("Token bulunamadı");
-
       const [requestsRes, usersRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/service-requests/", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://127.0.0.1:8000/api/users/", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        api.get("/service-requests/"),
+        api.get("/users/"),
       ]);
 
-      if (!requestsRes.ok) throw new Error("Veriler yüklenemedi");
+      const requestsArray = Array.isArray(requestsRes.data) ? requestsRes.data : requestsRes.data.results || [];
+      const usersArray = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data.results || [];
 
-      const requestsData = await requestsRes.json();
-      const usersData = usersRes.ok ? await usersRes.json() : [];
-
-      setRequests(requestsData);
-      setUsers(usersData.filter((u: User) => u.role === "admin" || u.role === "seller"));
+      setRequests(requestsArray);
+      setUsers(usersArray.filter((u: User) => u.role === "admin" || u.role === "seller"));
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Veriler yüklenemedi");
     } finally {
       setLoading(false);
     }
@@ -103,25 +95,11 @@ export default function ServiceRequestsPage() {
     if (!selectedRequest || !assignUserId) return;
 
     try {
-      const token = localStorage.getItem("access");
-      const response = await fetch(
-        `http://127.0.0.1:8000/api/service-requests/${selectedRequest.id}/assign/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ assigned_to: assignUserId }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Atama başarısız");
-
+      await api.post(`/service-requests/${selectedRequest.id}/assign/`, { assigned_to: assignUserId });
       setShowModal(false);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Atama başarısız");
     }
   };
 
@@ -129,26 +107,12 @@ export default function ServiceRequestsPage() {
     if (!selectedRequest) return;
 
     try {
-      const token = localStorage.getItem("access");
-      const response = await fetch(
-        `http://127.0.0.1:8000/api/service-requests/${selectedRequest.id}/complete/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ resolution_notes: resolutionNotes }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Tamamlama başarısız");
-
+      await api.post(`/service-requests/${selectedRequest.id}/complete/`, { resolution_notes: resolutionNotes });
       setShowModal(false);
       setResolutionNotes("");
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Tamamlama başarısız");
     }
   };
 

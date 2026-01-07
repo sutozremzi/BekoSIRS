@@ -65,7 +65,7 @@ const NotificationsScreen = () => {
         notificationAPI.getNotifications(),
         notificationAPI.getUnreadCount(),
       ]);
-      setNotifications(notifResponse.data);
+      setNotifications(notifResponse.data.results || notifResponse.data || []);
       setUnreadCount(countResponse.data.unread_count);
     } catch (error) {
       console.error('Notifications fetch error:', error);

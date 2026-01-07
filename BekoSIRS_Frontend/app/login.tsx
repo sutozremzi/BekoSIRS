@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -14,18 +14,47 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
+import { useBiometric } from '../hooks/useBiometric';
+import { saveTokens } from '../storage/storage.native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { login, loading } = useAuth();
+  const {
+    isAvailable: biometricAvailable,
+    isEnabled: biometricEnabled,
+    displayName: biometricName,
+    loading: biometricLoading,
+    authenticateWithBiometric,
+    checkIfEnabled
+  } = useBiometric();
+
+  // Check biometric status on mount
+  useEffect(() => {
+    checkIfEnabled();
+  }, []);
 
   const handleLogin = async () => {
-    // useAuth hook'u içindeki login fonksiyonu platform: 'mobile' 
-    // bilgisini backend'e gönderecek şekilde yapılandırılmalıdır
     await login(username, password);
   };
+
+  const handleBiometricLogin = async () => {
+    const result = await authenticateWithBiometric();
+
+    if (result.success && result.accessToken && result.refreshToken) {
+      // Save tokens and navigate
+      await saveTokens(result.accessToken, result.refreshToken);
+      await AsyncStorage.setItem('user_role', 'customer');
+      router.replace('/' as any);
+    } else if (result.error && result.error !== 'cancelled') {
+      // Error already shown in hook via Alert
+    }
+  };
+
+  const isLoading = loading || biometricLoading;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -52,6 +81,37 @@ const LoginScreen = () => {
 
           {/* Login Card */}
           <View style={styles.card}>
+            {/* Biometric Login Button - Show if enabled */}
+            {biometricAvailable && biometricEnabled && (
+              <>
+                <TouchableOpacity
+                  style={styles.biometricButton}
+                  onPress={handleBiometricLogin}
+                  disabled={isLoading}
+                  activeOpacity={0.8}
+                >
+                  {biometricLoading ? (
+                    <ActivityIndicator color="#000000" />
+                  ) : (
+                    <>
+                      <Text style={styles.biometricIcon}>
+                        {biometricName === 'Face ID' || biometricName === 'Yüz Tanıma' ? '👤' : '👆'}
+                      </Text>
+                      <Text style={styles.biometricButtonText}>
+                        {biometricName} ile Giriş
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.divider}>
+                  <View style={styles.line} />
+                  <Text style={styles.dividerText}>veya şifre ile</Text>
+                  <View style={styles.line} />
+                </View>
+              </>
+            )}
+
             <View style={styles.inputSection}>
               <Text style={styles.label}>Kullanıcı Adı</Text>
               <View style={styles.inputWrapper}>
@@ -63,7 +123,7 @@ const LoginScreen = () => {
                   autoCapitalize="none"
                   autoCorrect={false}
                   placeholderTextColor="#9CA3AF"
-                  editable={!loading}
+                  editable={!isLoading}
                 />
               </View>
             </View>
@@ -79,7 +139,7 @@ const LoginScreen = () => {
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   placeholderTextColor="#9CA3AF"
-                  editable={!loading}
+                  editable={!isLoading}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -92,14 +152,17 @@ const LoginScreen = () => {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.forgotPassContainer}>
+            <TouchableOpacity
+              style={styles.forgotPassContainer}
+              onPress={() => router.push('/forgot-password' as any)}
+            >
               <Text style={styles.forgotPassText}>Şifremi Unuttum</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.primaryButton, (loading || !username || !password) && styles.buttonDisabled]}
+              style={[styles.primaryButton, (isLoading || !username || !password) && styles.buttonDisabled]}
               onPress={handleLogin}
-              disabled={loading || !username || !password}
+              disabled={isLoading || !username || !password}
               activeOpacity={0.8}
             >
               {loading ? (
@@ -118,7 +181,7 @@ const LoginScreen = () => {
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={() => router.push('/register')}
-              disabled={loading}
+              disabled={isLoading}
             >
               <Text style={styles.secondaryButtonText}>Yeni Hesap Oluştur</Text>
             </TouchableOpacity>
@@ -139,7 +202,7 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // Temiz beyaz arka plan
+    backgroundColor: '#FFFFFF',
   },
   keyboardView: {
     flex: 1,
@@ -154,7 +217,7 @@ const styles = StyleSheet.create({
     marginBottom: 45,
   },
   logoBadge: {
-    backgroundColor: '#000000', // Kurumsal siyah
+    backgroundColor: '#000000',
     paddingHorizontal: 25,
     paddingVertical: 10,
     borderRadius: 12,
@@ -179,6 +242,27 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
+  },
+  // Biometric button styles
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+    height: 58,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#2563EB',
+    marginBottom: 20,
+  },
+  biometricIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  biometricButtonText: {
+    color: '#2563EB',
+    fontSize: 16,
+    fontWeight: '700',
   },
   inputSection: {
     marginBottom: 20,
@@ -245,7 +329,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 30,
+    marginVertical: 25,
   },
   line: {
     flex: 1,

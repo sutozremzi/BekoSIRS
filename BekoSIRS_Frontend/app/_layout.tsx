@@ -21,7 +21,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!isReady) return;
 
-    const inAuthPage = segments[0] === 'login' || segments[0] === 'register';
+    const inAuthPage = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'forgot-password';
     const inDrawer = segments[0] === '(drawer)';
 
     if (!hasToken && !inAuthPage) {

@@ -1,0 +1,177 @@
+# products/test_password_reset.py
+"""
+Tests for password reset functionality.
+"""
+
+from datetime import timedelta
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework import status
+
+from products.models import CustomUser, PasswordResetToken
+from products.conftest import APITestCase
+
+
+class PasswordResetTokenModelTest(TestCase):
+    """Tests for PasswordResetToken model."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+
+    def test_create_token_for_user(self):
+        """Token should be created with correct attributes."""
+        token = PasswordResetToken.create_for_user(self.user)
+        
+        self.assertIsNotNone(token.token)
+        self.assertEqual(token.user, self.user)
+        self.assertFalse(token.is_used)
+        self.assertTrue(len(token.token) > 40)  # Should be long enough
+
+    def test_token_is_valid(self):
+        """New token should be valid."""
+        token = PasswordResetToken.create_for_user(self.user)
+        self.assertTrue(token.is_valid())
+
+    def test_token_expires(self):
+        """Token should expire after 1 hour."""
+        token = PasswordResetToken.create_for_user(self.user)
+        token.expires_at = timezone.now() - timedelta(hours=1)
+        token.save()
+        
+        self.assertFalse(token.is_valid())
+
+    def test_used_token_invalid(self):
+        """Used token should be invalid."""
+        token = PasswordResetToken.create_for_user(self.user)
+        token.use()
+        
+        self.assertFalse(token.is_valid())
+
+    def test_new_token_invalidates_old(self):
+        """Creating new token should invalidate old ones."""
+        token1 = PasswordResetToken.create_for_user(self.user)
+        token1_id = token1.id
+        
+        token2 = PasswordResetToken.create_for_user(self.user)
+        
+        # Refresh token1 from database
+        token1.refresh_from_db()
+        self.assertTrue(token1.is_used)
+        self.assertTrue(token2.is_valid())
+
+
+class PasswordResetAPITest(APITestCase):
+    """Tests for password reset API endpoints."""
+
+    def test_request_password_reset_valid_email(self):
+        """Valid email should trigger password reset."""
+        from django.urls import reverse
+        url = reverse('password_reset_request')
+        response = self.client.post(url, {
+            'email': 'customer@test.com'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        
+        # Token should be created
+        self.assertTrue(
+            PasswordResetToken.objects.filter(user=self.customer_user).exists()
+        )
+
+    def test_request_password_reset_invalid_email(self):
+        """Invalid email should still return success (security)."""
+        from django.urls import reverse
+        url = reverse('password_reset_request')
+        response = self.client.post(url, {
+            'email': 'nonexistent@test.com'
+        })
+        # Should still return success to prevent email enumeration
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+
+    def test_confirm_password_reset_valid_token(self):
+        """Valid token should allow password reset."""
+        from django.urls import reverse
+        # Create a reset token
+        token = PasswordResetToken.create_for_user(self.customer_user)
+        
+        url = reverse('password_reset_confirm')
+        response = self.client.post(url, {
+            'token': token.token,
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'NewSecurePass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        
+        # Verify password was changed
+        self.customer_user.refresh_from_db()
+        self.assertTrue(self.customer_user.check_password('NewSecurePass123!'))
+
+    def test_confirm_password_reset_invalid_token(self):
+        """Invalid token should fail."""
+        from django.urls import reverse
+        url = reverse('password_reset_confirm')
+        response = self.client.post(url, {
+            'token': 'invalid-token-here',
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'NewSecurePass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_confirm_password_reset_expired_token(self):
+        """Expired token should fail."""
+        from django.urls import reverse
+        token = PasswordResetToken.create_for_user(self.customer_user)
+        token.expires_at = timezone.now() - timedelta(hours=2)
+        token.save()
+        
+        url = reverse('password_reset_confirm')
+        response = self.client.post(url, {
+            'token': token.token,
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'NewSecurePass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_confirm_password_reset_passwords_dont_match(self):
+        """Mismatched passwords should fail."""
+        from django.urls import reverse
+        token = PasswordResetToken.create_for_user(self.customer_user)
+        
+        url = reverse('password_reset_confirm')
+        response = self.client.post(url, {
+            'token': token.token,
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'DifferentPass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_confirm_password_reset_token_becomes_used(self):
+        """Token should be marked as used after successful reset."""
+        from django.urls import reverse
+        token = PasswordResetToken.create_for_user(self.customer_user)
+        
+        url = reverse('password_reset_confirm')
+        response = self.client.post(url, {
+            'token': token.token,
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'NewSecurePass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Token should be marked as used
+        token.refresh_from_db()
+        self.assertTrue(token.is_used)
+        
+        # Second attempt should fail
+        response2 = self.client.post(url, {
+            'token': token.token,
+            'new_password': 'AnotherPass123!',
+            'confirm_password': 'AnotherPass123!'
+        })
+        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import { Star, Search, Filter, CheckCircle, XCircle, Clock } from "lucide-react";
+import api from "../services/api";
 
 interface Review {
   id: number;
@@ -29,19 +30,10 @@ export default function ReviewsPage() {
 
   const fetchReviews = async () => {
     try {
-      const token = localStorage.getItem("access");
-      if (!token) throw new Error("Token bulunamadı");
-
-      const response = await fetch("http://127.0.0.1:8000/api/reviews/", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Değerlendirmeler yüklenemedi");
-
-      const data = await response.json();
-      setReviews(data);
+      const response = await api.get("/reviews/");
+      setReviews(Array.isArray(response.data) ? response.data : response.data.results || []);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Değerlendirmeler yüklenemedi");
     } finally {
       setLoading(false);
     }
@@ -49,20 +41,10 @@ export default function ReviewsPage() {
 
   const handleApprove = async (reviewId: number) => {
     try {
-      const token = localStorage.getItem("access");
-      const response = await fetch(
-        `http://127.0.0.1:8000/api/reviews/${reviewId}/approve/`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      if (!response.ok) throw new Error("Onaylama başarısız");
-
+      await api.post(`/reviews/${reviewId}/approve/`);
       fetchReviews();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Onaylama başarısız");
     }
   };
 
@@ -70,17 +52,10 @@ export default function ReviewsPage() {
     if (!window.confirm("Bu değerlendirmeyi silmek istediğinize emin misiniz?")) return;
 
     try {
-      const token = localStorage.getItem("access");
-      const response = await fetch(`http://127.0.0.1:8000/api/reviews/${reviewId}/`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Silme başarısız");
-
+      await api.delete(`/reviews/${reviewId}/`);
       fetchReviews();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Silme başarısız");
     }
   };
 
@@ -232,9 +207,8 @@ export default function ReviewsPage() {
               {filteredReviews.map((review) => (
                 <div
                   key={review.id}
-                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden ${
-                    review.is_approved ? "border-green-200" : "border-orange-200"
-                  }`}
+                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden ${review.is_approved ? "border-green-200" : "border-orange-200"
+                    }`}
                 >
                   <div className="p-6">
                     {/* Header */}
@@ -244,11 +218,10 @@ export default function ReviewsPage() {
                         <p className="text-sm text-gray-500">{review.product_name}</p>
                       </div>
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          review.is_approved
-                            ? "bg-green-100 text-green-600"
-                            : "bg-orange-100 text-orange-600"
-                        }`}
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${review.is_approved
+                          ? "bg-green-100 text-green-600"
+                          : "bg-orange-100 text-orange-600"
+                          }`}
                       >
                         {review.is_approved ? "Onaylı" : "Bekliyor"}
                       </span>

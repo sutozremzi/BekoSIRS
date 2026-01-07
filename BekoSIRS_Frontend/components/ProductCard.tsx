@@ -18,27 +18,21 @@ interface ProductCardProps {
     category_name?: string;
   };
   onPress?: () => void;
+  initialInWishlist?: boolean;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product, onPress }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({ product, onPress, initialInWishlist = false }) => {
   const router = useRouter();
-  const [inWishlist, setInWishlist] = useState(false);
+  const [inWishlist, setInWishlist] = useState(initialInWishlist);
   const [loading, setLoading] = useState(false);
+
+
 
   const imageSource = product.image_url || product.image;
 
   useEffect(() => {
-    checkWishlistStatus();
-  }, [product.id]);
-
-  const checkWishlistStatus = async () => {
-    try {
-      const response = await wishlistAPI.checkItem(product.id);
-      setInWishlist(response.data.in_wishlist);
-    } catch (error) {
-      // Ignore error - user might not be logged in
-    }
-  };
+    setInWishlist(initialInWishlist || false);
+  }, [initialInWishlist]);
 
   const handleWishlistToggle = async () => {
     setLoading(true);
@@ -117,76 +111,82 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onPress }) =>
 };
 
 const styles = StyleSheet.create({
-    card: {
-        backgroundColor: 'white',
-        borderRadius: 12,
-        marginBottom: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
-        overflow: 'hidden',
-        position: 'relative',
-    },
-    image: {
-        width: '100%',
-        height: 200,
-        backgroundColor: '#eee',
-    },
-    wishlistButton: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        backgroundColor: 'rgba(255,255,255,0.9)',
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-        elevation: 3,
-    },
-    stockBadge: {
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 4,
-        zIndex: 1,
-    },
-    stockText: {
-        color: '#fff',
-        fontSize: 11,
-        fontWeight: '600',
-    },
-    infoContainer: {
-        padding: 15,
-    },
-    name: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 4,
-    },
-    brand: {
-        fontSize: 14,
-        color: 'gray',
-        marginBottom: 4,
-    },
-    category: {
-        fontSize: 12,
-        color: '#999',
-        marginBottom: 8,
-    },
-    price: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#1A237E',
-        textAlign: 'right',
-    },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  image: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#f9fafb',
+  },
+  wishlistButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  stockBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    zIndex: 1,
+  },
+  stockText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  infoContainer: {
+    padding: 16,
+  },
+  name: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+    lineHeight: 22,
+  },
+  brand: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  category: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  price: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'left', // Aligned left looks modern
+  },
 });

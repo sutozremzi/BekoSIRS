@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import { Package, Upload, X, ArrowLeft, Save } from "lucide-react";
+import api from "../services/api";
 
 export default function AddProductPage() {
   const navigate = useNavigate();
-  
+
   // 1. State'e 'stock' alanını ekledik
   const [formData, setFormData] = useState({
     name: "",
@@ -28,15 +29,8 @@ export default function AddProductPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/categories/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setCategories(data);
-        }
+        const response = await api.get("/categories/");
+        setCategories(Array.isArray(response.data) ? response.data : response.data.results || []);
       } catch (error) {
         console.error("Kategoriler çekilemedi:", error);
       } finally {
@@ -45,7 +39,7 @@ export default function AddProductPage() {
     };
 
     fetchCategories();
-  }, [token]);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -81,22 +75,13 @@ export default function AddProductPage() {
     });
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/products/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: form,
+      await api.post("/products/", form, {
+        headers: { "Content-Type": "multipart/form-data" }
       });
-
-      if (response.ok) {
-        alert("✅ Ürün başarıyla eklendi!");
-        navigate("/dashboard/products");
-      } else {
-        alert("❌ Ürün eklenirken bir hata oluştu.");
-      }
+      alert("✅ Ürün başarıyla eklendi!");
+      navigate("/dashboard/products");
     } catch (error) {
-      alert("❌ Sunucu bağlantı hatası.");
+      alert("❌ Ürün eklenirken bir hata oluştu.");
     } finally {
       setLoading(false);
     }

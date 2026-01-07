@@ -1,0 +1,402 @@
+# products/views/customer_views.py
+"""
+Customer feature views: wishlist, view history, reviews, notifications, recommendations.
+"""
+
+from rest_framework import viewsets, status, exceptions
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from django.db.models import Avg, F
+
+from products.models import (
+    Product, ProductOwnership, Wishlist, WishlistItem,
+    ViewHistory, Review, Notification, Recommendation
+)
+from products.serializers import (
+    WishlistSerializer, WishlistItemSerializer,
+    ViewHistorySerializer, ReviewSerializer, ReviewCreateSerializer,
+    NotificationSerializer, RecommendationSerializer
+)
+
+
+class WishlistViewSet(viewsets.ModelViewSet):
+    """Customer wishlist management."""
+    serializer_class = WishlistSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Wishlist.objects.filter(customer=self.request.user).prefetch_related('items__product')
+
+    def list(self, request):
+        wishlist, created = Wishlist.objects.get_or_create(customer=request.user)
+        serializer = WishlistSerializer(wishlist, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='add-item')
+    def add_item(self, request):
+        """POST /api/wishlist/add-item/ - Add product to wishlist."""
+        wishlist, _ = Wishlist.objects.get_or_create(customer=request.user)
+        product_id = request.data.get('product_id')
+
+        if not product_id:
+            return Response({'error': 'product_id gerekli'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response({'error': 'Ürün bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
+
+        if WishlistItem.objects.filter(wishlist=wishlist, product=product).exists():
+            return Response({'error': 'Bu ürün zaten istek listenizde'}, status=status.HTTP_400_BAD_REQUEST)
+
+        item = WishlistItem.objects.create(
+            wishlist=wishlist,
+            product=product,
+            note=request.data.get('note', ''),
+            notify_on_price_drop=request.data.get('notify_on_price_drop', True),
+            notify_on_restock=request.data.get('notify_on_restock', True)
+        )
+        return Response(WishlistItemSerializer(item, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['delete'], url_path='remove-item/(?P<product_id>[^/.]+)')
+    def remove_item(self, request, product_id=None):
+        """DELETE /api/wishlist/remove-item/{product_id}/ - Remove from wishlist."""
+        try:
+            wishlist = Wishlist.objects.get(customer=request.user)
+            item = WishlistItem.objects.get(wishlist=wishlist, product_id=product_id)
+            item.delete()
+            return Response({'success': 'Ürün istek listesinden çıkarıldı'})
+        except (Wishlist.DoesNotExist, WishlistItem.DoesNotExist):
+            return Response({'error': 'Ürün istek listenizde bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['patch'], url_path='update-item/(?P<product_id>[^/.]+)')
+    def update_item(self, request, product_id=None):
+        """PATCH /api/wishlist/update-item/{product_id}/ - Update item settings."""
+        try:
+            wishlist = Wishlist.objects.get(customer=request.user)
+            item = WishlistItem.objects.get(wishlist=wishlist, product_id=product_id)
+            
+            data = request.data
+            if 'notify_on_price_drop' in data:
+                item.notify_on_price_drop = data['notify_on_price_drop']
+            if 'notify_on_restock' in data:
+                item.notify_on_restock = data['notify_on_restock']
+            if 'note' in data:
+                item.note = data['note']
+            
+            item.save()
+            return Response(WishlistItemSerializer(item, context={'request': request}).data)
+        except (Wishlist.DoesNotExist, WishlistItem.DoesNotExist):
+            return Response({'error': 'Ürün istek listenizde bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'], url_path='check/(?P<product_id>[^/.]+)')
+    def check_item(self, request, product_id=None):
+        """GET /api/wishlist/check/{product_id}/ - Check if product is in wishlist."""
+        try:
+            wishlist = Wishlist.objects.get(customer=request.user)
+            exists = WishlistItem.objects.filter(wishlist=wishlist, product_id=product_id).exists()
+            return Response({'in_wishlist': exists})
+        except Wishlist.DoesNotExist:
+            return Response({'in_wishlist': False})
+
+
+class ViewHistoryViewSet(viewsets.ModelViewSet):
+    """User view history tracking."""
+    serializer_class = ViewHistorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return ViewHistory.objects.filter(customer=self.request.user).select_related('product')
+
+    @action(detail=False, methods=['post'], url_path='record')
+    def record_view(self, request):
+        """POST /api/view-history/record/ - Record product view."""
+        product_id = request.data.get('product_id')
+
+        if not product_id:
+            return Response({'error': 'product_id gerekli'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response({'error': 'Ürün bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
+
+        view_history, created = ViewHistory.objects.get_or_create(
+            customer=request.user,
+            product=product,
+            defaults={'view_count': 1}
+        )
+
+        if not created:
+            view_history.view_count = F('view_count') + 1
+            view_history.viewed_at = timezone.now()
+            view_history.save()
+            view_history.refresh_from_db()
+
+        return Response(ViewHistorySerializer(view_history).data)
+
+    @action(detail=False, methods=['delete'], url_path='clear')
+    def clear_history(self, request):
+        """DELETE /api/view-history/clear/ - Clear view history."""
+        ViewHistory.objects.filter(customer=request.user).delete()
+        return Response({'success': 'Görüntüleme geçmişi temizlendi'})
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    """Product review management."""
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ReviewCreateSerializer
+        return ReviewSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ['admin', 'seller']:
+            return Review.objects.all().select_related('customer', 'product')
+        return Review.objects.filter(customer=user).select_related('product')
+
+    def perform_create(self, serializer):
+        product = serializer.validated_data['product']
+        user = self.request.user
+        has_ownership = ProductOwnership.objects.filter(customer=user, product=product).exists()
+        
+        if not has_ownership:
+            raise exceptions.PermissionDenied("Sadece satın aldığınız ürünleri değerlendirebilirsiniz.")
+
+        serializer.save(customer=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='product/(?P<product_id>[^/.]+)')
+    def product_reviews(self, request, product_id=None):
+        """GET /api/reviews/product/{id}/ - Get approved product reviews."""
+        reviews = Review.objects.filter(
+            product_id=product_id,
+            is_approved=True
+        ).select_related('customer')
+
+        avg_rating = reviews.aggregate(avg=Avg('rating'))['avg'] or 0
+
+        return Response({
+            'reviews': ReviewSerializer(reviews, many=True).data,
+            'average_rating': round(avg_rating, 1),
+            'total_reviews': reviews.count()
+        })
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve_review(self, request, pk=None):
+        """POST /api/reviews/{id}/approve/ - Approve review (Admin)."""
+        if request.user.role != 'admin':
+            return Response({'error': 'Yetkiniz yok'}, status=status.HTTP_403_FORBIDDEN)
+
+        review = self.get_object()
+        review.is_approved = True
+        review.save()
+        return Response({'success': 'Değerlendirme onaylandı'})
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """User notification management."""
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+
+    @action(detail=False, methods=['get'], url_path='all')
+    def all_notifications(self, request):
+        """
+        GET /api/notifications/all/ - Get all notifications (Admin only).
+        Returns notifications for all users, used in admin panel.
+        """
+        user = request.user
+        if user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkisiz erişim'}, status=status.HTTP_403_FORBIDDEN)
+        
+        notifications = Notification.objects.all().select_related(
+            'user', 'related_product', 'related_service_request'
+        ).order_by('-created_at')[:100]
+        
+        data = []
+        for notif in notifications:
+            data.append({
+                'id': notif.id,
+                'user': {
+                    'id': notif.user.id,
+                    'username': notif.user.username,
+                    'email': notif.user.email,
+                } if notif.user else None,
+                'notification_type': notif.notification_type,
+                'title': notif.title,
+                'message': notif.message,
+                'is_read': notif.is_read,
+                'created_at': notif.created_at.isoformat(),
+                'related_product': notif.related_product.name if notif.related_product else None,
+            })
+        
+        return Response(data)
+
+    @action(detail=False, methods=['post'], url_path='send-bulk')
+    def send_bulk(self, request):
+        """
+        POST /api/notifications/send-bulk/ - Send notification to multiple users.
+        Body: {
+            title: string,
+            message: string,
+            notification_type: 'general' | 'price_drop' | 'restock' | 'recommendation',
+            target: 'all' | 'customers'
+        }
+        """
+        from products.models import CustomUser
+        
+        user = request.user
+        if user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkisiz erişim'}, status=status.HTTP_403_FORBIDDEN)
+        
+        title = request.data.get('title', '').strip()
+        message = request.data.get('message', '').strip()
+        notification_type = request.data.get('notification_type', 'general')
+        target = request.data.get('target', 'customers')
+        
+        if not title or not message:
+            return Response({'error': 'Başlık ve mesaj zorunludur'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Determine target users
+        if target == 'customers':
+            target_users = CustomUser.objects.filter(role='customer', notify_general=True)
+        else:  # all
+            target_users = CustomUser.objects.filter(notify_general=True)
+        
+        # Create notifications in bulk
+        notifications = [
+            Notification(
+                user=target_user,
+                notification_type=notification_type,
+                title=title,
+                message=message
+            )
+            for target_user in target_users
+        ]
+        
+        created = Notification.objects.bulk_create(notifications)
+        
+        return Response({
+            'success': f'{len(created)} kullanıcıya bildirim gönderildi',
+            'count': len(created)
+        })
+
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """GET /api/notifications/stats/ - Get notification statistics."""
+        user = request.user
+        if user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkisiz erişim'}, status=status.HTTP_403_FORBIDDEN)
+        
+        total = Notification.objects.count()
+        read = Notification.objects.filter(is_read=True).count()
+        unread = Notification.objects.filter(is_read=False).count()
+        
+        by_type = {}
+        for notif_type in ['general', 'price_drop', 'restock', 'service_update', 'recommendation', 'warranty_expiry']:
+            by_type[notif_type] = Notification.objects.filter(notification_type=notif_type).count()
+        
+        return Response({
+            'total': total,
+            'read': read,
+            'unread': unread,
+            'by_type': by_type
+        })
+
+    @action(detail=False, methods=['get'], url_path='unread-count')
+    def unread_count(self, request):
+        """GET /api/notifications/unread-count/ - Get unread count."""
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({'count': count})
+
+    @action(detail=True, methods=['post'], url_path='read')
+    def mark_as_read(self, request, pk=None):
+        """POST /api/notifications/{id}/read/ - Mark as read."""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'success': True})
+
+    @action(detail=False, methods=['post'], url_path='read-all')
+    def mark_all_read(self, request):
+        """POST /api/notifications/read-all/ - Mark all as read."""
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'success': True})
+
+    @action(detail=True, methods=['delete'], url_path='delete')
+    def delete_notification(self, request, pk=None):
+        """DELETE /api/notifications/{id}/delete/ - Delete a notification."""
+        notification = self.get_object()
+        # Admin can delete any, users can only delete their own
+        if request.user.role not in ['admin', 'seller'] and notification.user != request.user:
+            return Response({'error': 'Yetkisiz'}, status=status.HTTP_403_FORBIDDEN)
+        notification.delete()
+        return Response({'success': True})
+
+    @action(detail=False, methods=['delete'], url_path='clear-all')
+    def clear_all(self, request):
+        """DELETE /api/notifications/clear-all/ - Clear all user notifications."""
+        Notification.objects.filter(user=request.user).delete()
+        return Response({'success': True})
+
+
+class RecommendationViewSet(viewsets.ModelViewSet):
+    """AI-powered product recommendations."""
+    serializer_class = RecommendationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Recommendation.objects.filter(customer=self.request.user).select_related('product')
+
+    def list(self, request):
+        """GET /api/recommendations/ - Get recommendations (with optional refresh)."""
+        refresh = request.query_params.get('refresh', 'false').lower() == 'true'
+        
+        if refresh:
+            self._generate_recommendations(request.user)
+
+        recommendations = Recommendation.objects.filter(
+            customer=request.user
+        ).select_related('product').order_by('-score')[:10]
+
+        return Response(RecommendationSerializer(recommendations, many=True).data)
+
+    def _generate_recommendations(self, user):
+        """Generate new recommendations using ML recommender."""
+        try:
+            from products.ml_recommender import get_recommender
+            recommender = get_recommender()
+            recommendations = recommender.recommend(user, top_n=10)
+            
+            # Clear old and create new
+            Recommendation.objects.filter(customer=user).delete()
+            
+            for rec in recommendations:
+                Recommendation.objects.create(
+                    customer=user,
+                    product_id=rec['product_id'],
+                    score=rec.get('score', 0),
+                    reason=rec.get('reason', 'AI önerisi')
+                )
+        except Exception as e:
+            print(f"Recommendation generation failed: {e}")
+
+    @action(detail=False, methods=['post'], url_path='generate')
+    def generate(self, request):
+        """POST /api/recommendations/generate/ - Force generate new recommendations."""
+        self._generate_recommendations(request.user)
+        return Response({'success': 'Öneriler oluşturuldu'})
+
+    @action(detail=True, methods=['post'], url_path='click')
+    def record_click(self, request, pk=None):
+        """POST /api/recommendations/{id}/click/ - Record click."""
+        recommendation = self.get_object()
+        recommendation.clicked = True
+        recommendation.save()
+        return Response({'success': True})

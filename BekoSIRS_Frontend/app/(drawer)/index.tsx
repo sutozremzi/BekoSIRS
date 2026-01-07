@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import api from '../../services/api';
+import api, { wishlistAPI } from '../../services/api';
 import { ProductCard } from '../../components/ProductCard';
 
 interface Category {
@@ -27,7 +27,7 @@ interface Product {
   price: string;
   stock: number;
   image?: string;
-  category?: number;
+  category?: { id: number; name: string } | null;
   category_name?: string;
 }
 
@@ -39,16 +39,26 @@ const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [wishlistIds, setWishlistIds] = useState<Set<number>>(new Set());
 
   const fetchData = useCallback(async () => {
     try {
-      const [productsRes, categoriesRes] = await Promise.all([
-        api.get('/api/products/'),
-        api.get('/api/categories/'),
+      const [productsRes, categoriesRes, wishlistRes] = await Promise.all([
+        api.get('/api/products/?page_size=1000'),
+        api.get('/api/categories/?page_size=1000'),
+        wishlistAPI.getWishlist(),
       ]);
-      setProducts(productsRes.data);
-      setFilteredProducts(productsRes.data);
-      setCategories(categoriesRes.data);
+      const productsData = Array.isArray(productsRes.data) ? productsRes.data : productsRes.data.results || [];
+      const categoriesData = Array.isArray(categoriesRes.data) ? categoriesRes.data : categoriesRes.data.results || [];
+
+      if (wishlistRes.data && wishlistRes.data.items) {
+        const ids = wishlistRes.data.items.map((item: any) => item.product.id);
+        setWishlistIds(new Set(ids));
+      }
+
+      setProducts(productsData);
+      setFilteredProducts(productsData);
+      setCategories(categoriesData);
     } catch (error) {
       console.error('Veri yükleme hatası:', error);
     } finally {
@@ -70,7 +80,7 @@ const HomeScreen = () => {
 
     // Kategori filtresi
     if (selectedCategory !== null) {
-      result = result.filter((p) => p.category === selectedCategory);
+      result = result.filter((p) => p.category?.id === selectedCategory);
     }
 
     // Arama filtresi
@@ -106,14 +116,15 @@ const HomeScreen = () => {
     );
   }
 
+  /* Simplified Header Logic */
   const ListHeader = () => (
     <View style={styles.headerContainer}>
-      <Text style={styles.title}>Ürünler</Text>
-      <Text style={styles.subtitle}>{filteredProducts.length} ürün bulundu</Text>
+      <Text style={styles.title}>Keşfet</Text>
+      {/* Removed Subtitle */}
 
       {/* Arama Kutusu */}
       <View style={styles.searchContainer}>
-        <FontAwesome name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+        <FontAwesome name="search" size={16} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Ürün veya marka ara..."
@@ -123,7 +134,7 @@ const HomeScreen = () => {
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-            <FontAwesome name="times-circle" size={18} color="#9CA3AF" />
+            <FontAwesome name="times-circle" size={16} color="#9CA3AF" />
           </TouchableOpacity>
         )}
       </View>
@@ -193,7 +204,12 @@ const HomeScreen = () => {
     <SafeAreaView style={styles.container}>
       <FlatList
         data={filteredProducts}
-        renderItem={({ item }) => <ProductCard product={item} />}
+        renderItem={({ item }) => (
+          <ProductCard
+            product={item}
+            initialInWishlist={wishlistIds.has(item.id)}
+          />
+        )}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
         ListHeaderComponent={ListHeader}
@@ -220,7 +236,7 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff', // White background for cleaner look
   },
   center: {
     flex: 1,
@@ -232,34 +248,32 @@ const styles = StyleSheet.create({
     paddingBottom: 15,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 4,
+    fontSize: 28, // Large modern title
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 16,
+    letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 15,
-  },
+  /* Removed Subtitle style */
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#f3f4f6', // Light gray bg
     borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    height: 50,
+    /* No border */
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
-    height: 48,
+    height: '100%',
     fontSize: 15,
     color: '#111827',
+    fontWeight: '500',
   },
   clearButton: {
     padding: 8,
@@ -268,25 +282,26 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   categoryContainer: {
-    paddingRight: 15,
+    paddingRight: 16,
     gap: 8,
   },
   categoryChip: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 100, // Pill shape
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    /* Subtle shadow instead of strong border */
   },
   categoryChipActive: {
-    backgroundColor: '#000000',
-    borderColor: '#000000',
+    backgroundColor: '#111827', // Black
+    borderColor: '#111827',
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#374151',
+    color: '#4B5563',
   },
   categoryChipTextActive: {
     color: '#FFFFFF',
@@ -295,7 +310,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
@@ -311,11 +326,11 @@ const styles = StyleSheet.create({
   },
   clearFiltersText: {
     fontSize: 13,
-    color: '#000000',
+    color: '#EF4444',
     fontWeight: '600',
   },
   list: {
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     paddingBottom: 20,
   },
   emptyContainer: {

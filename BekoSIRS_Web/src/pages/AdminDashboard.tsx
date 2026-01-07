@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Users, Shield, ShoppingBag, User, Search, Filter, Crown, Store, UserCircle } from "lucide-react";
+import api from "../services/api";
 
 interface User {
   id: number;
@@ -15,14 +16,9 @@ export default function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState("Tümü");
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/users/", {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("access")}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        setUsers(data);
+    api.get("/users/")
+      .then((res) => {
+        setUsers(Array.isArray(res.data) ? res.data : res.data.results || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -30,14 +26,8 @@ export default function AdminDashboard() {
 
   const changeRole = (id: number, role: string) => {
     if (window.confirm(`Bu kullanıcının rolünü ${role} olarak değiştirmek istediğinizden emin misiniz?`)) {
-      fetch(`http://127.0.0.1:8000/api/users/${id}/change_role/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("access")}`,
-        },
-        body: JSON.stringify({ role }),
-      }).then(() => window.location.reload());
+      api.post(`/users/${id}/change_role/`, { role })
+        .then(() => window.location.reload());
     }
   };
 

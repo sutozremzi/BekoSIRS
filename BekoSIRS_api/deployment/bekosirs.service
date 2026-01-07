@@ -1,0 +1,53 @@
+# Systemd service file for BekoSIRS Backend
+# Place this file in /etc/systemd/system/bekosirs.service
+#
+# Commands:
+#   sudo systemctl start bekosirs     - Start service
+#   sudo systemctl stop bekosirs      - Stop service
+#   sudo systemctl restart bekosirs   - Restart service
+#   sudo systemctl status bekosirs    - Check status
+#   sudo systemctl enable bekosirs    - Enable on boot
+#   sudo journalctl -u bekosirs -f    - View logs
+
+[Unit]
+Description=BekoSIRS Backend API (Gunicorn)
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=notify
+User=bekosirs
+Group=www-data
+WorkingDirectory=/var/www/bekosirs/BekoSIRS_api
+Environment="PATH=/var/www/bekosirs/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=bekosirs_backend.settings"
+EnvironmentFile=/var/www/bekosirs/.env
+
+# Gunicorn execution
+ExecStart=/var/www/bekosirs/venv/bin/gunicorn \
+    --config /var/www/bekosirs/BekoSIRS_api/gunicorn.conf.py \
+    bekosirs_backend.wsgi:application
+
+# Graceful reload
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# Process management
+Restart=on-failure
+RestartSec=5s
+KillMode=mixed
+KillSignal=SIGQUIT
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/bekosirs/media /var/log/bekosirs /var/run/bekosirs
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+[Install]
+WantedBy=multi-user.target

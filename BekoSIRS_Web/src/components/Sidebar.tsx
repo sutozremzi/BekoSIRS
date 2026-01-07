@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Package, Tag, Users, Layers, LogOut, Menu, X, Home, Wrench, Star } from "lucide-react";
+import { Package, Tag, Users, Layers, LogOut, Menu, X, Home, Wrench, Star, BoxSelect, Bell, Truck } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 export default function Sidebar() {
@@ -14,6 +14,9 @@ export default function Sidebar() {
     { name: "Değerlendirmeler", icon: <Star size={20} />, link: "/dashboard/reviews" },
     { name: "Gruplar", icon: <Layers size={20} />, link: "/dashboard/groups" },
     { name: "Kullanıcılar", icon: <Users size={20} />, link: "/dashboard/users" },
+    { name: "Ürün Atamaları", icon: <BoxSelect size={20} />, link: "/dashboard/assignments" },
+    { name: "Teslimatlar", icon: <Truck size={20} />, link: "/dashboard/deliveries" },
+    { name: "Bildirimler", icon: <Bell size={20} />, link: "/dashboard/notifications" },
   ];
 
   const handleLogout = () => {
@@ -30,9 +33,8 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`${
-        open ? "w-64" : "w-20"
-      } bg-white border-r border-gray-200 min-h-screen duration-300 flex flex-col shadow-sm`}
+      className={`${open ? "w-64" : "w-20"
+        } bg-white border-r border-gray-200 min-h-screen duration-300 flex flex-col shadow-sm`}
     >
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
@@ -57,7 +59,7 @@ export default function Sidebar() {
             </button>
           )}
         </div>
-        
+
         {!open && (
           <button
             onClick={() => setOpen(true)}
@@ -76,19 +78,17 @@ export default function Sidebar() {
             <Link
               to={menu.link}
               key={index}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                active
-                  ? "bg-black text-white shadow-lg"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active
+                ? "bg-black text-white shadow-lg"
+                : "text-gray-700 hover:bg-gray-100"
+                }`}
             >
               <span className={active ? "text-white" : "text-gray-600 group-hover:text-black"}>
                 {menu.icon}
               </span>
               <span
-                className={`text-sm font-medium duration-200 ${
-                  !open && "hidden"
-                }`}
+                className={`text-sm font-medium duration-200 ${!open && "hidden"
+                  }`}
               >
                 {menu.name}
               </span>
@@ -119,9 +119,8 @@ export default function Sidebar() {
       <div className="p-4 border-t border-gray-200">
         <button
           onClick={handleLogout}
-          className={`flex items-center gap-3 w-full px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 group ${
-            !open && "justify-center"
-          }`}
+          className={`flex items-center gap-3 w-full px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 group ${!open && "justify-center"
+            }`}
         >
           <LogOut size={20} />
           {open && <span className="text-sm font-medium">Çıkış Yap</span>}

@@ -1,19 +1,35 @@
 import axios from 'axios';
-import { getToken } from '../storage/storage.native';
+import { getToken, clearAllTokens } from '../storage/storage.native';
+import { router } from 'expo-router';
 import Constants from 'expo-constants';
 
-// 🔹 Get your computer's local IP address
-// Replace this with YOUR actual IP address from ipconfig/ifconfig
-const COMPUTER_IP = '192.168.0.105';
+// 🔹 API URL Configuration
+// Uses environment variables - set EXPO_PUBLIC_API_URL in .env file
+// Default fallback for development
+const getApiUrl = () => {
+  // Check for Expo environment variable (EXPO_PUBLIC_ prefix is auto-exposed)
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
 
-// 🔹 Expo Go requires using your computer's local network IP
-const API_BASE_URL = __DEV__
-  ? `http://${COMPUTER_IP}:8000/`
-  : 'https://your-production-api.com/';
+  if (envUrl) {
+    return envUrl;
+  }
+
+  // Fallback: try to detect local IP from Expo manifest
+  const debuggerHost = Constants.expoConfig?.hostUri?.split(':')[0];
+  if (debuggerHost) {
+    return `http://${debuggerHost}:8000/`;
+  }
+
+  // Production fallback
+  return process.env.EXPO_PUBLIC_PROD_API_URL || 'https://api.bekosirs.com/';
+};
+
+const API_BASE_URL = getApiUrl();
 
 console.log('🔗 API Base URL:', API_BASE_URL);
 console.log('📱 Device:', Constants.deviceName);
 console.log('🌐 Platform:', Constants.platform);
+
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,7 +37,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 15000, // 15 second timeout for mobile networks
+  timeout: 30000, // 30 second timeout for mobile networks and heavy ML ops
 });
 
 // Request interceptor
@@ -60,6 +76,15 @@ api.interceptors.response.use(
         data: error.response.data,
         url: error.config?.url
       });
+
+      // 401 Unauthorized Handling
+      if (error.response.status === 401) {
+        console.warn('🔒 Session expired (401), clearing tokens and redirecting to login...');
+        clearAllTokens().then(() => {
+          // Use Replace to prevent going back
+          router.replace('/login');
+        });
+      }
     } else if (error.request) {
       // Request made but no response received
       console.error('❌ Network Error - No Response:', {
@@ -69,9 +94,9 @@ api.interceptors.response.use(
       });
       console.error('💡 Troubleshooting:');
       console.error('   1. Check if backend is running: python manage.py runserver 0.0.0.0:8000');
-      console.error('   2. Verify IP address is correct:', COMPUTER_IP);
+      console.error('   2. Verify EXPO_PUBLIC_API_URL in .env file');
       console.error('   3. Ensure phone and computer are on same WiFi');
-      console.error('   4. Check Django ALLOWED_HOSTS includes:', COMPUTER_IP);
+      console.error('   4. Current API URL:', API_BASE_URL);
       console.error('   5. Disable firewall temporarily to test');
     } else {
       // Error in request setup
@@ -138,6 +163,10 @@ export const wishlistAPI = {
   // Ürün listede mi kontrol et
   checkItem: (productId: number) =>
     api.get(`api/wishlist/check/${productId}/`),
+
+  // Ürün güncelle (Bildirim ayarları vb.)
+  updateItem: (productId: number, data: { notify_on_price_drop?: boolean; notify_on_restock?: boolean; note?: string }) =>
+    api.patch(`api/wishlist/update-item/${productId}/`, data),
 };
 
 // ----------------------------------------
@@ -227,7 +256,7 @@ export const notificationAPI = {
   markAllAsRead: () => api.post('api/notifications/read-all/'),
 
   // Bildirim ayarlarını getir
-  getSettings: () => api.get('api/notification-settings/'),
+  getSettings: () => api.get('api/profile/notification-settings/'),
 
   // Bildirim ayarlarını güncelle
   updateSettings: (settings: {
@@ -237,7 +266,7 @@ export const notificationAPI = {
     notify_recommendations?: boolean;
     notify_warranty_expiry?: boolean;
     notify_general?: boolean;
-  }) => api.patch('api/notification-settings/', settings),
+  }) => api.patch('api/profile/notification-settings/', settings),
 };
 
 // ----------------------------------------
@@ -245,7 +274,7 @@ export const notificationAPI = {
 // ----------------------------------------
 export const recommendationAPI = {
   // Önerileri getir
-  getRecommendations: () => api.get('api/recommendations/'),
+  getRecommendations: (refresh?: boolean) => api.get(refresh ? 'api/recommendations/?refresh=true' : 'api/recommendations/'),
 
   // Yeni öneriler oluştur
   generateRecommendations: () => api.post('api/recommendations/generate/'),

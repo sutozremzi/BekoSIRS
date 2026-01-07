@@ -152,16 +152,33 @@ const WishlistScreen = () => {
 
         <View style={styles.actions}>
           <View style={styles.notifyIcons}>
-            {item.notify_on_price_drop && (
-              <View style={styles.notifyBadge}>
-                <FontAwesome name="tag" size={12} color="#fff" />
-              </View>
-            )}
-            {item.notify_on_restock && (
-              <View style={[styles.notifyBadge, { backgroundColor: '#2196F3' }]}>
-                <FontAwesome name="bell" size={12} color="#fff" />
-              </View>
-            )}
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await wishlistAPI.updateItem(product.id, { notify_on_price_drop: !item.notify_on_price_drop });
+                  fetchWishlist();
+                } catch (e) {
+                  Alert.alert('Hata', 'Güncelleme başarısız');
+                }
+              }}
+              style={[styles.notifyBadge, !item.notify_on_price_drop && { backgroundColor: '#ddd' }]}
+            >
+              <FontAwesome name="tag" size={12} color={item.notify_on_price_drop ? "#fff" : "#666"} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await wishlistAPI.updateItem(product.id, { notify_on_restock: !item.notify_on_restock });
+                  fetchWishlist();
+                } catch (e) {
+                  Alert.alert('Hata', 'Güncelleme başarısız');
+                }
+              }}
+              style={[styles.notifyBadge, { backgroundColor: item.notify_on_restock ? '#2196F3' : '#ddd' }]}
+            >
+              <FontAwesome name="bell" size={12} color={item.notify_on_restock ? "#fff" : "#666"} />
+            </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={styles.removeButton}

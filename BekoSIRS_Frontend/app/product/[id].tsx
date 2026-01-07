@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import api, { wishlistAPI, viewHistoryAPI, reviewAPI } from '../../services/api';
+import api, { wishlistAPI, viewHistoryAPI, reviewAPI, productOwnershipAPI } from '../../services/api';
 
 interface Product {
   id: number;
@@ -49,6 +49,7 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [inWishlist, setInWishlist] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [isOwned, setIsOwned] = useState(false);
 
   // Review states
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -63,6 +64,7 @@ export default function ProductDetailScreen() {
     if (id) {
       fetchProduct();
       fetchReviews();
+      checkOwnership();
       recordView();
     }
   }, [id]);
@@ -116,6 +118,19 @@ export default function ProductDetailScreen() {
     }
   };
 
+  const checkOwnership = async () => {
+    try {
+      const response = await productOwnershipAPI.getMyOwnerships();
+      // response.data is ProductOwnership[]
+      if (Array.isArray(response.data)) {
+        const owned = response.data.some((item: any) => item.product.id === Number(id));
+        setIsOwned(owned);
+      }
+    } catch (error) {
+      console.log('Ownership check error', error);
+    }
+  };
+
   const handleWishlistToggle = async () => {
     setWishlistLoading(true);
     try {
@@ -136,7 +151,10 @@ export default function ProductDetailScreen() {
   };
 
   const handleServiceRequest = () => {
-    router.push('/service-requests');
+    router.push({
+      pathname: '/service-requests',
+      params: { openModal: 'true', productId: id }
+    });
   };
 
   const handleSubmitReview = async () => {
@@ -158,8 +176,8 @@ export default function ProductDetailScreen() {
       fetchReviews();
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail ||
-                       error.response?.data?.error ||
-                       'Bu ürünü zaten değerlendirdiniz';
+        error.response?.data?.error ||
+        'Bu ürünü zaten değerlendirdiniz';
       Alert.alert('Hata', errorMsg);
     } finally {
       setSubmittingReview(false);
@@ -311,13 +329,15 @@ export default function ProductDetailScreen() {
           <View style={styles.section}>
             <View style={styles.reviewsHeader}>
               <Text style={styles.sectionTitle}>Değerlendirmeler</Text>
-              <TouchableOpacity
-                style={styles.addReviewButton}
-                onPress={() => setShowReviewModal(true)}
-              >
-                <FontAwesome name="plus" size={14} color="#000" />
-                <Text style={styles.addReviewText}>Değerlendir</Text>
-              </TouchableOpacity>
+              {isOwned && (
+                <TouchableOpacity
+                  style={styles.addReviewButton}
+                  onPress={() => setShowReviewModal(true)}
+                >
+                  <FontAwesome name="plus" size={14} color="#000" />
+                  <Text style={styles.addReviewText}>Değerlendir</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {reviewsLoading ? (
@@ -375,13 +395,15 @@ export default function ProductDetailScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.serviceButton]}
-          onPress={handleServiceRequest}
-        >
-          <FontAwesome name="wrench" size={20} color="#fff" />
-          <Text style={styles.serviceButtonText}>Servis Talebi</Text>
-        </TouchableOpacity>
+        {isOwned && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.serviceButton]}
+            onPress={handleServiceRequest}
+          >
+            <FontAwesome name="wrench" size={20} color="#fff" />
+            <Text style={styles.serviceButtonText}>Servis Talebi</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Review Modal */}

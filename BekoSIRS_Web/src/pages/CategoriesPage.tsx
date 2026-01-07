@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Tag, Plus, Edit2, Trash2, Search, X, Package } from "lucide-react";
 import Sidebar from "../components/Sidebar";
+import api from "../services/api";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<any[]>([]);
@@ -24,16 +25,10 @@ export default function CategoriesPage() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await fetch("http://127.0.0.1:8000/api/categories/", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error("Kategoriler alınamadı.");
-      const data = await res.json();
-      setCategories(data);
+      const res = await api.get("/categories/");
+      setCategories(Array.isArray(res.data) ? res.data : res.data.results || []);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Kategoriler alınamadı.");
     } finally {
       setLoading(false);
     }
@@ -42,63 +37,40 @@ export default function CategoriesPage() {
   const handleAddCategory = async () => {
     if (!newCategory.name) return;
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/categories/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newCategory),
-      });
-      if (!res.ok) throw new Error("Kategori eklenemedi.");
+      await api.post("/categories/", newCategory);
       await fetchCategories();
       setNewCategory({ name: "", description: "" });
       setShowAddModal(false);
       alert("✅ Kategori başarıyla eklendi!");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Kategori eklenemedi.");
     }
   };
 
   const handleUpdateCategory = async () => {
     if (!selectedCategory || !selectedCategory.name) return;
     try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/api/categories/${selectedCategory.id}/`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: selectedCategory.name,
-            description: selectedCategory.description,
-          }),
-        }
-      );
-      if (!res.ok) throw new Error("Kategori güncellenemedi.");
+      await api.put(`/categories/${selectedCategory.id}/`, {
+        name: selectedCategory.name,
+        description: selectedCategory.description,
+      });
       await fetchCategories();
       setShowEditModal(false);
       setSelectedCategory(null);
       alert("✅ Kategori başarıyla güncellendi!");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Kategori güncellenemedi.");
     }
   };
 
   const handleDeleteCategory = async (id: number, name: string) => {
     if (window.confirm(`"${name}" kategorisini silmek istediğinizden emin misiniz?`)) {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/categories/${id}/`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Kategori silinemedi.");
+        await api.delete(`/categories/${id}/`);
         await fetchCategories();
         alert("✅ Kategori başarıyla silindi!");
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Kategori silinemedi.");
       }
     }
   };

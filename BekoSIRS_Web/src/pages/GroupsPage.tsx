@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Layers, Plus, Shield, Lock, ChevronRight, Check, X } from "lucide-react";
 import Sidebar from "../components/Sidebar";
+import api from "../services/api";
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<any[]>([]);
@@ -15,11 +16,8 @@ export default function GroupsPage() {
   useEffect(() => {
     const fetchGroups = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/groups/", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setGroups(data);
+        const res = await api.get("/groups/");
+        setGroups(Array.isArray(res.data) ? res.data : res.data.results || []);
       } catch (error) {
         console.error("Error fetching groups:", error);
       }
@@ -27,11 +25,8 @@ export default function GroupsPage() {
 
     const fetchPerms = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/groups/1/permissions/", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setPermissions(data);
+        const res = await api.get("/groups/1/permissions/");
+        setPermissions(Array.isArray(res.data) ? res.data : res.data.results || []);
       } catch (error) {
         console.error("Error fetching permissions:", error);
       } finally {
@@ -41,16 +36,13 @@ export default function GroupsPage() {
 
     fetchGroups();
     fetchPerms();
-  }, [token]);
+  }, []);
 
   const handleSelectGroup = async (id: number) => {
     setSelectedGroup(id);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/groups/${id}/permissions/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setGroupPerms(data);
+      const res = await api.get(`/groups/${id}/permissions/`);
+      setGroupPerms(res.data);
     } catch (error) {
       console.error("Error fetching group permissions:", error);
     }
@@ -59,14 +51,7 @@ export default function GroupsPage() {
   const handleAddPermission = async (permId: number) => {
     if (!selectedGroup) return;
     try {
-      await fetch(`http://127.0.0.1:8000/api/groups/${selectedGroup}/add_permission/`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ permission_id: permId }),
-      });
+      await api.post(`/groups/${selectedGroup}/add_permission/`, { permission_id: permId });
       handleSelectGroup(selectedGroup);
     } catch (error) {
       console.error("Error adding permission:", error);
@@ -76,14 +61,7 @@ export default function GroupsPage() {
   const handleAddGroup = async () => {
     if (!newGroupName) return;
     try {
-      await fetch("http://127.0.0.1:8000/api/groups/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: newGroupName }),
-      });
+      await api.post("/groups/", { name: newGroupName });
       setNewGroupName("");
       setShowAddModal(false);
       window.location.reload();
@@ -189,17 +167,15 @@ export default function GroupsPage() {
                     <button
                       key={g.id}
                       onClick={() => handleSelectGroup(g.id)}
-                      className={`w-full flex items-center justify-between p-4 rounded-xl transition-all duration-200 ${
-                        selectedGroup === g.id
-                          ? "bg-black text-white shadow-lg"
-                          : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-                      }`}
+                      className={`w-full flex items-center justify-between p-4 rounded-xl transition-all duration-200 ${selectedGroup === g.id
+                        ? "bg-black text-white shadow-lg"
+                        : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+                        }`}
                     >
                       <div className="flex items-center space-x-3">
                         <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            selectedGroup === g.id ? "bg-white bg-opacity-20" : "bg-gray-200"
-                          }`}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedGroup === g.id ? "bg-white bg-opacity-20" : "bg-gray-200"
+                            }`}
                         >
                           <Layers
                             size={18}
@@ -253,11 +229,10 @@ export default function GroupsPage() {
                           return (
                             <div
                               key={p.id}
-                              className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                                hasPermission
-                                  ? "border-green-500 bg-green-50"
-                                  : "border-gray-200 bg-white hover:border-gray-300"
-                              }`}
+                              className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${hasPermission
+                                ? "border-green-500 bg-green-50"
+                                : "border-gray-200 bg-white hover:border-gray-300"
+                                }`}
                             >
                               <div className="flex items-center space-x-3">
                                 {hasPermission ? (
@@ -266,9 +241,8 @@ export default function GroupsPage() {
                                   <Lock size={20} className="text-gray-400" />
                                 )}
                                 <span
-                                  className={`font-medium ${
-                                    hasPermission ? "text-green-900" : "text-gray-700"
-                                  }`}
+                                  className={`font-medium ${hasPermission ? "text-green-900" : "text-gray-700"
+                                    }`}
                                 >
                                   {p.name}
                                 </span>

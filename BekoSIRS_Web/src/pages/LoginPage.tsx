@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Dashboard from "./Dashboard";
 import { Lock, User, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
+import api from "../services/api";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -23,29 +24,19 @@ export default function LoginPage() {
 
     try {
       // 127.0.0.1 yerine bazen localhost veya ağ IP'si gerekebilir, backend ile uyumlu tutun
-      const response = await fetch("http://127.0.0.1:8000/api/token/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // platform: "web" bilgisini göndererek Backend'deki Customer engelini tetikliyoruz
-        body: JSON.stringify({ 
-          username, 
-          password,
-          platform: "web" 
-        }),
+      const response = await api.post("/token/", {
+        username,
+        password,
+        platform: "web"
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend'den gelen "Müşteri hesabı ile web paneline giriş yetkiniz yok" mesajını yakalar
-        throw new Error(data.detail || "Kullanıcı adı veya şifre hatalı");
-      }
+      const data = response.data;
 
       // Başarılı giriş: Verileri sakla
       localStorage.setItem("access", data.access);
       localStorage.setItem("refresh", data.refresh);
-      localStorage.setItem("user_role", data.role); 
-      
+      localStorage.setItem("user_role", data.role);
+
       setIsLoggedIn(true);
     } catch (err: any) {
       setError(err.message);
@@ -72,18 +63,18 @@ export default function LoginPage() {
           <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-500 rounded-full blur-3xl"></div>
         </div>
-        
+
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="mb-8">
             <div className="bg-white text-black px-6 py-3 rounded-2xl font-bold text-3xl inline-block mb-8">
               BEKO
             </div>
           </div>
-          
+
           <h1 className="text-5xl font-bold mb-6 leading-tight">
             Ürün Yönetim<br />Sistemi
           </h1>
-          
+
           <p className="text-xl text-gray-300 mb-12 leading-relaxed">
             Modern ve güçlü admin paneline hoş geldiniz.<br />
             Tüm ürünlerinizi tek bir yerden yönetin.

@@ -10,9 +10,11 @@ from .models import (
 # Category Serializer
 # ---------------------------
 class CategorySerializer(serializers.ModelSerializer):
+    product_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Category
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'parent', 'product_count']
 
 
 # ---------------------------
@@ -22,7 +24,10 @@ class ProductSerializer(serializers.ModelSerializer):
     # Kategori detaylarını obje olarak döner (read_only)
     category = CategorySerializer(read_only=True)
     # Kategori ismini düz metin olarak da döner (Frontend kolaylığı için)
-    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_name = serializers.SerializerMethodField()
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
     
     class Meta:
         model = Product
@@ -36,7 +41,12 @@ class ProductSerializer(serializers.ModelSerializer):
             "stock", 
             "category", 
             "category_name", 
-            "image"
+            "image",
+            "model_code",
+            "warranty_code",
+            "price_list",
+            "price_cash",
+            "campaign_tag"
         ]
 
 
@@ -46,7 +56,7 @@ class ProductSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "email", "first_name", "last_name", "role", "is_active", "phone_number"]
+        fields = ["id", "username", "email", "first_name", "last_name", "role", "is_active", "phone_number", "biometric_enabled"]
 
 
 class UserSearchSerializer(serializers.ModelSerializer):
@@ -253,3 +263,71 @@ class RecommendationSerializer(serializers.ModelSerializer):
         model = Recommendation
         fields = ['id', 'product', 'score', 'reason', 'created_at', 'is_shown', 'clicked']
         read_only_fields = ['id', 'created_at']
+
+
+# ---------------------------
+# Password Reset Serializers
+# ---------------------------
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset email."""
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """Check if user with this email exists."""
+        if not CustomUser.objects.filter(email=value).exists():
+            # Don't reveal if email exists or not for security
+            pass  # Still return success to prevent email enumeration
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for confirming password reset with token."""
+    token = serializers.CharField()
+    new_password = serializers.CharField(min_length=8, write_only=True)
+    confirm_password = serializers.CharField(min_length=8, write_only=True)
+
+    def validate(self, attrs):
+        """Validate that passwords match and token is valid."""
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({
+                'confirm_password': 'Şifreler eşleşmiyor.'
+            })
+        
+        from .models import PasswordResetToken
+        try:
+            token_obj = PasswordResetToken.objects.get(token=attrs['token'])
+            if not token_obj.is_valid():
+                raise serializers.ValidationError({
+                    'token': 'Bu şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş.'
+                })
+            attrs['token_obj'] = token_obj
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError({
+                'token': 'Geçersiz şifre sıfırlama bağlantısı.'
+            })
+        
+        return attrs
+
+    def save(self):
+        """Reset the user's password."""
+        token_obj = self.validated_data['token_obj']
+        user = token_obj.user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        token_obj.use()
+        return user
+
+
+# ---------------------------
+# Biometric Authentication Serializers
+# ---------------------------
+class BiometricEnableSerializer(serializers.Serializer):
+    """Serializer for enabling biometric authentication."""
+    device_id = serializers.CharField(max_length=255)
+    refresh_token = serializers.CharField(write_only=True)
+
+
+class BiometricLoginSerializer(serializers.Serializer):
+    """Serializer for biometric login."""
+    device_id = serializers.CharField(max_length=255)
+    user_id = serializers.IntegerField()

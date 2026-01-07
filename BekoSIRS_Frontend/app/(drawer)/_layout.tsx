@@ -97,6 +97,14 @@ export default function DrawerLayout() {
         }}
       />
       <Drawer.Screen
+        name="settings"
+        options={{
+          drawerLabel: 'Ayarlar',
+          title: 'Ayarlar',
+          drawerIcon: ({ color, size }) => <FontAwesome name="cog" size={size} color={color} />,
+        }}
+      />
+      <Drawer.Screen
         name="profile"
         options={{
           drawerLabel: 'Hesabım',

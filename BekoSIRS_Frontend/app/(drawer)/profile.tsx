@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  Platform,
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,7 +27,18 @@ interface UserProfile {
   phone_number: string;
   role: string;
   date_joined: string;
+  address?: string;
+  address_city?: string;
 }
+
+const TRNC_CITIES = [
+  'Lefkoşa',
+  'Gazimağusa',
+  'Girne',
+  'Güzelyurt',
+  'İskele',
+  'Lefke'
+];
 
 const ProfileScreen = () => {
   const { authToken, logout, isCheckingAuth } = useAuth();
@@ -42,11 +55,40 @@ const ProfileScreen = () => {
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
 
+  // Address form state
+  const [city, setCity] = useState('');
+  const [district, setDistrict] = useState(''); // Mahalle/Bölge
+  const [street, setStreet] = useState('');     // Cadde/Sokak
+  const [buildingNo, setBuildingNo] = useState(''); // Kapı No
+  const [addressNote, setAddressNote] = useState(''); // Tarif (Hastane karşısı vb.)
+
+  const [showCityModal, setShowCityModal] = useState(false);
+
   // Password change
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Adres stringini parçalara ayırma (basit mantık)
+  const parseAddress = (fullAddress: string) => {
+    if (!fullAddress) return;
+
+    // Format: "Mahalle, Cadde, No:12 - Not: Tarif"
+    // Bu basit bir parsing, mükemmel olmayabilir ama iş görür
+    const parts = fullAddress.split(' - Not: ');
+    setAddressNote(parts[1] || ''); // Varsa notu al
+
+    const mainParts = parts[0].split(', ');
+    if (mainParts.length >= 3) {
+      setDistrict(mainParts[0] || '');
+      setStreet(mainParts[1] || '');
+      setBuildingNo(mainParts[2]?.replace('No:', '') || '');
+    } else {
+      // Format uymuyorsa düz metin olarak bölgeye koy
+      setDistrict(parts[0]);
+    }
+  };
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -56,6 +98,10 @@ const ProfileScreen = () => {
       setLastName(response.data.last_name || '');
       setEmail(response.data.email || '');
       setPhoneNumber(response.data.phone_number || '');
+
+      setCity(response.data.address_city || '');
+      parseAddress(response.data.address || ''); // Mevcut adresi form alanlarına dağıt
+
     } catch (error) {
       console.error('Profil yüklenemedi:', error);
     } finally {
@@ -72,6 +118,12 @@ const ProfileScreen = () => {
     }
   }, [authToken, fetchProfile]);
 
+  useEffect(() => {
+    if (!authToken && !isCheckingAuth) {
+      router.replace('/login');
+    }
+  }, [authToken, isCheckingAuth]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchProfile();
@@ -80,11 +132,22 @@ const ProfileScreen = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Adresi birleştir
+      let fullAddress = '';
+      if (district || street || buildingNo) {
+        fullAddress = `${district}, ${street}, No:${buildingNo}`;
+        if (addressNote) {
+          fullAddress += ` - Not: ${addressNote}`;
+        }
+      }
+
       const updateData: any = {
         first_name: firstName,
         last_name: lastName,
         email: email,
         phone_number: phoneNumber,
+        address_city: city,
+        address: fullAddress,
       };
 
       // Şifre değişikliği varsa ekle
@@ -144,6 +207,8 @@ const ProfileScreen = () => {
       setLastName(profile.last_name || '');
       setEmail(profile.email || '');
       setPhoneNumber(profile.phone_number || '');
+      setCity(profile.address_city || '');
+      parseAddress(profile.address || '');
     }
     setCurrentPassword('');
     setNewPassword('');
@@ -159,9 +224,8 @@ const ProfileScreen = () => {
     );
   }
 
-  // Token yoksa login'e yönlendir
+  // Token yoksa login'e yönlendirilecek, boş dön
   if (!authToken) {
-    router.replace('/login');
     return null;
   }
 
@@ -279,6 +343,82 @@ const ProfileScreen = () => {
             )}
           </View>
 
+          {/* New Address Section */}
+          <View style={styles.divider} />
+          <Text style={styles.sectionTitle}>Adres Bilgileri</Text>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Şehir</Text>
+            {editing ? (
+              <TouchableOpacity
+                style={styles.input}
+                onPress={() => setShowCityModal(true)}
+              >
+                <Text style={{ color: city ? '#000' : '#9CA3AF' }}>
+                  {city || 'Şehir Seçiniz'}
+                </Text>
+                <FontAwesome name="chevron-down" size={12} color="#666" style={{ position: 'absolute', right: 15, top: 15 }} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.value}>{profile?.address_city || '-'}</Text>
+            )}
+          </View>
+
+          {editing ? (
+            <>
+              <View style={styles.row}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
+                  <Text style={styles.label}>Bölge / Mahalle</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={district}
+                    onChangeText={setDistrict}
+                    placeholder="Örn: Ortaköy"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+                <View style={[styles.formGroup, { width: 100 }]}>
+                  <Text style={styles.label}>Kapı No</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={buildingNo}
+                    onChangeText={setBuildingNo}
+                    placeholder="No"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Cadde / Sokak</Text>
+                <TextInput
+                  style={styles.input}
+                  value={street}
+                  onChangeText={setStreet}
+                  placeholder="Örn: Atatürk Caddesi"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Adres Tarifi / Not</Text>
+                <TextInput
+                  style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                  value={addressNote}
+                  onChangeText={setAddressNote}
+                  placeholder="Örn: Devlet hastanesi karşısı, 2. kat"
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                />
+              </View>
+            </>
+          ) : (
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Açık Adres</Text>
+              <Text style={styles.value}>{profile?.address || '-'}</Text>
+            </View>
+          )}
+
           {/* Password Change Section */}
           {editing && (
             <View style={styles.passwordSection}>
@@ -380,6 +520,46 @@ const ProfileScreen = () => {
           <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* City Selection Modal */}
+      <Modal
+        visible={showCityModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCityModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Şehir Seçiniz</Text>
+              <TouchableOpacity onPress={() => setShowCityModal(false)}>
+                <FontAwesome name="close" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {TRNC_CITIES.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={styles.cityOption}
+                  onPress={() => {
+                    setCity(c);
+                    setShowCityModal(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.cityOptionText,
+                    city === c && { fontWeight: 'bold', color: '#000' }
+                  ]}>
+                    {c}
+                  </Text>
+                  {city === c && <FontAwesome name="check" size={16} color="#000" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };
@@ -484,6 +664,9 @@ const styles = StyleSheet.create({
   formGroup: {
     marginBottom: 16,
   },
+  row: {
+    flexDirection: 'row',
+  },
   label: {
     fontSize: 13,
     fontWeight: '600',
@@ -575,6 +758,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#f44336',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#111827',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  cityOption: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cityOptionText: {
+    fontSize: 16,
+    color: '#333',
   },
 });
 

@@ -13,6 +13,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { serviceRequestAPI, productOwnershipAPI } from '../../services/api';
 import { Picker } from '@react-native-picker/picker';
@@ -60,6 +61,7 @@ const RequestTypeConfig: Record<string, string> = {
 };
 
 const ServiceRequestsScreen = () => {
+  const params = useLocalSearchParams();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [products, setProducts] = useState<ProductOwnership[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +98,20 @@ const ServiceRequestsScreen = () => {
     setRefreshing(true);
     fetchData();
   }, [fetchData]);
+
+  // Handle params for auto-open
+  useEffect(() => {
+    if (params.openModal === 'true' && products.length > 0) {
+      setModalVisible(true);
+      if (params.productId) {
+        const pId = Number(params.productId);
+        const ownership = products.find(p => p.product.id === pId);
+        if (ownership) {
+          setSelectedProduct(ownership.id);
+        }
+      }
+    }
+  }, [params, products]);
 
   const handleCreateRequest = async () => {
     if (!selectedProduct) {

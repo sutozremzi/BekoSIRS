@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { recommendationAPI, wishlistAPI, viewHistoryAPI } from '../../services/api';
+import { useRouter } from 'expo-router';
 
 interface Recommendation {
   id?: number;  // Optional: ML API doesn't provide ID for real-time recommendations
@@ -32,15 +33,30 @@ interface Recommendation {
 }
 
 const RecommendationsScreen = () => {
+  const router = useRouter();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  /* New wishlist state */
+  const [wishlistIds, setWishlistIds] = useState<number[]>([]);
 
-  const fetchRecommendations = useCallback(async () => {
+  const fetchWishlistIds = useCallback(async () => {
     try {
-      const response = await recommendationAPI.getRecommendations();
-      // ML API returns {count, recommendations} format
+      const response = await wishlistAPI.getWishlist();
+      // response.data is Wishlist object with items: WishlistItem[]
+      if (response.data && response.data.items) {
+        const ids = response.data.items.map((item: any) => item.product.id);
+        setWishlistIds(ids);
+      }
+    } catch (error) {
+      console.log('Wishlist fetch error', error);
+    }
+  }, []);
+
+  const fetchRecommendations = useCallback(async (forceRefresh = false) => {
+    try {
+      const response = await recommendationAPI.getRecommendations(forceRefresh);
       const data = response.data.recommendations || response.data;
       setRecommendations(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -54,55 +70,22 @@ const RecommendationsScreen = () => {
 
   useEffect(() => {
     fetchRecommendations();
-  }, [fetchRecommendations]);
+    fetchWishlistIds();
+  }, [fetchRecommendations, fetchWishlistIds]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchRecommendations();
-  }, [fetchRecommendations]);
+    fetchRecommendations(true); // Pull to refresh triggers retraining if true passed
+    fetchWishlistIds();
+  }, [fetchRecommendations, fetchWishlistIds]);
 
-  const handleGenerateRecommendations = async () => {
-    setGenerating(true);
-    try {
-      const response = await recommendationAPI.generateRecommendations();
-      const count = response.data.recommendations_count || 0;
-      Alert.alert(
-        'Başarılı',
-        `${count} yeni öneri oluşturuldu!`
-      );
-      fetchRecommendations();
-    } catch (error: any) {
-      console.error('Generate recommendations error:', error);
-      Alert.alert('Hata', error.response?.data?.error || 'Öneriler oluşturulamadı');
-    } finally {
-      setGenerating(false);
-    }
-  };
+  /* ... handleGenerateRecommendations ... keep as is but maybe remove button */
 
-  const handleProductClick = async (recommendation: Recommendation) => {
-    try {
-      // Record click only if recommendation has an ID (saved to database)
-      if (recommendation.id) {
-        await recommendationAPI.recordClick(recommendation.id);
-        // Update local state
-        setRecommendations((prev) =>
-          prev.map((r) =>
-            r.id === recommendation.id ? { ...r, clicked: true } : r
-          )
-        );
-      }
-      // Always record view
-      await viewHistoryAPI.recordView(recommendation.product.id);
-    } catch (error) {
-      console.log('Click recording failed:', error);
-    }
-    // Navigate to product detail if you have that screen
-    // router.push(`/product/${recommendation.product.id}`);
-  };
-
+  /* Modified handleAddToWishlist to update local state */
   const handleAddToWishlist = async (productId: number, productName: string) => {
     try {
       await wishlistAPI.addItem(productId);
+      setWishlistIds(prev => [...prev, productId]);
       Alert.alert('Başarılı', `"${productName}" istek listenize eklendi!`);
     } catch (error: any) {
       if (error.response?.data?.error) {
@@ -111,6 +94,11 @@ const RecommendationsScreen = () => {
         Alert.alert('Hata', 'Ürün eklenemedi');
       }
     }
+  };
+
+  const handleProductClick = (item: Recommendation) => {
+    // Record click if needed, or just navigate
+    router.push(`/product/${item.product.id}`);
   };
 
   const getScoreColor = (score: number) => {
@@ -122,6 +110,7 @@ const RecommendationsScreen = () => {
   const renderItem = ({ item }: { item: Recommendation }) => {
     const product = item.product;
     const isInStock = product.stock > 0;
+    const inWishlist = wishlistIds.includes(product.id);
 
     return (
       <TouchableOpacity
@@ -174,11 +163,18 @@ const RecommendationsScreen = () => {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.wishlistButton}
-            onPress={() => handleAddToWishlist(product.id, product.name)}
+            style={[styles.wishlistButton, inWishlist && styles.disabledButton]}
+            onPress={() => !inWishlist && handleAddToWishlist(product.id, product.name)}
+            disabled={inWishlist}
           >
-            <FontAwesome name="heart-o" size={18} color="#f44336" />
-            <Text style={styles.wishlistButtonText}>İstek Listesine Ekle</Text>
+            <FontAwesome
+              name={inWishlist ? "heart" : "heart-o"}
+              size={18}
+              color={inWishlist ? "#9E9E9E" : "#f44336"}
+            />
+            <Text style={[styles.wishlistButtonText, inWishlist && { color: '#9E9E9E' }]}>
+              {inWishlist ? 'İstek Listesinde' : 'İstek Listesine Ekle'}
+            </Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -211,20 +207,7 @@ const RecommendationsScreen = () => {
                 Görüntüleme geçmişinize göre seçildi
               </Text>
             </View>
-            <TouchableOpacity
-              style={[styles.generateButton, generating && styles.disabledButton]}
-              onPress={handleGenerateRecommendations}
-              disabled={generating}
-            >
-              {generating ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <FontAwesome name="refresh" size={14} color="#fff" />
-                  <Text style={styles.generateButtonText}>Yenile</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {/* Removed Manual Refresh Button */}
           </View>
         }
         ListEmptyComponent={
@@ -234,12 +217,7 @@ const RecommendationsScreen = () => {
             <Text style={styles.emptyText}>
               Ürünleri görüntüledikçe size özel öneriler burada görünecek
             </Text>
-            <TouchableOpacity
-              style={styles.browseButton}
-              onPress={handleGenerateRecommendations}
-            >
-              <Text style={styles.browseButtonText}>Öneri Oluştur</Text>
-            </TouchableOpacity>
+            {/* Kept Browse (Check/Generate) Logic for empty state */}
           </View>
         }
       />
@@ -250,7 +228,7 @@ const RecommendationsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa', // Lighter background
   },
   center: {
     flex: 1,
@@ -258,70 +236,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   list: {
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     paddingBottom: 20,
+    paddingTop: 10,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+    marginBottom: 16,
+    marginTop: 8,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000000',
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#666',
-    marginTop: 2,
-  },
-  generateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#9C27B0',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    gap: 6,
-  },
-  generateButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  disabledButton: {
-    opacity: 0.6,
+    marginTop: 4,
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 16,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
     overflow: 'hidden',
   },
   clickedCard: {
-    opacity: 0.8,
+    opacity: 0.9,
   },
   scoreBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    paddingHorizontal: 10,
+    top: 12,
+    right: 12,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
     zIndex: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   scoreText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '700',
   },
   cardContent: {
     flexDirection: 'row',
@@ -330,8 +296,8 @@ const styles = StyleSheet.create({
   image: {
     width: 100,
     height: 100,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
   },
   imagePlaceholder: {
     justifyContent: 'center',
@@ -339,73 +305,81 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
+    justifyContent: 'center',
   },
   productName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: '#111',
+    lineHeight: 20,
+    marginBottom: 4,
   },
   brand: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
-    marginTop: 2,
+    fontWeight: '500',
+    marginBottom: 4,
   },
   reason: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9C27B0',
-    fontStyle: 'italic',
-    marginTop: 6,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 4,
   },
   price: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
   },
   stockBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   stockText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   actions: {
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    padding: 12,
+    borderTopColor: '#f5f5f5',
   },
   wishlistButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     gap: 8,
+    backgroundColor: '#fafafa',
   },
   wishlistButtonText: {
     color: '#f44336',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 13,
+  },
+  disabledButton: {
+    opacity: 1, // Keep visible but styled grey
+    backgroundColor: '#f5f5f5',
   },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 80,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#333',
-    marginTop: 20,
+    marginTop: 24,
   },
   emptyText: {
     fontSize: 14,
@@ -413,19 +387,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
+    lineHeight: 20,
+  },
+  generateButton: {
+    display: 'none', // Hidden as requested
+  },
+  generateButtonText: {
+    display: 'none',
   },
   browseButton: {
-    marginTop: 20,
-    backgroundColor: '#9C27B0',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    display: 'none',
   },
   browseButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+    display: 'none',
+  }
 });
+
 
 export default RecommendationsScreen;

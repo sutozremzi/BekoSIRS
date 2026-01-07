@@ -32,3 +32,11 @@ Thumbs.db
 
 # Node modules (if any)
 node_modules/
+
+# Testing and Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.cover
+coverage.xml

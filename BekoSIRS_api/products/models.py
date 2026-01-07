@@ -22,6 +22,28 @@ class CustomUser(AbstractUser):
     notify_warranty_expiry = models.BooleanField(default=True, verbose_name="Garanti Süresi Uyarıları")
     notify_general = models.BooleanField(default=True, verbose_name="Genel Bildirimler")
 
+    # Biometric Authentication (Face ID / Face Unlock)
+    biometric_enabled = models.BooleanField(default=False, verbose_name="Biyometrik Giriş")
+    biometric_device_id = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        verbose_name="Biyometrik Cihaz ID",
+        help_text="Device identifier for biometric login"
+    )
+
+    # Adres Bilgileri (Nakliye için)
+    address = models.TextField(blank=True, null=True, verbose_name="Adres")
+    address_city = models.CharField(max_length=100, blank=True, null=True, verbose_name="Şehir")
+    address_lat = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Enlem", help_text="Latitude koordinatı"
+    )
+    address_lng = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Boylam", help_text="Longitude koordinatı"
+    )
+
     def __str__(self):
         return f"{self.username} ({self.role})"
 
@@ -31,6 +53,7 @@ class CustomUser(AbstractUser):
 # -------------------------------
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subcategories')
 
     class Meta:
         verbose_name_plural = "Categories"
@@ -49,6 +72,14 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
+    
+    # New fields from Excel Import
+    model_code = models.CharField(max_length=100, unique=True, null=True, blank=True, verbose_name="Model Kodu")
+    warranty_code = models.CharField(max_length=50, null=True, blank=True, verbose_name="Ek Garanti Kodu")
+    price_list = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Liste Fiyatı")
+    price_cash = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Peşin Fiyat")
+    campaign_tag = models.CharField(max_length=100, null=True, blank=True, verbose_name="Kampanya")
+    
     #status = models.CharField(max_length=20, default='in_stock')
     warranty_duration_months = models.PositiveIntegerField(default=24, help_text="Garanti süresi (ay olarak)")
     stock = models.IntegerField(default=0, verbose_name="Stok Adedi")
@@ -245,6 +276,11 @@ class ServiceRequest(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status'], name='svcreq_status_idx'),
+            models.Index(fields=['customer', 'status'], name='svcreq_cust_status_idx'),
+            models.Index(fields=['created_at'], name='svcreq_created_idx'),
+        ]
 
     def __str__(self):
         return f"SR-{self.id}: {self.customer.username} - {self.product_ownership.product.name}"
@@ -310,6 +346,11 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read'], name='notif_user_read_idx'),
+            models.Index(fields=['notification_type'], name='notif_type_idx'),
+            models.Index(fields=['created_at'], name='notif_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.title}"
@@ -342,3 +383,214 @@ class Recommendation(models.Model):
 
     def __str__(self):
         return f"Recommendation: {self.product.name} for {self.customer.username}"
+
+
+# -------------------------------
+# 🔹 Password Reset Token Model
+# -------------------------------
+class PasswordResetToken(models.Model):
+    """
+    Token for password reset requests.
+    Expires after 1 hour.
+    """
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens'
+    )
+    token = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Password reset token for {self.user.username}"
+
+    @classmethod
+    def generate_token(cls):
+        """Generate a secure random token."""
+        import secrets
+        return secrets.token_urlsafe(48)
+
+    @classmethod
+    def create_for_user(cls, user):
+        """Create a new password reset token for a user."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Invalidate any existing tokens for this user
+        cls.objects.filter(user=user, is_used=False).update(is_used=True)
+        
+        # Create new token with 1 hour expiration
+        token = cls.generate_token()
+        expires_at = timezone.now() + timedelta(hours=1)
+        
+        return cls.objects.create(
+            user=user,
+            token=token,
+            expires_at=expires_at
+        )
+
+    def is_valid(self):
+        """Check if token is valid (not used and not expired)."""
+        from django.utils import timezone
+        return not self.is_used and self.expires_at > timezone.now()
+
+    def use(self):
+        """Mark token as used."""
+        self.is_used = True
+        self.save()
+
+
+# -------------------------------
+# 🔹 Delivery (Teslimat)
+# -------------------------------
+class Delivery(models.Model):
+    """Müşterilere yapılacak teslimatları temsil eder."""
+    STATUS_CHOICES = (
+        ('pending', 'Bekliyor'),
+        ('assigned', 'Rotaya Atandı'),
+        ('in_transit', 'Yolda'),
+        ('delivered', 'Teslim Edildi'),
+        ('cancelled', 'İptal'),
+    )
+    
+    customer = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE, 
+        related_name='deliveries',
+        verbose_name="Müşteri"
+    )
+    product_ownership = models.ForeignKey(
+        ProductOwnership, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='deliveries',
+        verbose_name="Satın Alınan Ürün"
+    )
+    delivery_date = models.DateField(verbose_name="Teslimat Tarihi")
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='pending',
+        verbose_name="Durum"
+    )
+    
+    # Teslimat Adresi (Müşteri adresinden farklı olabilir)
+    address = models.TextField(verbose_name="Teslimat Adresi")
+    address_lat = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Enlem"
+    )
+    address_lng = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Boylam"
+    )
+    
+    notes = models.TextField(blank=True, verbose_name="Notlar")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['delivery_date', 'created_at']
+        verbose_name = "Teslimat"
+        verbose_name_plural = "Teslimatlar"
+
+    def __str__(self):
+        return f"{self.customer.username} - {self.delivery_date} ({self.get_status_display()})"
+
+
+# -------------------------------
+# 🔹 Delivery Route (Günlük Rota)
+# -------------------------------
+class DeliveryRoute(models.Model):
+    """Belirli bir gün için optimize edilmiş teslimat rotası."""
+    date = models.DateField(unique=True, verbose_name="Tarih")
+    
+    # Mağaza (başlangıç noktası) koordinatları
+    store_address = models.TextField(
+        default="Beko Mağaza, Lefkoşa",
+        verbose_name="Mağaza Adresi"
+    )
+    store_lat = models.DecimalField(
+        max_digits=10, decimal_places=7, 
+        default=35.1856,  # Lefkoşa
+        verbose_name="Mağaza Enlemi"
+    )
+    store_lng = models.DecimalField(
+        max_digits=10, decimal_places=7, 
+        default=33.3823,  # Lefkoşa
+        verbose_name="Mağaza Boylamı"
+    )
+    
+    # Rota istatistikleri
+    total_distance_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Toplam Mesafe (km)"
+    )
+    total_duration_min = models.IntegerField(
+        null=True, blank=True,
+        verbose_name="Toplam Süre (dk)"
+    )
+    
+    is_optimized = models.BooleanField(default=False, verbose_name="Optimize Edildi")
+    optimized_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+        verbose_name = "Teslimat Rotası"
+        verbose_name_plural = "Teslimat Rotaları"
+
+    def __str__(self):
+        return f"Rota: {self.date} ({self.stops.count()} durak)"
+
+
+# -------------------------------
+# 🔹 Delivery Route Stop (Rota Durağı)
+# -------------------------------
+class DeliveryRouteStop(models.Model):
+    """Rotadaki her bir durak (sıralı)."""
+    route = models.ForeignKey(
+        DeliveryRoute, 
+        on_delete=models.CASCADE, 
+        related_name='stops',
+        verbose_name="Rota"
+    )
+    delivery = models.ForeignKey(
+        Delivery, 
+        on_delete=models.CASCADE, 
+        related_name='route_stops',
+        verbose_name="Teslimat"
+    )
+    stop_order = models.PositiveIntegerField(
+        verbose_name="Sıra",
+        help_text="0=Mağaza (başlangıç), 1,2,3...=Müşteriler"
+    )
+    
+    # Tahmini varış
+    estimated_arrival = models.TimeField(
+        null=True, blank=True,
+        verbose_name="Tahmini Varış"
+    )
+    distance_from_previous_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Önceki Duraktan Mesafe (km)"
+    )
+    duration_from_previous_min = models.IntegerField(
+        null=True, blank=True,
+        verbose_name="Önceki Duraktan Süre (dk)"
+    )
+
+    class Meta:
+        ordering = ['route', 'stop_order']
+        unique_together = [['route', 'stop_order'], ['route', 'delivery']]
+        verbose_name = "Rota Durağı"
+        verbose_name_plural = "Rota Durakları"
+
+    def __str__(self):
+        return f"{self.route.date} - Durak {self.stop_order}: {self.delivery.customer.username}"

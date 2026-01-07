@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Sidebar from "../components/Sidebar";
+import api from "../services/api";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -34,50 +35,27 @@ export default function UsersPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/users/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error("Kullanıcı listesi alınamadı.");
-        }
-
-        const data = await res.json();
-        setUsers(data);
+        const res = await api.get("/users/");
+        setUsers(Array.isArray(res.data) ? res.data : res.data.results || []);
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Kullanıcı listesi alınamadı.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchUsers();
-  }, [token]);
+  }, []);
 
   const handleRoleChange = async (id: number, newRole: string) => {
     if (window.confirm(`Bu kullanıcının rolünü ${getRoleDisplayName(newRole)} olarak değiştirmek istediğinizden emin misiniz?`)) {
       try {
-        const res = await fetch(
-          `http://127.0.0.1:8000/api/users/${id}/set_role/`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ role: newRole }),
-          }
-        );
-
-        if (!res.ok) throw new Error("Rol güncellenemedi.");
-
+        await api.post(`/users/${id}/set_role/`, { role: newRole });
         setUsers((prev) =>
           prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
         );
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Rol güncellenemedi.");
       }
     }
   };
@@ -85,24 +63,13 @@ export default function UsersPage() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/users/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newUser),
-      });
-
-      if (!res.ok) throw new Error("Kullanıcı eklenemedi.");
-
-      const created = await res.json();
-      setUsers((prev) => [...prev, created]);
+      const res = await api.post("/users/", newUser);
+      setUsers((prev) => [...prev, res.data]);
       setNewUser({ username: "", email: "", password: "", role: "customer" });
       setShowAddModal(false);
       alert("✅ Kullanıcı başarıyla eklendi!");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Kullanıcı eklenemedi.");
     }
   };
 

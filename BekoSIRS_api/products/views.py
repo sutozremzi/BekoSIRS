@@ -15,7 +15,8 @@ from django.db.models import Avg, Count, F
 from .models import (
     CustomUser, Product, Category, ProductOwnership,
     Wishlist, WishlistItem, ViewHistory, Review,
-    ServiceRequest, ServiceQueue, Notification, Recommendation
+    ServiceRequest, ServiceQueue, Notification, Recommendation,
+    PasswordResetToken
 )
 from .serializers import (
     ProductSerializer,
@@ -34,6 +35,10 @@ from .serializers import (
     ServiceQueueSerializer,
     NotificationSerializer,
     RecommendationSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
+    BiometricEnableSerializer,
+    BiometricLoginSerializer,
 )
 
 # ------------------------------------------------------------
@@ -156,12 +161,62 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         return Response(result)
 
+    def perform_update(self, serializer):
+        """
+        Fiyat düşüşü tespit et ve wishlist kullanıcılarına bildirim gönder.
+        """
+        instance = self.get_object()
+        old_price = instance.price
+        new_price = serializer.validated_data.get('price', old_price)
+
+        # Kaydet
+        updated_instance = serializer.save()
+
+        # Fiyat düştüyse bildirim gönder
+        if new_price and new_price < old_price:
+            self._send_price_drop_notifications(updated_instance, old_price, new_price)
+
+    def _send_price_drop_notifications(self, product, old_price, new_price):
+        """
+        İstek listesinde bu ürünü olan ve fiyat düşüşü bildirimi açık olan kullanıcılara bildirim gönder.
+        """
+        from decimal import Decimal
+        
+        # Yüzde hesapla
+        discount_percent = round((float(old_price) - float(new_price)) / float(old_price) * 100, 1)
+        
+        # Wishlist'te bu ürünü olan kullanıcıları bul
+        wishlist_items = WishlistItem.objects.filter(
+            product=product,
+            notify_on_price_drop=True
+        ).select_related('wishlist__customer')
+
+        notifications = []
+        for item in wishlist_items:
+            user = item.wishlist.customer
+            # Kullanıcının fiyat düşüşü bildirimi tercihi açık mı?
+            if user.notify_price_drops:
+                notifications.append(
+                    Notification(
+                        user=user,
+                        notification_type='price_drop',
+                        title=f'Fiyat Düştü! %{discount_percent} İndirim',
+                        message=f'{product.name} ürününün fiyatı {old_price}₺ yerine {new_price}₺ oldu!',
+                        related_product=product
+                    )
+                )
+
+        if notifications:
+            Notification.objects.bulk_create(notifications)
+
 
 # ----------------------------------------
 # 🔹 KATEGORİ YÖNETİMİ
 # ----------------------------------------
+from django.db.models import Count
+
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
+    queryset = Category.objects.annotate(product_count=Count('products')).all()
     serializer_class = CategorySerializer
 
     def get_permissions(self):
@@ -192,6 +247,15 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        
+        # Send welcome email
+        try:
+            from .email_service import EmailService
+            EmailService.send_welcome_email(user)
+        except Exception as e:
+            # Don't fail registration if email fails
+            print(f"Failed to send welcome email: {e}")
+        
         return Response(
             {
                 "success": True,
@@ -475,7 +539,7 @@ class WishlistViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # Kullanıcının wishlist'i yoksa oluştur
         wishlist, created = Wishlist.objects.get_or_create(customer=request.user)
-        serializer = WishlistSerializer(wishlist)
+        serializer = WishlistSerializer(wishlist, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'], url_path='add-item')
@@ -503,7 +567,8 @@ class WishlistViewSet(viewsets.ModelViewSet):
             notify_on_price_drop=request.data.get('notify_on_price_drop', True),
             notify_on_restock=request.data.get('notify_on_restock', True)
         )
-        return Response(WishlistItemSerializer(item).data, status=status.HTTP_201_CREATED)
+        # Context ekle ki image URL tam gelsin
+        return Response(WishlistItemSerializer(item, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['delete'], url_path='remove-item/(?P<product_id>[^/.]+)')
     def remove_item(self, request, product_id=None):
@@ -513,6 +578,29 @@ class WishlistViewSet(viewsets.ModelViewSet):
             item = WishlistItem.objects.get(wishlist=wishlist, product_id=product_id)
             item.delete()
             return Response({'success': 'Ürün istek listesinden çıkarıldı'})
+        except (Wishlist.DoesNotExist, WishlistItem.DoesNotExist):
+            return Response({'error': 'Ürün istek listenizde bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['patch'], url_path='update-item/(?P<product_id>[^/.]+)')
+    def update_item(self, request, product_id=None):
+        """
+        PATCH /api/wishlist/update-item/{product_id}/
+        Body: { notify_on_price_drop: bool, notify_on_restock: bool }
+        """
+        try:
+            wishlist = Wishlist.objects.get(customer=request.user)
+            item = WishlistItem.objects.get(wishlist=wishlist, product_id=product_id)
+            
+            data = request.data
+            if 'notify_on_price_drop' in data:
+                item.notify_on_price_drop = data['notify_on_price_drop']
+            if 'notify_on_restock' in data:
+                item.notify_on_restock = data['notify_on_restock']
+            if 'note' in data:
+                item.note = data['note']
+            
+            item.save()
+            return Response(WishlistItemSerializer(item, context={'request': request}).data)
         except (Wishlist.DoesNotExist, WishlistItem.DoesNotExist):
             return Response({'error': 'Ürün istek listenizde bulunamadı'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -601,6 +689,14 @@ class ReviewViewSet(viewsets.ModelViewSet):
         return Review.objects.filter(customer=user).select_related('product')
 
     def perform_create(self, serializer):
+        # Ownership check: Only allow reviews for owned products
+        product = serializer.validated_data['product']
+        user = self.request.user
+        has_ownership = ProductOwnership.objects.filter(customer=user, product=product).exists()
+        
+        if not has_ownership:
+            raise exceptions.PermissionDenied("Sadece satın aldığınız ürünleri değerlendirebilirsiniz.")
+
         serializer.save(customer=self.request.user)
 
     @action(detail=False, methods=['get'], url_path='product/(?P<product_id>[^/.]+)')
@@ -659,6 +755,11 @@ class ServiceRequestViewSet(viewsets.ModelViewSet):
         ).prefetch_related('queue_entry')
 
     def perform_create(self, serializer):
+        # Ownership check
+        ownership = serializer.validated_data['product_ownership']
+        if ownership.customer != self.request.user:
+            raise exceptions.PermissionDenied("Bu ürün için servis talebi oluşturamazsınız (Sahiplik size ait değil).")
+
         service_request = serializer.save(customer=self.request.user)
 
         # Kuyruğa ekle
@@ -772,7 +873,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.filter(
+            user=self.request.user
+        ).select_related('related_product', 'related_service_request').order_by('-created_at')
 
     @action(detail=True, methods=['post'], url_path='read')
     def mark_read(self, request, pk=None):
@@ -793,6 +896,62 @@ class NotificationViewSet(viewsets.ModelViewSet):
         """GET /api/notifications/unread-count/ - Okunmamış sayısı"""
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({'unread_count': count})
+
+    @action(detail=False, methods=['get'], url_path='all')
+    def list_all(self, request):
+        """GET /api/notifications/all/ - Tüm bildirimleri listele (Admin)"""
+        if request.user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkiniz yok'}, status=status.HTTP_403_FORBIDDEN)
+        
+        notifications = Notification.objects.all().select_related(
+            'user', 'related_product'
+        ).order_by('-created_at')[:100]
+        
+        return Response(NotificationSerializer(notifications, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='send-bulk')
+    def send_bulk(self, request):
+        """
+        POST /api/notifications/send-bulk/ - Toplu bildirim gönder (Admin)
+        Body: { title, message, notification_type, target: 'all' | 'customers' | [user_ids] }
+        """
+        if request.user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkiniz yok'}, status=status.HTTP_403_FORBIDDEN)
+
+        title = request.data.get('title')
+        message = request.data.get('message')
+        notification_type = request.data.get('notification_type', 'general')
+        target = request.data.get('target', 'customers')
+
+        if not title or not message:
+            return Response({'error': 'Başlık ve mesaj zorunludur'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Hedef kullanıcıları belirle
+        if target == 'all':
+            users = CustomUser.objects.all()
+        elif target == 'customers':
+            users = CustomUser.objects.filter(role='customer')
+        elif isinstance(target, list):
+            users = CustomUser.objects.filter(id__in=target)
+        else:
+            return Response({'error': 'Geçersiz hedef'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Bildirimleri oluştur
+        notifications = [
+            Notification(
+                user=user,
+                notification_type=notification_type,
+                title=title,
+                message=message
+            )
+            for user in users
+        ]
+        Notification.objects.bulk_create(notifications)
+
+        return Response({
+            'success': f'{len(notifications)} kullanıcıya bildirim gönderildi',
+            'count': len(notifications)
+        })
 
 
 # ----------------------------------------
@@ -876,17 +1035,27 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         """
         GET /api/recommendations/
         Get personalized ML-based recommendations for the current user.
-        Returns real-time recommendations from ML model.
+        Query params: ?refresh=true (Forces model retraining)
         """
         try:
             recommender = get_recommender()
-            recommendations = recommender.recommend(request.user, top_n=10)
+            
+            # Check if user wants to force-refresh (re-train) the model
+            if request.query_params.get('refresh') == 'true':
+                recommender.invalidate_cache()
+            
+            # Exclude items in Wishlist and Owned
+            wishlist_ids = WishlistItem.objects.filter(wishlist__customer=request.user).values_list('product_id', flat=True)
+            owned_ids = ProductOwnership.objects.filter(customer=request.user).values_list('product_id', flat=True)
+            exclude_ids = list(wishlist_ids) + list(owned_ids)
+
+            recommendations = recommender.recommend(request.user, top_n=10, exclude_ids=exclude_ids)
             
             # Format results for API response
             results = []
             for rec in recommendations:
                 results.append({
-                    'product': ProductSerializer(rec['product']).data,
+                    'product': ProductSerializer(rec['product'], context={'request': request}).data,
                     'score': float(rec['score']),
                     'reason': 'Kişiselleştirilmiş öneri (ML tabanlı)'
                 })
@@ -901,7 +1070,7 @@ class RecommendationViewSet(viewsets.ModelViewSet):
             saved_recs = self.get_queryset()
             return Response({
                 'count': saved_recs.count(),
-                'recommendations': RecommendationSerializer(saved_recs, many=True).data,
+                'recommendations': RecommendationSerializer(saved_recs, many=True, context={'request': request}).data,
                 'note': 'Using saved recommendations (ML unavailable)'
             })
 
@@ -946,7 +1115,7 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                         try:
                             similar_product = Product.objects.get(id=prod_id)
                             results.append({
-                                'product': ProductSerializer(similar_product).data,
+                                'product': ProductSerializer(similar_product, context={'request': request}).data,
                                 'score': float(similarity_scores[sim_idx]),
                                 'reason': 'Benzer özellikler'
                             })
@@ -969,7 +1138,7 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                 results = []
                 for p in similar:
                     results.append({
-                        'product': ProductSerializer(p).data,
+                        'product': ProductSerializer(p, context={'request': request}).data,
                         'score': 0.5,
                         'reason': f'Aynı kategori: {product.category.name if product.category else "N/A"}'
                     })
@@ -1026,7 +1195,14 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         try:
             # Get ML recommendations
             recommender = get_recommender()
-            ml_recommendations = recommender.recommend(user, top_n=15)
+            
+            # Exclude items in Wishlist and Owned
+            wishlist_ids = WishlistItem.objects.filter(wishlist__customer=request.user).values_list('product_id', flat=True)
+            owned_ids = ProductOwnership.objects.filter(customer=request.user).values_list('product_id', flat=True)
+            exclude_ids = list(wishlist_ids) + list(owned_ids)
+
+            # Force refresh of user interactions cache
+            ml_recommendations = recommender.recommend(user, top_n=15, ignore_cache=True, exclude_ids=exclude_ids)
             
             # Clear old recommendations
             Recommendation.objects.filter(customer=user).delete()
@@ -1055,7 +1231,7 @@ class RecommendationViewSet(viewsets.ModelViewSet):
             return Response({
                 'success': True,
                 'recommendations_count': len(recommendations_created),
-                'recommendations': RecommendationSerializer(recommendations_created, many=True).data
+                'recommendations': RecommendationSerializer(recommendations_created, many=True, context={'request': request}).data
             })
             
         except Exception as e:
@@ -1067,7 +1243,12 @@ class RecommendationViewSet(viewsets.ModelViewSet):
             
             # Görüntüleme geçmişinden kategorileri al
             view_history = ViewHistory.objects.filter(customer=user).select_related('product__category')
-            viewed_product_ids = view_history.values_list('product_id', flat=True)
+            viewed_product_ids = set(view_history.values_list('product_id', flat=True))
+
+            # Wishlist items
+            wishlist_items = WishlistItem.objects.filter(wishlist__customer=user).select_related('product__category')
+            for item in wishlist_items:
+                viewed_product_ids.add(item.product_id)
 
             # En çok görüntülenen kategorileri bul
             category_counts = {}
@@ -1075,6 +1256,13 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                 if vh.product.category:
                     cat_id = vh.product.category.id
                     category_counts[cat_id] = category_counts.get(cat_id, 0) + vh.view_count
+
+            # Wishlist kategorilerini de ekle (Ağırlıklı)
+            for item in wishlist_items:
+                if item.product.category:
+                    cat_id = item.product.category.id
+                    category_counts[cat_id] = category_counts.get(cat_id, 0) + 3
+
 
             # Kategori bazında öneri oluştur
             recommendations_created = []
@@ -1116,3 +1304,240 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         recommendation.is_shown = True
         recommendation.save()
         return Response({'success': 'Tıklama kaydedildi'})
+
+
+# ------------------------------------------------------------
+# 🔹 ŞİFRE SIFIRLAMA
+# ------------------------------------------------------------
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    """
+    POST /api/password-reset/
+    Request a password reset email.
+    """
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    
+    email = serializer.validated_data['email']
+    
+    try:
+        user = CustomUser.objects.get(email=email)
+        # Create reset token
+        token = PasswordResetToken.create_for_user(user)
+        
+        # Send email
+        from .email_service import EmailService
+        EmailService.send_password_reset_email(user, token)
+    except CustomUser.DoesNotExist:
+        # Don't reveal if email exists - security best practice
+        pass
+    
+    # Always return success to prevent email enumeration
+    return Response({
+        'success': True,
+        'message': 'Eğer bu e-posta adresiyle kayıtlı bir hesap varsa, şifre sıfırlama bağlantısı gönderildi.'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_confirm(request):
+    """
+    POST /api/password-reset/confirm/
+    Confirm password reset with token.
+    """
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    
+    user = serializer.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Şifreniz başarıyla güncellendi. Artık giriş yapabilirsiniz.'
+    })
+
+
+# ------------------------------------------------------------
+# 🔹 BİYOMETRİK KİMLİK DOĞRULAMA (Face ID / Face Unlock)
+# ------------------------------------------------------------
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def biometric_enable(request):
+    """
+    POST /api/biometric/enable/
+    Enable biometric authentication for the current user.
+    """
+    serializer = BiometricEnableSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    
+    user = request.user
+    device_id = serializer.validated_data['device_id']
+    
+    # Enable biometric for this user/device
+    user.biometric_enabled = True
+    user.biometric_device_id = device_id
+    user.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Biyometrik giriş başarıyla etkinleştirildi.',
+        'biometric_enabled': True
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def biometric_disable(request):
+    """
+    POST /api/biometric/disable/
+    Disable biometric authentication for the current user.
+    """
+    user = request.user
+    user.biometric_enabled = False
+    user.biometric_device_id = None
+    user.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Biyometrik giriş devre dışı bırakıldı.',
+        'biometric_enabled': False
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def biometric_status(request):
+    """
+    GET /api/biometric/status/
+    Check if biometric is enabled for the current user.
+    """
+    user = request.user
+    return Response({
+        'biometric_enabled': user.biometric_enabled,
+        'has_device': bool(user.biometric_device_id)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def biometric_verify_device(request):
+    """
+    POST /api/biometric/verify-device/
+    Verify if device ID matches for biometric login.
+    Used by mobile app after successful Face ID verification.
+    """
+    serializer = BiometricLoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    
+    device_id = serializer.validated_data['device_id']
+    user_id = serializer.validated_data['user_id']
+    
+    try:
+        user = CustomUser.objects.get(id=user_id)
+        
+        if not user.biometric_enabled:
+            return Response({
+                'success': False,
+                'error': 'Biyometrik giriş bu hesap için etkin değil.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if user.biometric_device_id != device_id:
+            return Response({
+                'success': False,
+                'error': 'Bu cihaz biyometrik giriş için yetkilendirilmemiş.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Device verified - caller should use refresh token to get new access token
+        return Response({
+            'success': True,
+            'message': 'Cihaz doğrulandı. Yenileme token\'ını kullanarak giriş yapabilirsiniz.',
+            'user_id': user.id,
+            'username': user.username
+        })
+        
+    except CustomUser.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Kullanıcı bulunamadı.'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+# ----------------------------------------
+# 🔹 EXCEL EXPORT
+# ----------------------------------------
+from django.http import HttpResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_products_excel(request):
+    """
+    GET /api/products/export/excel/
+    Ürünleri Excel dosyası olarak indir.
+    Sadece admin ve seller kullanabilir.
+    """
+    user = request.user
+    if user.role not in ['admin', 'seller']:
+        return Response({'error': 'Yetkisiz erişim'}, status=status.HTTP_403_FORBIDDEN)
+
+    # Workbook oluştur
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ürünler"
+
+    # Başlık stilleri
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Başlıklar
+    headers = [
+        "ID", "Ürün Adı", "Marka", "Model Kodu", "Kategori",
+        "List Fiyatı (₺)", "Peşin Fiyatı (₺)", "Stok", 
+        "Garanti (Ay)", "Garanti Kodu", "Kampanya"
+    ]
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # Verileri yaz
+    products = Product.objects.all().select_related('category')
+
+    for row, product in enumerate(products, 2):
+        ws.cell(row=row, column=1, value=product.id).border = thin_border
+        ws.cell(row=row, column=2, value=product.name).border = thin_border
+        ws.cell(row=row, column=3, value=product.brand).border = thin_border
+        ws.cell(row=row, column=4, value=getattr(product, 'model_code', '')).border = thin_border
+        ws.cell(row=row, column=5, value=product.category.name if product.category else '').border = thin_border
+        ws.cell(row=row, column=6, value=float(product.price) if product.price else 0).border = thin_border
+        ws.cell(row=row, column=7, value=float(getattr(product, 'price_cash', 0) or 0)).border = thin_border
+        ws.cell(row=row, column=8, value=product.stock).border = thin_border
+        ws.cell(row=row, column=9, value=product.warranty_duration_months).border = thin_border
+        ws.cell(row=row, column=10, value=getattr(product, 'warranty_code', '')).border = thin_border
+        ws.cell(row=row, column=11, value=getattr(product, 'campaign_tag', '')).border = thin_border
+
+    # Kolon genişliklerini ayarla
+    column_widths = [8, 40, 15, 15, 20, 15, 15, 10, 12, 15, 20]
+    for i, width in enumerate(column_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = width
+
+    # Response oluştur
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="bekosirs_products.xlsx"'
+
+    wb.save(response)
+    return response

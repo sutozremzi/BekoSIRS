@@ -3,20 +3,31 @@ import Sidebar from "../components/Sidebar";
 import { Package, AlertTriangle, Activity, TrendingUp, ShoppingCart, Clock, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { KpiCard, AlertItem, SimpleBarChart } from "./DashboardComponents";
+import api from "../services/api";
 
 interface DashboardData {
-  kpis: {
-    total_products: number;
-    out_of_stock: number;
+  products: {
+    total: number;
     low_stock: number;
-    pending_requests: number;
+    out_of_stock: number;
   };
-  recent_products: any[];
-  chart_data: { name: string; value: number }[];
+  categories: { total: number };
+  customers: { total: number };
+  orders: { total: number };
+  service_requests: {
+    pending: number;
+    in_progress: number;
+    completed: number;
+  };
+  reviews: {
+    pending_approval: number;
+    average_rating: number;
+  };
 }
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [recentProducts, setRecentProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -24,20 +35,21 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem("access");
-        if (!token) throw new Error("Giriş yapmanız gerekiyor");
+        // Fetch dashboard summary
+        const summaryRes = await api.get("/dashboard/summary/");
+        setData(summaryRes.data);
 
-        const res = await fetch("http://127.0.0.1:8000/api/dashboard/summary/", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // Fetch recent products
+        try {
+          const productsRes = await api.get("/products/?page_size=5");
+          setRecentProducts(productsRes.data.results || productsRes.data.slice?.(0, 5) || []);
+        } catch (e) {
+          console.warn("Could not fetch recent products:", e);
+        }
 
-        if (!res.ok) throw new Error("Veri yüklenemedi");
-
-        const jsonData = await res.json();
-        setData(jsonData);
       } catch (err: any) {
         console.error("Dashboard fetch error:", err);
-        setError(err.message);
+        setError(err.message || "Veri yüklenemedi");
       } finally {
         setLoading(false);
       }
@@ -57,6 +69,33 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="flex bg-gray-50 min-h-screen">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <AlertTriangle className="mx-auto text-red-500 mb-4" size={48} />
+            <p className="text-red-600 font-medium">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Tekrar Dene
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Prepare chart data from API response
+  const chartData = [
+    { name: 'Stokta', value: (data?.products.total || 0) - (data?.products.out_of_stock || 0) - (data?.products.low_stock || 0) },
+    { name: 'Düşük Stok', value: data?.products.low_stock || 0 },
+    { name: 'Tükendi', value: data?.products.out_of_stock || 0 },
+  ];
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
@@ -86,7 +125,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
                 title="Toplam Ürün"
-                value={data?.kpis.total_products || 0}
+                value={data?.products.total || 0}
                 icon={Package}
                 color="blue"
                 onClick={() => navigate("/dashboard/products")}
@@ -94,7 +133,7 @@ export default function Dashboard() {
               />
               <KpiCard
                 title="Stok Tükendi"
-                value={data?.kpis.out_of_stock || 0}
+                value={data?.products.out_of_stock || 0}
                 icon={AlertTriangle}
                 color="red"
                 onClick={() => navigate("/dashboard/products?stock=out_of_stock")}
@@ -102,7 +141,7 @@ export default function Dashboard() {
               />
               <KpiCard
                 title="Düşük Stok"
-                value={data?.kpis.low_stock || 0}
+                value={data?.products.low_stock || 0}
                 icon={TrendingUp}
                 color="yellow"
                 onClick={() => navigate("/dashboard/products?stock=low_stock")}
@@ -110,7 +149,7 @@ export default function Dashboard() {
               />
               <KpiCard
                 title="Bekleyen Talepler"
-                value={data?.kpis.pending_requests || 0}
+                value={data?.service_requests.pending || 0}
                 icon={Clock}
                 color="purple"
                 onClick={() => navigate("/dashboard/service-requests")}
@@ -142,10 +181,10 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {data?.recent_products.map((p: any) => (
+                        {recentProducts.length > 0 ? recentProducts.map((p: any) => (
                           <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-6 py-4 font-medium text-gray-900">{p.name}</td>
-                            <td className="px-6 py-4 text-gray-500">{p.category?.name || '-'}</td>
+                            <td className="px-6 py-4 text-gray-500">{p.category?.name || p.category_name || '-'}</td>
                             <td className="px-6 py-4 text-gray-900 font-semibold">{parseFloat(p.price).toLocaleString('tr-TR')} ₺</td>
                             <td className="px-6 py-4">
                               <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${p.stock === 0 ? 'bg-red-100 text-red-700' :
@@ -156,9 +195,9 @@ export default function Dashboard() {
                               </span>
                             </td>
                           </tr>
-                        )) || (
-                            <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Henüz veri yok</td></tr>
-                          )}
+                        )) : (
+                          <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Henüz veri yok</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -168,10 +207,11 @@ export default function Dashboard() {
                 <div className="h-80">
                   <SimpleBarChart
                     title="Stok Durumu Özeti"
-                    data={data?.chart_data || []}
+                    data={chartData}
                   />
                 </div>
               </div>
+
 
               {/* Right Column: Alerts Panel */}
               <div className="space-y-6">
@@ -182,34 +222,34 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-3">
-                    {data?.kpis.out_of_stock ? (
+                    {data?.products.out_of_stock ? (
                       <AlertItem
                         severity="critical"
                         title="Stok Tükendi"
-                        message={`${data.kpis.out_of_stock} ürünün stoğu bitti. Acil sipariş verilmeli.`}
+                        message={`${data.products.out_of_stock} ürünün stoğu bitti. Acil sipariş verilmeli.`}
                         onClick={() => navigate("/dashboard/products?stock=out_of_stock")}
                       />
                     ) : null}
 
-                    {data?.kpis.low_stock ? (
+                    {data?.products.low_stock ? (
                       <AlertItem
                         severity="warning"
                         title="Stok Azalıyor"
-                        message={`${data.kpis.low_stock} ürün kritik seviyenin altında.`}
+                        message={`${data.products.low_stock} ürün kritik seviyenin altında.`}
                         onClick={() => navigate("/dashboard/products?stock=low_stock")}
                       />
                     ) : null}
 
-                    {data?.kpis.pending_requests ? (
+                    {data?.service_requests.pending ? (
                       <AlertItem
                         severity="info"
                         title="Bekleyen İşler"
-                        message={`${data.kpis.pending_requests} adet servis talebi işlem bekliyor.`}
+                        message={`${data.service_requests.pending} adet servis talebi işlem bekliyor.`}
                         onClick={() => navigate("/dashboard/service-requests")}
                       />
                     ) : null}
 
-                    {!data?.kpis.out_of_stock && !data?.kpis.low_stock && !data?.kpis.pending_requests && (
+                    {!data?.products.out_of_stock && !data?.products.low_stock && !data?.service_requests.pending && (
                       <div className="text-center py-8">
                         <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
                           <Package />
@@ -228,7 +268,7 @@ export default function Dashboard() {
 
                   <div className="space-y-3">
                     <button
-                      onClick={() => navigate("/dashboard/products/add")}
+                      onClick={() => navigate("/dashboard/products?add=true")}
                       className="w-full bg-white/10 hover:bg-white/20 transition-colors p-3 rounded-xl flex items-center gap-3 text-sm font-medium"
                     >
                       <div className="p-2 bg-white/10 rounded-lg"><Plus size={16} /></div>
