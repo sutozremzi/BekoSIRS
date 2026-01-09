@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Package, Tag, Users, Layers, LogOut, Menu, X, Home, Wrench, Star, BoxSelect, Bell, Truck } from "lucide-react";
+import { Package, Tag, Users, Layers, LogOut, Menu, X, Home, Wrench, Star, BoxSelect, Bell, Truck, CreditCard, BarChart3 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 export default function Sidebar() {
@@ -8,6 +8,7 @@ export default function Sidebar() {
 
   const menus = [
     { name: "Dashboard", icon: <Home size={20} />, link: "/dashboard" },
+    { name: "Analitikler", icon: <BarChart3 size={20} />, link: "/dashboard/analytics" },
     { name: "Ürünler", icon: <Package size={20} />, link: "/dashboard/products" },
     { name: "Kategoriler", icon: <Tag size={20} />, link: "/dashboard/categories" },
     { name: "Servis Talepleri", icon: <Wrench size={20} />, link: "/dashboard/service-requests" },
@@ -15,6 +16,7 @@ export default function Sidebar() {
     { name: "Gruplar", icon: <Layers size={20} />, link: "/dashboard/groups" },
     { name: "Kullanıcılar", icon: <Users size={20} />, link: "/dashboard/users" },
     { name: "Ürün Atamaları", icon: <BoxSelect size={20} />, link: "/dashboard/assignments" },
+    { name: "Taksit Yönetimi", icon: <CreditCard size={20} />, link: "/dashboard/installments" },
     { name: "Teslimatlar", icon: <Truck size={20} />, link: "/dashboard/deliveries" },
     { name: "Bildirimler", icon: <Bell size={20} />, link: "/dashboard/notifications" },
   ];

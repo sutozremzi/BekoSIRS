@@ -13,6 +13,8 @@ import ReviewsPage from "./pages/ReviewsPage";
 import AssignmentsPage from "./pages/AssignmentsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import DeliveriesPage from "./pages/DeliveriesPage";
+import InstallmentPlansPage from "./pages/InstallmentPlansPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 
 export default function App() {
   return (
@@ -51,6 +53,12 @@ export default function App() {
 
         {/* 🔹 Teslimat Yönetimi */}
         <Route path="/dashboard/deliveries" element={<DeliveriesPage />} />
+
+        {/* 🔹 Taksit Yönetimi */}
+        <Route path="/dashboard/installments" element={<InstallmentPlansPage />} />
+
+        {/* 🔹 Analitikler & Raporlar */}
+        <Route path="/dashboard/analytics" element={<AnalyticsPage />} />
 
         {/* 🔹 Bilinmeyen rota -> login'e yönlendir */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -31,6 +31,7 @@ from .service_views import (
     ServiceRequestViewSet,
     ProductOwnershipViewSet,
     DashboardSummaryView,
+    StockIntelligenceView,
 )
 
 # Wishlist and customer features
@@ -62,6 +63,22 @@ from .delivery_views import (
     DeliveryRouteViewSet,
 )
 
+# Installment system views
+from .installment_views import (
+    InstallmentPlanViewSet,
+    InstallmentViewSet,
+)
+
+# Analytics views
+from .analytics_views import (
+    SalesForecastView,
+    CustomerAnalyticsView,
+    RouteOptimizationView,
+    MarketingAutomationView,
+    ChartsView,
+    AuditLogView,
+)
+
 __all__ = [
     # Auth
     'CustomTokenObtainPairSerializer',
@@ -80,6 +97,7 @@ __all__ = [
     'ServiceRequestViewSet',
     'ProductOwnershipViewSet',
     'DashboardSummaryView',
+    'StockIntelligenceView',
     # Customer
     'WishlistViewSet',
     'ViewHistoryViewSet',
@@ -97,4 +115,14 @@ __all__ = [
     # Delivery
     'DeliveryViewSet',
     'DeliveryRouteViewSet',
+    # Installments
+    'InstallmentPlanViewSet',
+    'InstallmentViewSet',
+    # Analytics
+    'SalesForecastView',
+    'CustomerAnalyticsView',
+    'RouteOptimizationView',
+    'MarketingAutomationView',
+    'ChartsView',
+    'AuditLogView',
 ]

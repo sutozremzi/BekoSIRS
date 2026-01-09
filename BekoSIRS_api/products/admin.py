@@ -3,7 +3,8 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     CustomUser, Category, Product, ProductOwnership, UserActivity,
     Wishlist, WishlistItem, ViewHistory, Review,
-    ServiceRequest, ServiceQueue, Notification, Recommendation
+    ServiceRequest, ServiceQueue, Notification, Recommendation,
+    InstallmentPlan, Installment
 )
 
 
@@ -120,3 +121,36 @@ class RecommendationAdmin(admin.ModelAdmin):
     list_display = ('customer', 'product', 'score', 'reason', 'is_shown', 'clicked', 'created_at')
     list_filter = ('is_shown', 'clicked', 'created_at')
     search_fields = ('customer__username', 'product__name', 'reason')
+
+
+# ----------------------------------------
+# Taksit Sistemi
+# ----------------------------------------
+
+class InstallmentInline(admin.TabularInline):
+    model = Installment
+    extra = 0
+    readonly_fields = ('customer_confirmed_at', 'admin_confirmed_at')
+    fields = ('installment_number', 'amount', 'due_date', 'status', 'payment_date', 'customer_confirmed_at', 'admin_confirmed_at')
+
+
+@admin.register(InstallmentPlan)
+class InstallmentPlanAdmin(admin.ModelAdmin):
+    list_display = ('id', 'customer', 'product', 'total_amount', 'down_payment', 'installment_count', 'status', 'start_date', 'created_at')
+    list_filter = ('status', 'start_date', 'created_at')
+    search_fields = ('customer__username', 'product__name')
+    readonly_fields = ('created_at', 'updated_at', 'created_by')
+    inlines = [InstallmentInline]
+
+    def save_model(self, request, obj, form, change):
+        if not change:  # Only set created_by on creation
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(Installment)
+class InstallmentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'plan', 'installment_number', 'amount', 'due_date', 'status', 'payment_date')
+    list_filter = ('status', 'due_date')
+    search_fields = ('plan__customer__username', 'plan__product__name')
+    readonly_fields = ('customer_confirmed_at', 'admin_confirmed_at')

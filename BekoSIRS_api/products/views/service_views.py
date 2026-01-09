@@ -112,12 +112,17 @@ class ServiceRequestViewSet(viewsets.ModelViewSet):
             raise exceptions.PermissionDenied("Bu ürün için servis talebi oluşturamazsınız.")
 
         service_request = serializer.save(customer=self.request.user)
+        
+        # Calculate priority based on business rules
+        priority = self._calculate_priority(service_request, ownership)
+        
         last_queue = ServiceQueue.objects.order_by('-queue_number').first()
         queue_number = (last_queue.queue_number + 1) if last_queue else 1
 
         ServiceQueue.objects.create(
             service_request=service_request,
             queue_number=queue_number,
+            priority=priority,
             estimated_wait_time=queue_number * 30
         )
 
@@ -128,9 +133,80 @@ class ServiceRequestViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             notification_type='service_update',
             title='Servis Talebiniz Alındı',
-            message=f'Talep numaranız: SR-{service_request.id}. Sıra numaranız: {queue_number}',
+            message=f'Talep numaranız: SR-{service_request.id}. Sıra numaranız: {queue_number}. Öncelik: {priority}',
             related_service_request=service_request
         )
+
+    def _calculate_priority(self, service_request, ownership):
+        """
+        Calculate priority for service request (1=highest, 10=lowest).
+        
+        Factors:
+        - Warranty status: In warranty = +2 priority boost
+        - Wait time: Each day waiting = +1 boost (max 3)
+        - Request type: repair/urgent = +2 boost
+        - Customer value: VIP potential (future: based on purchase history)
+        """
+        base_priority = 5  # Default middle priority
+        
+        # Factor 1: Warranty status
+        warranty_end = ownership.warranty_end_date
+        if warranty_end and warranty_end >= timezone.now().date():
+            base_priority -= 2  # Higher priority for in-warranty products
+        
+        # Factor 2: Request type priority
+        request_type = getattr(service_request, 'request_type', None)
+        if request_type in ['repair', 'urgent']:
+            base_priority -= 2  # Higher priority for urgent repairs
+        elif request_type == 'maintenance':
+            base_priority += 1  # Lower priority for maintenance
+        
+        # Factor 3: Customer history (VIP bonus)
+        customer = ownership.customer
+        total_products = ProductOwnership.objects.filter(customer=customer).count()
+        if total_products >= 5:
+            base_priority -= 1  # Loyal customer bonus
+        
+        # Ensure priority is within valid range (1-10)
+        return max(1, min(10, base_priority))
+
+    @action(detail=False, methods=['post'], url_path='recalculate-priorities')
+    def recalculate_priorities(self, request):
+        """
+        POST /api/service-requests/recalculate-priorities/
+        Recalculate priorities for all pending queue items based on wait time.
+        Admin only.
+        """
+        if request.user.role != 'admin':
+            return Response({'error': 'Yetkiniz yok'}, status=status.HTTP_403_FORBIDDEN)
+        
+        updated_count = 0
+        
+        # Get all active queue entries
+        queue_entries = ServiceQueue.objects.filter(
+            service_request__status__in=['pending', 'in_queue']
+        ).select_related('service_request__ownership')
+        
+        for queue in queue_entries:
+            sr = queue.service_request
+            old_priority = queue.priority
+            
+            # Add wait time bonus
+            days_waiting = (timezone.now() - sr.created_at).days
+            wait_bonus = min(days_waiting, 3)  # Max 3 points for waiting
+            
+            new_priority = max(1, old_priority - wait_bonus)
+            
+            if new_priority != queue.priority:
+                queue.priority = new_priority
+                queue.save()
+                updated_count += 1
+        
+        return Response({
+            'success': True,
+            'updated_count': updated_count,
+            'message': f'{updated_count} talebin önceliği güncellendi.'
+        })
 
     @action(detail=True, methods=['post'], url_path='assign')
     def assign_request(self, request, pk=None):
@@ -224,3 +300,54 @@ class DashboardSummaryView(APIView):
                 'average_rating': round(avg_rating, 1),
             }
         })
+
+
+class StockIntelligenceView(APIView):
+    """
+    Stock Intelligence API for admin panel.
+    
+    Provides smart stock recommendations based on:
+    - Sales velocity (units per day)
+    - Days until stockout
+    - Seasonal demand adjustments
+    - Reorder point calculations
+    
+    Endpoints:
+    - GET /api/stock-intelligence/ - Full dashboard summary
+    - GET /api/stock-intelligence/critical/ - Critical alerts only
+    - GET /api/stock-intelligence/opportunities/ - Seasonal opportunities
+    - GET /api/stock-intelligence/all/ - All recommendations
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkisiz'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from products.stock_intelligence_service import StockIntelligenceService
+        
+        view_type = request.query_params.get('view', 'dashboard')
+        service = StockIntelligenceService()
+        
+        if view_type == 'critical':
+            data = {
+                'type': 'critical',
+                'alerts': service.get_critical_stock_alerts()
+            }
+        elif view_type == 'opportunities':
+            data = {
+                'type': 'opportunities',
+                'alerts': service.get_opportunity_alerts()
+            }
+        elif view_type == 'all':
+            data = {
+                'type': 'all',
+                'recommendations': service.get_all_recommendations()
+            }
+        else:
+            # Default: dashboard summary
+            data = service.get_dashboard_summary()
+        
+        return Response(data)
+

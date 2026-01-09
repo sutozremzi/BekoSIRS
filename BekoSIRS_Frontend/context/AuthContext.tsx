@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (username: string, password: string) => {
     try {
-      const response = await api.post('/api/token/', { username, password });
+      const response = await api.post('/api/v1/token/', { username, password });
       const { access } = response.data;
       setAuthToken(access);
       await saveToken(access); // Artık platformu kendi biliyor

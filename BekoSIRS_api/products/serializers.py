@@ -3,7 +3,8 @@ from django.contrib.auth.models import Group, Permission
 from .models import (
     Category, Product, ProductOwnership, CustomUser,
     Wishlist, WishlistItem, ViewHistory, Review,
-    ServiceRequest, ServiceQueue, Notification, Recommendation
+    ServiceRequest, ServiceQueue, Notification, Recommendation,
+    InstallmentPlan, Installment
 )
 
 # ---------------------------
@@ -331,3 +332,179 @@ class BiometricLoginSerializer(serializers.Serializer):
     """Serializer for biometric login."""
     device_id = serializers.CharField(max_length=255)
     user_id = serializers.IntegerField()
+
+
+# ---------------------------
+# Installment Serializers (Taksit Sistemi)
+# ---------------------------
+class InstallmentSerializer(serializers.ModelSerializer):
+    """Read serializer for individual installments."""
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_until_due = serializers.IntegerField(read_only=True)
+    days_overdue = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Installment
+        fields = [
+            'id', 'plan', 'installment_number', 'amount', 'due_date',
+            'payment_date', 'status', 'status_display', 'customer_confirmed_at',
+            'admin_confirmed_at', 'is_overdue', 'days_until_due', 'days_overdue'
+        ]
+        read_only_fields = ['id', 'customer_confirmed_at', 'admin_confirmed_at']
+
+
+class InstallmentWriteSerializer(serializers.ModelSerializer):
+    """Write serializer for creating/updating installments."""
+    class Meta:
+        model = Installment
+        fields = ['installment_number', 'amount', 'due_date']
+
+
+class InstallmentPlanSerializer(serializers.ModelSerializer):
+    """Read serializer for installment plans with nested installments."""
+    customer_name = serializers.CharField(source='customer.username', read_only=True)
+    customer_full_name = serializers.SerializerMethodField()
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    installments = InstallmentSerializer(many=True, read_only=True)
+    remaining_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    paid_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    paid_installment_count = serializers.IntegerField(read_only=True)
+    progress_percentage = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'id', 'customer', 'customer_name', 'customer_full_name',
+            'product', 'product_name', 'created_by', 'created_by_name',
+            'total_amount', 'down_payment', 'installment_count', 'start_date',
+            'status', 'status_display', 'notes', 'created_at', 'updated_at',
+            'installments', 'remaining_amount', 'paid_amount',
+            'paid_installment_count', 'progress_percentage'
+        ]
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+    def get_customer_full_name(self, obj):
+        return f"{obj.customer.first_name} {obj.customer.last_name}".strip() or obj.customer.username
+
+
+class InstallmentPlanListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views (without nested installments)."""
+    customer_name = serializers.CharField(source='customer.username', read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    remaining_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    paid_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    progress_percentage = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'id', 'customer', 'customer_name', 'product', 'product_name',
+            'total_amount', 'down_payment', 'installment_count', 'start_date',
+            'status', 'status_display', 'remaining_amount', 'paid_amount',
+            'progress_percentage', 'created_at'
+        ]
+
+
+class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating installment plans with installments."""
+    installments = InstallmentWriteSerializer(many=True, required=False)
+    equal_installments = serializers.BooleanField(write_only=True, default=True)
+
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'customer', 'product', 'total_amount', 'down_payment',
+            'installment_count', 'start_date', 'notes',
+            'equal_installments', 'installments'
+        ]
+
+    def validate(self, attrs):
+        """Validate installment amounts sum up correctly."""
+        total_amount = attrs.get('total_amount')
+        down_payment = attrs.get('down_payment', 0)
+        installment_count = attrs.get('installment_count')
+        installments = attrs.get('installments', [])
+        equal_installments = attrs.get('equal_installments', True)
+
+        installable_amount = total_amount - down_payment
+
+        if installable_amount <= 0:
+            raise serializers.ValidationError({
+                'down_payment': 'Peşinat toplam tutardan küçük olmalıdır.'
+            })
+
+        if not equal_installments and installments:
+            # Validate custom installment amounts
+            if len(installments) != installment_count:
+                raise serializers.ValidationError({
+                    'installments': f'Taksit sayısı ({installment_count}) ile girilen taksit adedi ({len(installments)}) eşleşmiyor.'
+                })
+
+            total_installment_amounts = sum(inst['amount'] for inst in installments)
+            if abs(float(total_installment_amounts) - float(installable_amount)) > 0.01:
+                raise serializers.ValidationError({
+                    'installments': f'Taksit tutarları toplamı ({total_installment_amounts}) taksitlenecek tutar ({installable_amount}) ile eşleşmiyor.'
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        """Create plan and installments."""
+        from dateutil.relativedelta import relativedelta
+
+        installments_data = validated_data.pop('installments', [])
+        equal_installments = validated_data.pop('equal_installments', True)
+
+        # Set created_by from context (request.user)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['created_by'] = request.user
+
+        plan = InstallmentPlan.objects.create(**validated_data)
+
+        installable_amount = plan.total_amount - plan.down_payment
+
+        if equal_installments or not installments_data:
+            # Create equal installments
+            amount_per_installment = installable_amount / plan.installment_count
+            for i in range(plan.installment_count):
+                due_date = plan.start_date + relativedelta(months=i + 1)
+                Installment.objects.create(
+                    plan=plan,
+                    installment_number=i + 1,
+                    amount=round(amount_per_installment, 2),
+                    due_date=due_date
+                )
+        else:
+            # Create custom installments
+            for i, inst_data in enumerate(installments_data):
+                due_date = inst_data.get('due_date') or (plan.start_date + relativedelta(months=i + 1))
+                Installment.objects.create(
+                    plan=plan,
+                    installment_number=inst_data.get('installment_number', i + 1),
+                    amount=inst_data['amount'],
+                    due_date=due_date
+                )
+
+        return plan
+
+
+class InstallmentPlanDetailSerializer(InstallmentPlanSerializer):
+    """Full detail serializer with product and customer details."""
+    product = ProductSerializer(read_only=True)
+    customer = UserSerializer(read_only=True)
+
+
+class CustomerConfirmPaymentSerializer(serializers.Serializer):
+    """Serializer for customer payment confirmation."""
+    note = serializers.CharField(required=False, allow_blank=True)
+
+
+class AdminApprovePaymentSerializer(serializers.Serializer):
+    """Serializer for admin payment approval."""
+    payment_date = serializers.DateField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True)

@@ -89,6 +89,14 @@ export default function DrawerLayout() {
         }}
       />
       <Drawer.Screen
+        name="installments"
+        options={{
+          drawerLabel: 'Taksitlerim',
+          title: 'Taksit Planlarım',
+          drawerIcon: ({ color, size }) => <FontAwesome name="credit-card" size={size} color={color} />,
+        }}
+      />
+      <Drawer.Screen
         name="notifications"
         options={{
           drawerLabel: 'Bildirimler',

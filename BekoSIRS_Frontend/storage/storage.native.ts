@@ -1,7 +1,53 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 const TOKEN_KEY = 'authToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
+
+// Web için localStorage fallback helper
+const webStorage = {
+  async setItem(key: string, value: string): Promise<void> {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  },
+  async getItem(key: string): Promise<string | null> {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(key);
+    }
+    return null;
+  },
+  async removeItem(key: string): Promise<void> {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(key);
+    }
+  }
+};
+
+// Platform-aware storage functions
+const storage = {
+  async setItemAsync(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      await webStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  },
+  async getItemAsync(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return await webStorage.getItem(key);
+    } else {
+      return await SecureStore.getItemAsync(key);
+    }
+  },
+  async deleteItemAsync(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      await webStorage.removeItem(key);
+    } else {
+      await SecureStore.deleteItemAsync(key);
+    }
+  }
+};
 
 // Save access token
 export async function saveToken(token: string): Promise<void> {
@@ -10,7 +56,7 @@ export async function saveToken(token: string): Promise<void> {
       console.warn('⚠️ Attempted to save empty token');
       return;
     }
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await storage.setItemAsync(TOKEN_KEY, token);
     console.log('✅ Token saved successfully');
   } catch (error) {
     console.error('❌ Error saving token:', error);
@@ -21,7 +67,7 @@ export async function saveToken(token: string): Promise<void> {
 // Get access token
 export async function getToken(): Promise<string | null> {
   try {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await storage.getItemAsync(TOKEN_KEY);
     if (token) {
       console.log('✅ Token retrieved successfully');
     } else {
@@ -37,7 +83,7 @@ export async function getToken(): Promise<string | null> {
 // Delete access token
 export async function deleteToken(): Promise<void> {
   try {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storage.deleteItemAsync(TOKEN_KEY);
     console.log('✅ Token deleted successfully');
   } catch (error) {
     console.error('❌ Error deleting token:', error);
@@ -52,7 +98,7 @@ export async function saveRefreshToken(token: string): Promise<void> {
       console.warn('⚠️ Attempted to save empty refresh token');
       return;
     }
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+    await storage.setItemAsync(REFRESH_TOKEN_KEY, token);
     console.log('✅ Refresh token saved successfully');
   } catch (error) {
     console.error('❌ Error saving refresh token:', error);
@@ -63,7 +109,7 @@ export async function saveRefreshToken(token: string): Promise<void> {
 // Get refresh token
 export async function getRefreshToken(): Promise<string | null> {
   try {
-    const token = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    const token = await storage.getItemAsync(REFRESH_TOKEN_KEY);
     return token;
   } catch (error) {
     console.error('❌ Error getting refresh token:', error);
@@ -74,7 +120,7 @@ export async function getRefreshToken(): Promise<string | null> {
 // Delete refresh token
 export async function deleteRefreshToken(): Promise<void> {
   try {
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
     console.log('✅ Refresh token deleted successfully');
   } catch (error) {
     console.error('❌ Error deleting refresh token:', error);
@@ -131,12 +177,12 @@ export async function getTokenInfo(): Promise<{
       getToken(),
       getRefreshToken()
     ]);
-    
+
     const info = {
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken
     };
-    
+
     console.log('ℹ️ Token info:', info);
     return info;
   } catch (error) {

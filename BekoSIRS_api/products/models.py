@@ -594,3 +594,358 @@ class DeliveryRouteStop(models.Model):
 
     def __str__(self):
         return f"{self.route.date} - Durak {self.stop_order}: {self.delivery.customer.username}"
+
+
+# -------------------------------
+# 🔹 InstallmentPlan (Taksit Planı)
+# -------------------------------
+class InstallmentPlan(models.Model):
+    """Müşteriye atanan ürünün taksit planı."""
+    STATUS_CHOICES = (
+        ('active', 'Aktif'),
+        ('completed', 'Tamamlandı'),
+        ('cancelled', 'İptal Edildi'),
+    )
+
+    customer = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='installment_plans',
+        limit_choices_to={'role': 'customer'},
+        verbose_name="Müşteri"
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='installment_plans',
+        verbose_name="Ürün"
+    )
+    created_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_installment_plans',
+        limit_choices_to={'role__in': ['admin', 'seller']},
+        verbose_name="Oluşturan"
+    )
+    total_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        verbose_name="Toplam Tutar"
+    )
+    down_payment = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        default=0,
+        verbose_name="Peşinat"
+    )
+    installment_count = models.PositiveIntegerField(
+        verbose_name="Taksit Sayısı"
+    )
+    start_date = models.DateField(
+        verbose_name="Başlangıç Tarihi"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='active',
+        verbose_name="Durum"
+    )
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Notlar"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Taksit Planı"
+        verbose_name_plural = "Taksit Planları"
+        indexes = [
+            models.Index(fields=['customer', 'status'], name='instplan_cust_status_idx'),
+            models.Index(fields=['status'], name='instplan_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"Taksit Planı #{self.id}: {self.customer.username} - {self.product.name}"
+
+    @property
+    def remaining_amount(self):
+        """Kalan ödeme tutarı."""
+        paid = sum(
+            inst.amount for inst in self.installments.filter(status='paid')
+        )
+        return self.total_amount - self.down_payment - paid
+
+    @property
+    def paid_amount(self):
+        """Ödenen toplam tutar (peşinat dahil)."""
+        paid_installments = sum(
+            inst.amount for inst in self.installments.filter(status='paid')
+        )
+        return self.down_payment + paid_installments
+
+    @property
+    def paid_installment_count(self):
+        """Ödenen taksit sayısı."""
+        return self.installments.filter(status='paid').count()
+
+    @property
+    def progress_percentage(self):
+        """Ödeme ilerleme yüzdesi."""
+        if self.total_amount == 0:
+            return 0
+        return round((float(self.paid_amount) / float(self.total_amount)) * 100, 1)
+
+
+# -------------------------------
+# 🔹 Installment (Taksit)
+# -------------------------------
+class Installment(models.Model):
+    """Taksit planındaki tekil taksit."""
+    STATUS_CHOICES = (
+        ('pending', 'Bekliyor'),
+        ('customer_confirmed', 'Müşteri Onayladı'),
+        ('paid', 'Ödendi'),
+        ('overdue', 'Gecikmiş'),
+    )
+
+    plan = models.ForeignKey(
+        InstallmentPlan,
+        on_delete=models.CASCADE,
+        related_name='installments',
+        verbose_name="Taksit Planı"
+    )
+    installment_number = models.PositiveIntegerField(
+        verbose_name="Taksit No"
+    )
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        verbose_name="Tutar"
+    )
+    due_date = models.DateField(
+        verbose_name="Vade Tarihi"
+    )
+    payment_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="Ödeme Tarihi"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="Durum"
+    )
+    customer_confirmed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Müşteri Onay Zamanı"
+    )
+    admin_confirmed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Admin Onay Zamanı"
+    )
+
+    class Meta:
+        ordering = ['plan', 'installment_number']
+        unique_together = [['plan', 'installment_number']]
+        verbose_name = "Taksit"
+        verbose_name_plural = "Taksitler"
+        indexes = [
+            models.Index(fields=['status'], name='inst_status_idx'),
+            models.Index(fields=['due_date'], name='inst_due_date_idx'),
+            models.Index(fields=['plan', 'status'], name='inst_plan_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"Taksit #{self.installment_number} - Plan #{self.plan.id}"
+
+    @property
+    def is_overdue(self):
+        """Taksit gecikmiş mi?"""
+        from django.utils import timezone
+        if self.status in ['paid', 'customer_confirmed']:
+            return False
+        return self.due_date < timezone.now().date()
+
+    @property
+    def days_until_due(self):
+        """Vadeye kalan gün sayısı (negatif ise gecikmiş)."""
+        from django.utils import timezone
+        delta = self.due_date - timezone.now().date()
+        return delta.days
+
+    @property
+    def days_overdue(self):
+        """Gecikme gün sayısı (0 veya pozitif)."""
+        if self.days_until_due >= 0:
+            return 0
+        return abs(self.days_until_due)
+
+
+# -------------------------------
+# 🔹 AuditLog (Denetim Kaydı)
+# -------------------------------
+class AuditLog(models.Model):
+    """
+    Tüm önemli işlemlerin denetim kaydı.
+    Güvenlik, sorun giderme ve uyumluluk için kullanılır.
+    """
+    ACTION_CHOICES = (
+        ('create', 'Oluşturma'),
+        ('update', 'Güncelleme'),
+        ('delete', 'Silme'),
+        ('login', 'Giriş'),
+        ('logout', 'Çıkış'),
+        ('login_failed', 'Başarısız Giriş'),
+        ('password_change', 'Şifre Değişikliği'),
+        ('password_reset', 'Şifre Sıfırlama'),
+        ('permission_change', 'Yetki Değişikliği'),
+        ('export', 'Veri Dışa Aktarma'),
+        ('api_access', 'API Erişimi'),
+        ('bulk_operation', 'Toplu İşlem'),
+    )
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='audit_logs',
+        verbose_name="Kullanıcı"
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES,
+        verbose_name="İşlem"
+    )
+    model_name = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Model Adı",
+        help_text="Etkilenen modelin adı (örn: Product, Order)"
+    )
+    object_id = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Nesne ID",
+        help_text="Etkilenen nesnenin ID'si"
+    )
+    object_repr = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Nesne Temsili",
+        help_text="Nesnenin string temsili"
+    )
+    changes = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Değişiklikler",
+        help_text="{'field': [old_value, new_value]} formatında"
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="IP Adresi"
+    )
+    user_agent = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        verbose_name="User Agent"
+    )
+    request_path = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        verbose_name="İstek Yolu"
+    )
+    request_method = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True,
+        verbose_name="HTTP Metodu"
+    )
+    status_code = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Durum Kodu"
+    )
+    extra_data = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Ek Veri",
+        help_text="İşleme özgü ek bilgiler"
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Zaman Damgası"
+    )
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Denetim Kaydı"
+        verbose_name_plural = "Denetim Kayıtları"
+        indexes = [
+            models.Index(fields=['user', 'action'], name='audit_user_action_idx'),
+            models.Index(fields=['model_name', 'object_id'], name='audit_model_obj_idx'),
+            models.Index(fields=['action'], name='audit_action_idx'),
+            models.Index(fields=['timestamp'], name='audit_timestamp_idx'),
+            models.Index(fields=['ip_address'], name='audit_ip_idx'),
+        ]
+
+    def __str__(self):
+        user_str = self.user.username if self.user else "Anonymous"
+        return f"{user_str} - {self.get_action_display()} - {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+    @classmethod
+    def log(cls, user, action, model_name=None, object_id=None, object_repr=None,
+            changes=None, request=None, extra_data=None, status_code=None):
+        """
+        Convenience method to create an audit log entry.
+        
+        Usage:
+            AuditLog.log(
+                user=request.user,
+                action='create',
+                model_name='Product',
+                object_id=product.id,
+                object_repr=str(product),
+                changes={'price': [100, 150]},
+                request=request
+            )
+        """
+        ip_address = None
+        user_agent = None
+        request_path = None
+        request_method = None
+        
+        if request:
+            # Get IP address
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                ip_address = x_forwarded_for.split(',')[0].strip()
+            else:
+                ip_address = request.META.get('REMOTE_ADDR')
+            
+            user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
+            request_path = request.path[:500]
+            request_method = request.method
+        
+        return cls.objects.create(
+            user=user if user and user.is_authenticated else None,
+            action=action,
+            model_name=model_name,
+            object_id=object_id,
+            object_repr=object_repr[:255] if object_repr else None,
+            changes=changes,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            request_path=request_path,
+            request_method=request_method,
+            status_code=status_code,
+            extra_data=extra_data
+        )
+
+

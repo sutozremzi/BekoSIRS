@@ -20,6 +20,7 @@ from products.views import (
     ServiceRequestViewSet,
     ProductOwnershipViewSet,
     DashboardSummaryView,
+    StockIntelligenceView,
     # Customer
     WishlistViewSet,
     ViewHistoryViewSet,
@@ -37,6 +38,16 @@ from products.views import (
     # Delivery
     DeliveryViewSet,
     DeliveryRouteViewSet,
+    # Installments
+    InstallmentPlanViewSet,
+    InstallmentViewSet,
+    # Analytics
+    SalesForecastView,
+    CustomerAnalyticsView,
+    RouteOptimizationView,
+    MarketingAutomationView,
+    ChartsView,
+    AuditLogView,
 )
 
 # Router ile ViewSet'leri kaydediyoruz
@@ -59,6 +70,10 @@ router.register(r'recommendations', RecommendationViewSet, basename='recommendat
 router.register(r'deliveries', DeliveryViewSet, basename='delivery')
 router.register(r'delivery-routes', DeliveryRouteViewSet, basename='delivery-route')
 
+# Taksit Sistemi
+router.register(r'installment-plans', InstallmentPlanViewSet, basename='installment-plan')
+router.register(r'installments', InstallmentViewSet, basename='installment')
+
 urlpatterns = [
     # Router üzerinden gelen tüm endpointler
     path('', include(router.urls)),
@@ -66,6 +81,7 @@ urlpatterns = [
     path("profile/", profile_view, name="user-profile"),
     path("notification-settings/", notification_settings_view, name="notification-settings"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
+    path("stock-intelligence/", StockIntelligenceView.as_view(), name="stock-intelligence"),
 
     # 🔹 GİRİŞ (Login) - Müşteri kısıtlaması bu view içinde yapılıyor
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -85,4 +101,12 @@ urlpatterns = [
     
     # 🔹 EXCEL EXPORT
     path('products/export/excel/', export_products_excel, name='export_products_excel'),
+    
+    # 🔹 ANALİTİK API'ler
+    path('analytics/sales-forecast/', SalesForecastView.as_view(), name='sales-forecast'),
+    path('analytics/customer-analytics/', CustomerAnalyticsView.as_view(), name='customer-analytics'),
+    path('analytics/route-optimize/', RouteOptimizationView.as_view(), name='route-optimize'),
+    path('analytics/marketing/', MarketingAutomationView.as_view(), name='marketing-automation'),
+    path('analytics/charts/', ChartsView.as_view(), name='charts'),
+    path('analytics/audit-logs/', AuditLogView.as_view(), name='audit-logs'),
 ]

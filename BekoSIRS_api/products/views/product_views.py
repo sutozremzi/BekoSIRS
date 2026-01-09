@@ -99,6 +99,127 @@ class ProductViewSet(viewsets.ModelViewSet):
         if notifications:
             Notification.objects.bulk_create(notifications)
 
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='compare',
+        permission_classes=[IsAuthenticated]
+    )
+    def compare(self, request):
+        """
+        POST /api/products/compare/
+        Compare multiple products side by side.
+        
+        Request body:
+            {"product_ids": [1, 2, 3]}
+        
+        Returns:
+            - products: List of product details
+            - comparison_fields: Fields being compared
+            - differences: Highlighted differences
+            - recommendation: Best value recommendation
+        """
+        product_ids = request.data.get('product_ids', [])
+        
+        # Validation
+        if not product_ids:
+            return Response(
+                {'error': 'product_ids listesi gerekli'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(product_ids) < 2:
+            return Response(
+                {'error': 'En az 2 ürün seçmelisiniz'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(product_ids) > 4:
+            return Response(
+                {'error': 'En fazla 4 ürün karşılaştırılabilir'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Fetch products
+        products = Product.objects.filter(id__in=product_ids).select_related('category')
+        
+        if products.count() != len(product_ids):
+            return Response(
+                {'error': 'Bir veya daha fazla ürün bulunamadı'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Serialize products
+        products_data = ProductSerializer(products, many=True).data
+        
+        # Calculate differences
+        comparison_fields = [
+            {'key': 'price', 'label': 'Fiyat', 'unit': '₺', 'type': 'currency'},
+            {'key': 'brand', 'label': 'Marka', 'type': 'text'},
+            {'key': 'warranty_duration_months', 'label': 'Garanti Süresi', 'unit': 'ay', 'type': 'number'},
+            {'key': 'stock', 'label': 'Stok', 'unit': 'adet', 'type': 'number'},
+            {'key': 'category_name', 'label': 'Kategori', 'type': 'text'},
+        ]
+        
+        # Add category_name to product data
+        for pd, p in zip(products_data, products):
+            pd['category_name'] = p.category.name if p.category else '-'
+        
+        # Find differences and highlights
+        differences = {}
+        for field in comparison_fields:
+            key = field['key']
+            values = [p.get(key) for p in products_data]
+            
+            # Check if all values are the same
+            unique_values = set(str(v) for v in values)
+            is_different = len(unique_values) > 1
+            
+            # Find best value for numeric fields
+            best_indices = []
+            if is_different and field.get('type') in ['currency', 'number']:
+                numeric_values = []
+                for v in values:
+                    try:
+                        numeric_values.append(float(v) if v else 0)
+                    except (TypeError, ValueError):
+                        numeric_values.append(0)
+                
+                if key == 'price':
+                    # Lower price is better
+                    min_val = min(numeric_values)
+                    best_indices = [i for i, v in enumerate(numeric_values) if v == min_val]
+                else:
+                    # Higher is better (warranty, stock)
+                    max_val = max(numeric_values)
+                    best_indices = [i for i, v in enumerate(numeric_values) if v == max_val]
+            
+            differences[key] = {
+                'is_different': is_different,
+                'values': values,
+                'best_indices': best_indices
+            }
+        
+        # Calculate overall recommendation (best value)
+        scores = [0] * len(products_data)
+        for key, diff in differences.items():
+            for idx in diff.get('best_indices', []):
+                scores[idx] += 1
+        
+        best_score = max(scores)
+        recommended_indices = [i for i, s in enumerate(scores) if s == best_score]
+        
+        return Response({
+            'products': products_data,
+            'comparison_fields': comparison_fields,
+            'differences': differences,
+            'recommendation': {
+                'indices': recommended_indices,
+                'product_ids': [products_data[i]['id'] for i in recommended_indices],
+                'reason': 'En iyi fiyat/performans oranı'
+            }
+        })
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """Category CRUD with product count annotation."""

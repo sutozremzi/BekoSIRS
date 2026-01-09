@@ -145,11 +145,11 @@ export const testBackendConnection = async () => {
 // ----------------------------------------
 export const wishlistAPI = {
   // İstek listesini getir
-  getWishlist: () => api.get('api/wishlist/'),
+  getWishlist: () => api.get('api/v1/wishlist/'),
 
   // Ürün ekle
   addItem: (productId: number, note?: string) =>
-    api.post('api/wishlist/add-item/', {
+    api.post('api/v1/wishlist/add-item/', {
       product_id: productId,
       note: note || '',
       notify_on_price_drop: true,
@@ -174,14 +174,14 @@ export const wishlistAPI = {
 // ----------------------------------------
 export const viewHistoryAPI = {
   // Görüntüleme geçmişini getir
-  getHistory: () => api.get('api/view-history/'),
+  getHistory: () => api.get('api/v1/view-history/'),
 
   // Görüntüleme kaydet
   recordView: (productId: number) =>
-    api.post('api/view-history/record/', { product_id: productId }),
+    api.post('api/v1/view-history/record/', { product_id: productId }),
 
   // Geçmişi temizle
-  clearHistory: () => api.delete('api/view-history/clear/'),
+  clearHistory: () => api.delete('api/v1/view-history/clear/'),
 };
 
 // ----------------------------------------
@@ -189,7 +189,7 @@ export const viewHistoryAPI = {
 // ----------------------------------------
 export const reviewAPI = {
   // Kullanıcının yorumlarını getir
-  getMyReviews: () => api.get('api/reviews/'),
+  getMyReviews: () => api.get('api/v1/reviews/'),
 
   // Ürüne ait yorumları getir
   getProductReviews: (productId: number) =>
@@ -197,7 +197,7 @@ export const reviewAPI = {
 
   // Yorum ekle
   addReview: (productId: number, rating: number, comment?: string) =>
-    api.post('api/reviews/', {
+    api.post('api/v1/reviews/', {
       product: productId,
       rating,
       comment: comment || '',
@@ -216,7 +216,7 @@ export const reviewAPI = {
 // ----------------------------------------
 export const serviceRequestAPI = {
   // Servis taleplerimi getir
-  getMyRequests: () => api.get('api/service-requests/'),
+  getMyRequests: () => api.get('api/v1/service-requests/'),
 
   // Yeni talep oluştur
   createRequest: (
@@ -224,7 +224,7 @@ export const serviceRequestAPI = {
     requestType: 'repair' | 'maintenance' | 'warranty' | 'complaint' | 'other',
     description: string
   ) =>
-    api.post('api/service-requests/', {
+    api.post('api/v1/service-requests/', {
       product_ownership: productOwnershipId,
       request_type: requestType,
       description,
@@ -235,7 +235,7 @@ export const serviceRequestAPI = {
     api.get(`api/service-requests/${requestId}/`),
 
   // Kuyruk durumunu getir
-  getQueueStatus: () => api.get('api/service-requests/queue-status/'),
+  getQueueStatus: () => api.get('api/v1/service-requests/queue-status/'),
 };
 
 // ----------------------------------------
@@ -243,20 +243,20 @@ export const serviceRequestAPI = {
 // ----------------------------------------
 export const notificationAPI = {
   // Bildirimleri getir
-  getNotifications: () => api.get('api/notifications/'),
+  getNotifications: () => api.get('api/v1/notifications/'),
 
   // Okunmamış bildirim sayısı
-  getUnreadCount: () => api.get('api/notifications/unread-count/'),
+  getUnreadCount: () => api.get('api/v1/notifications/unread-count/'),
 
   // Bildirimi okundu işaretle
   markAsRead: (notificationId: number) =>
     api.post(`api/notifications/${notificationId}/read/`),
 
   // Tümünü okundu işaretle
-  markAllAsRead: () => api.post('api/notifications/read-all/'),
+  markAllAsRead: () => api.post('api/v1/notifications/read-all/'),
 
   // Bildirim ayarlarını getir
-  getSettings: () => api.get('api/profile/notification-settings/'),
+  getSettings: () => api.get('api/v1/profile/notification-settings/'),
 
   // Bildirim ayarlarını güncelle
   updateSettings: (settings: {
@@ -266,7 +266,7 @@ export const notificationAPI = {
     notify_recommendations?: boolean;
     notify_warranty_expiry?: boolean;
     notify_general?: boolean;
-  }) => api.patch('api/profile/notification-settings/', settings),
+  }) => api.patch('api/v1/profile/notification-settings/', settings),
 };
 
 // ----------------------------------------
@@ -274,10 +274,10 @@ export const notificationAPI = {
 // ----------------------------------------
 export const recommendationAPI = {
   // Önerileri getir
-  getRecommendations: (refresh?: boolean) => api.get(refresh ? 'api/recommendations/?refresh=true' : 'api/recommendations/'),
+  getRecommendations: (refresh?: boolean) => api.get(refresh ? 'api/v1/recommendations/?refresh=true' : 'api/v1/recommendations/'),
 
   // Yeni öneriler oluştur
-  generateRecommendations: () => api.post('api/recommendations/generate/'),
+  generateRecommendations: () => api.post('api/v1/recommendations/generate/'),
 
   // Öneri tıklaması kaydet
   recordClick: (recommendationId: number) =>
@@ -289,14 +289,73 @@ export const recommendationAPI = {
 // ----------------------------------------
 export const productOwnershipAPI = {
   // Sahip olduğum ürünleri getir (basit liste - my-products sayfası için)
-  getMyProducts: () => api.get('api/my-products/'),
+  getMyProducts: () => api.get('api/v1/my-products/'),
 
   // Sahip olduğum ürünleri garanti bilgileriyle getir (servis talepleri için)
-  getMyOwnerships: () => api.get('api/product-ownerships/my-ownerships/'),
+  getMyOwnerships: () => api.get('api/v1/product-ownerships/my-ownerships/'),
 
   // Ürün sahipliği detayı
   getOwnershipDetail: (ownershipId: number) =>
     api.get(`api/product-ownerships/${ownershipId}/`),
+};
+
+// ----------------------------------------
+// 🔹 INSTALLMENT API (Taksit Sistemi)
+// ----------------------------------------
+export const installmentAPI = {
+  // Müşterinin taksit planlarını getir
+  getCustomerPlans: () => api.get('api/v1/installment-plans/customer-plans/'),
+
+  // Tüm taksit planlarını getir (Admin/Seller)
+  getAllPlans: (filters?: { status?: string; customer?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.customer) params.append('customer', filters.customer.toString());
+    const queryString = params.toString();
+    return api.get(`api/installment-plans/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // Plan detayını getir
+  getPlanDetail: (planId: number) => api.get(`api/installment-plans/${planId}/`),
+
+  // Plana ait taksitleri getir
+  getPlanInstallments: (planId: number) =>
+    api.get(`api/installment-plans/${planId}/installments/`),
+
+  // Gecikmiş taksitleri olan planları getir (Admin/Seller)
+  getOverduePlans: () => api.get('api/v1/installment-plans/overdue/'),
+
+  // Müşteri ödeme onayı ("Ödedim" butonu)
+  customerConfirmPayment: (installmentId: number, note?: string) =>
+    api.post(`api/installments/${installmentId}/customer-confirm/`, { note }),
+
+  // Admin ödeme onayı
+  adminApprovePayment: (installmentId: number, paymentDate?: string) =>
+    api.post(`api/installments/${installmentId}/admin-approve/`, {
+      payment_date: paymentDate,
+    }),
+
+  // Gecikmiş taksitler listesi (Admin/Seller)
+  getOverdueInstallments: () => api.get('api/v1/installments/overdue-list/'),
+
+  // Müşteri onayı bekleyen taksitler (Admin/Seller)
+  getPendingConfirmations: () => api.get('api/v1/installments/pending-confirmations/'),
+
+  // Plan oluştur (Admin/Seller)
+  createPlan: (data: {
+    customer: number;
+    product: number;
+    total_amount: number;
+    down_payment?: number;
+    installment_count: number;
+    start_date: string;
+    equal_installments?: boolean;
+    installments?: Array<{ amount: number; due_date?: string }>;
+    notes?: string;
+  }) => api.post('api/v1/installment-plans/', data),
+
+  // Planı iptal et (Admin/Seller)
+  cancelPlan: (planId: number) => api.post(`api/installment-plans/${planId}/cancel/`),
 };
 
 export default api;

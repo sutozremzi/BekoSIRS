@@ -34,8 +34,8 @@ export const useAuth = () => {
     setLoading(true);
     try {
       console.log('🔐 Giriş denemesi yapılıyor...');
-      
-      const response = await api.post('/api/token/', {
+
+      const response = await api.post('/api/v1/token/', {
         username,
         password,
         platform: 'mobile', // Backend'deki kısıtlamayı aşmak için gerekli
@@ -55,19 +55,19 @@ export const useAuth = () => {
 
       // 2. Rol bilgisini AsyncStorage'a kaydet (undefined hatası önlendi)
       await AsyncStorage.setItem('user_role', validatedRole);
-      
+
       console.log('💾 Veriler kaydedildi. Yönlendiriliyor...');
 
       // 3. Başarılı girişte ana sayfaya yönlendir
       // Expo Router klasör yapınıza göre yolu doğrulayın
-      
-      router.replace('/' as any); 
+
+      router.replace('/' as any);
 
     } catch (error: any) {
       console.error('❌ Login error:', error);
-      
+
       let errorMessage = 'Giriş başarısız.';
-      
+
       if (error.response) {
         // Backend'den gelen özel kısıtlama mesajlarını yakala
         if (error.response.status === 403) {
@@ -78,7 +78,7 @@ export const useAuth = () => {
       } else {
         errorMessage = 'Sunucuya bağlanılamadı. Lütfen sunucu adresini (IP) kontrol edin.';
       }
-      
+
       Alert.alert('Giriş Hatası', errorMessage);
     } finally {
       setLoading(false);
@@ -87,10 +87,10 @@ export const useAuth = () => {
 
   // 🔹 KAYIT OLMA (REGISTER)
   const register = async (
-    username: string, 
-    email: string, 
-    password: string, 
-    firstName?: string, 
+    username: string,
+    email: string,
+    password: string,
+    firstName?: string,
     lastName?: string
   ) => {
     if (!username || !email || !password) {
@@ -101,7 +101,7 @@ export const useAuth = () => {
     setLoading(true);
     try {
       // API isteğini gönder
-      await api.post('/api/users/', {
+      await api.post('/api/v1/users/', {
         username: username,
         email: email,
         password: password,
@@ -115,7 +115,7 @@ export const useAuth = () => {
       ]);
     } catch (error: any) {
       console.error('❌ Register error:', error.response?.data);
-      
+
       const msg = error.response?.data?.detail || 'Bu kullanıcı adı veya e-posta zaten kullanımda.';
       Alert.alert('Kayıt Hatası', msg);
     } finally {
