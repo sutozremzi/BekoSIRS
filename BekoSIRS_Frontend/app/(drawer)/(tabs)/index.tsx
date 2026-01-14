@@ -10,16 +10,18 @@ import {
   TouchableOpacity,
   RefreshControl,
   ScrollView,
-  Image,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FontAwesome } from '@expo/vector-icons';
 import api, { wishlistAPI, productAPI } from '../../../services/api';
 import { ProductCard } from '../../../components/ProductCard';
 import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 2;
+const GAP = 12;
+const PADDING = 16;
+const ITEM_WIDTH = (width - (PADDING * 2) - GAP) / 2;
 
 const getImageUrl = (imagePath: string | null): string | null => {
   if (!imagePath) return null;
@@ -65,7 +67,7 @@ const HomeScreen = () => {
       const token = await getToken();
 
       const requests: Promise<any>[] = [
-        api.get('/api/v1/products/?page_size=1000'),
+        api.get('/api/v1/products/?page_size=50'),
         api.get('/api/v1/categories/?page_size=1000'),
         productAPI.getPopularProducts(),
       ];
@@ -169,7 +171,8 @@ const HomeScreen = () => {
         <Image
           source={{ uri: getImageUrl(item.image) || '' }}
           style={styles.popularImage}
-          resizeMode="cover"
+          contentFit="cover"
+          transition={200}
         />
       ) : (
         <View style={[styles.popularImage, styles.imagePlaceholder]}>
@@ -340,6 +343,7 @@ const HomeScreen = () => {
             product={item}
             initialInWishlist={wishlistIds.has(item.id)}
             compact={true}
+            style={{ width: ITEM_WIDTH }}
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -378,6 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerContainer: {
+    paddingHorizontal: 16, // Restore padding for header
     paddingTop: 10,
     paddingBottom: 15,
   },
@@ -436,7 +441,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   popularCard: {
-    width: CARD_WIDTH,
+    width: ITEM_WIDTH,
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
@@ -530,7 +535,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   list: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 0, // Handled by columnWrapperStyle for grid rows
     paddingBottom: 20,
   },
   emptyContainer: {
@@ -563,8 +568,9 @@ const styles = StyleSheet.create({
   // Grid Layout Styles
   gridRow: {
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    gap: 8,
+    paddingHorizontal: 16, // Match PADDING constant
+    gap: 12, // Match GAP constant to ensure alignment (though row-gap mainly)
+    marginBottom: 12, // Vertical gap between rows
   },
   // Sort Filter Styles
   sortSection: {

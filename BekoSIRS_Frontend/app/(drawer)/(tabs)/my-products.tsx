@@ -265,7 +265,9 @@ export default function MyProductsScreen() {
                 style={[styles.actionButton, { backgroundColor: '#F3F4F6', opacity: 0.8 }]}
                 disabled={true}
               >
-                <Text style={styles.actionButtonText}>Teslimat Bekleniyor</Text>
+                <Text style={styles.actionButtonText}>
+                  {status.text}
+                </Text>
               </TouchableOpacity>
             )}
           </View>

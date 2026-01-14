@@ -46,6 +46,8 @@ api.interceptors.response.use(
                     if (response.status === 200) {
                         localStorage.setItem('access', response.data.access);
                         axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.access}`;
+                        // Explicitly update the header for the retry attempt
+                        originalRequest.headers['Authorization'] = `Bearer ${response.data.access}`;
                         return api(originalRequest);
                     }
                 }
@@ -61,6 +63,71 @@ api.interceptors.response.use(
         return Promise.reject(error);
     }
 );
+
+// ----------------------------------------
+// 🔹 INSTALLMENT API
+// ----------------------------------------
+// ----------------------------------------
+// 🔹 INSTALLMENT API
+// ----------------------------------------
+export const installmentAPI = {
+    getAllPlans: (filters?: any) => api.get('installment-plans/', { params: filters }),
+    getPlanInstallments: (planId: number) => api.get(`installment-plans/${planId}/installments/`),
+    adminApprovePayment: (installmentId: number) => api.post(`installments/${installmentId}/approve/`),
+    createPlan: (data: any) => api.post('installment-plans/', data),
+};
+
+// ----------------------------------------
+// 🔹 PRODUCT API
+// ----------------------------------------
+export const productAPI = {
+    list: (params?: any) => api.get('products/', { params }),
+};
+
+// ----------------------------------------
+// 🔹 CUSTOMER API
+// ----------------------------------------
+export const customerAPI = {
+    list: (params?: any) => api.get('customers/', { params }),
+};
+
+// ----------------------------------------
+// 🔹 ANALYTICS - CHARTS API
+// ----------------------------------------
+export const chartsAPI = {
+    getAll: () => api.get('analytics/charts/'),
+};
+
+// ----------------------------------------
+// 🔹 ANALYTICS - FORECAST API
+// ----------------------------------------
+export const salesForecastAPI = {
+    getSummary: () => api.get('analytics/forecast/'),
+};
+
+// ----------------------------------------
+// 🔹 ANALYTICS - MARKETING API
+// ----------------------------------------
+export const marketingAPI = {
+    getStats: () => api.get('analytics/marketing/'),
+    runCampaign: (campaignKey: string, dryRun: boolean) =>
+        api.post('analytics/marketing/run/', { campaign: campaignKey, dry_run: dryRun }),
+};
+
+// ----------------------------------------
+// 🔹 ANALYTICS - AUDIT LOG API
+// ----------------------------------------
+export const auditLogAPI = {
+    getLogs: (limit: number = 50) => api.get('analytics/audit-logs/', { params: { limit } }),
+};
+
+// ----------------------------------------
+// 🔹 STOCK INTELLIGENCE API
+// ----------------------------------------
+export const stockIntelligenceAPI = {
+    getDashboardSummary: () => api.get('stock-intelligence/dashboard/'),
+};
+
 
 export default api;
 

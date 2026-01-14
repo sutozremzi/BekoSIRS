@@ -5,7 +5,8 @@ from .models import (
     Wishlist, WishlistItem, ViewHistory, Review,
     ServiceRequest, ServiceQueue, Notification, Recommendation,
     District, Area, DepotLocation,
-    ProductAssignment, Delivery, DeliveryRoute, DeliveryRouteStop
+    ProductAssignment, Delivery, DeliveryRoute, DeliveryRouteStop,
+    InstallmentPlan, Installment, AuditLog
 )
 
 # ---------------------------
@@ -569,4 +570,107 @@ class DepotLocationCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Bu isimde bir depo zaten mevcut.")
         
         return value
+
+
+# ---------------------------
+# 🔹 INSTALLMENT SERIALIZERS
+# ---------------------------
+
+class InstallmentSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    days_until_due = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Installment
+        fields = [
+            'id', 'installment_number', 'amount', 'due_date', 'payment_date',
+            'status', 'status_display', 'is_overdue', 'days_until_due',
+            'customer_confirmed_at', 'admin_confirmed_at'
+        ]
+
+    def get_is_overdue(self, obj):
+        from django.utils import timezone
+        if obj.status == 'pending' and obj.due_date < timezone.now().date():
+            return True
+        return False
+
+    def get_days_until_due(self, obj):
+        from django.utils import timezone
+        delta = obj.due_date - timezone.now().date()
+        return delta.days
+
+
+class InstallmentPlanSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.get_full_name', read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    remaining_amount = serializers.SerializerMethodField()
+    paid_amount = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    installments = InstallmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'id', 'customer', 'customer_name', 'product', 'product_name',
+            'total_amount', 'down_payment', 'installment_count', 'start_date',
+            'status', 'status_display', 'notes', 'created_at',
+            'remaining_amount', 'paid_amount', 'progress_percentage',
+            'installments'
+        ]
+
+    def get_paid_amount(self, obj):
+        paid = sum(inst.amount for inst in obj.installments.filter(status='paid'))
+        return paid + obj.down_payment
+
+    def get_remaining_amount(self, obj):
+        return obj.total_amount - self.get_paid_amount(obj)
+
+    def get_progress_percentage(self, obj):
+        if obj.total_amount == 0:
+            return 0
+        return round((self.get_paid_amount(obj) / obj.total_amount) * 100)
+
+
+class InstallmentPlanListSerializer(InstallmentPlanSerializer):
+    class Meta(InstallmentPlanSerializer.Meta):
+        fields = [
+            'id', 'customer', 'customer_name', 'product', 'product_name',
+            'total_amount', 'remaining_amount', 'progress_percentage',
+            'status', 'status_display', 'start_date'
+        ]
+
+
+class InstallmentPlanDetailSerializer(InstallmentPlanSerializer):
+    pass
+
+
+class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'customer', 'product', 'total_amount', 'down_payment',
+            'installment_count', 'start_date', 'notes'
+        ]
+
+
+class CustomerConfirmPaymentSerializer(serializers.Serializer):
+    pass
+
+
+class AdminApprovePaymentSerializer(serializers.Serializer):
+    payment_date = serializers.DateField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
+# ---------------------------
+# 🔹 AUDIT LOG SERIALIZER
+# ---------------------------
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AuditLog
+        fields = '__all__'
+
 

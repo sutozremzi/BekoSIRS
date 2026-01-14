@@ -1,6 +1,6 @@
-# products/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenRefreshView
 
 # Import from modular views package
 from products.views import (
@@ -38,6 +38,14 @@ from products.views import (
     DeliveryViewSet,
     DeliveryRouteViewSet,
     ProductAssignmentViewSet,
+    # Analytics & Installments
+    InstallmentPlanViewSet, 
+    InstallmentViewSet, 
+    AuditLogView,
+    ChartsView, 
+    SalesForecastView, 
+    MarketingAutomationView, 
+    StockIntelligenceDashboardView,
 )
 
 # Import Depot Management
@@ -87,9 +95,23 @@ router.register(r'depots', DepotLocationViewSet, basename='depot')
 # Customer Management
 router.register(r'customers', CustomerManagementViewSet, basename='customer')
 
+# Installment & Audit
+router.register(r'installment-plans', InstallmentPlanViewSet, basename='installment-plan')
+router.register(r'installments', InstallmentViewSet, basename='installment')
+router.register(r'analytics/audit-logs', AuditLogView, basename='audit-log')
+
 urlpatterns = [
     # Router üzerinden gelen tüm endpointler
     path('', include(router.urls)),
+    
+    # Analytics Endpoints
+    path('analytics/charts/', ChartsView.as_view(), name='analytics-charts'),
+    path('analytics/forecast/', SalesForecastView.as_view(), name='analytics-forecast'),
+    path('analytics/marketing/', MarketingAutomationView.as_view(), name='analytics-marketing'),
+    
+    # Stock Intelligence
+    path('stock-intelligence/dashboard/', StockIntelligenceDashboardView.as_view(), name='stock-intelligence'),
+    
     path("my-products/", my_products_direct, name="my-products"),
     path("profile/", profile_view, name="user-profile"),
     path("notification-settings/", notification_settings_view, name="notification-settings"),
@@ -97,6 +119,7 @@ urlpatterns = [
 
     # 🔹 GİRİŞ (Login) - Müşteri kısıtlaması bu view içinde yapılıyor
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # Mobil kayıt veya özel kayıt işlemleri için
     path('register/', UserManagementViewSet.as_view({'post': 'create'}), name='auth_register'),

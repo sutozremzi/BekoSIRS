@@ -4,7 +4,8 @@ Auto-creates Delivery record when ProductAssignment is created.
 """
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import ProductAssignment, Delivery, DepotLocation
+from django.utils import timezone
+from .models import ProductAssignment, Delivery, DepotLocation, ProductOwnership, Product
 
 
 @receiver(post_save, sender=ProductAssignment)
@@ -45,3 +46,27 @@ def create_delivery_for_assignment(sender, instance, created, **kwargs):
             address_snapshot=formatted_address,
             status='WAITING'
         )
+@receiver(post_save, sender=Delivery)
+def create_ownership_on_delivery(sender, instance, **kwargs):
+    """
+    When delivery is marked as DELIVERED, create ProductOwnership record.
+    This enables warranty tracking and product reviews.
+    """
+    if instance.status == 'DELIVERED':
+        # Get related assignment and product
+        assignment = instance.assignment
+        if not assignment:
+            return
+
+        customer = assignment.customer
+        product = assignment.product
+        
+        # Check if ownership already exists to avoid duplicates
+        if not ProductOwnership.objects.filter(customer=customer, product=product).exists():
+            ProductOwnership.objects.create(
+                customer=customer,
+                product=product,
+                purchase_date=instance.delivered_at.date() if instance.delivered_at else timezone.now().date(),
+                serial_number=f"BEKO-{assignment.id}-{product.id}" # Auto-generate serial
+            )
+            print(f"DEBUG: Auto-created ownership for {customer.username} - {product.name}")

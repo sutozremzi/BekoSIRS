@@ -16,6 +16,9 @@ import NotificationsPage from "./pages/NotificationsPage";
 import DeliveriesPage from "./pages/DeliveriesPage";
 import DepotsPage from "./pages/DepotsPage";
 
+import AnalyticsPage from "./pages/AnalyticsPage";
+import InstallmentPlansPage from "./pages/InstallmentPlansPage";
+
 export default function App() {
   return (
     <Router>
@@ -25,6 +28,12 @@ export default function App() {
 
         {/* 🔹 Dashboard ana sayfa */}
         <Route path="/dashboard" element={<Dashboard />} />
+
+        {/* 🔹 Analitikler */}
+        <Route path="/dashboard/analytics" element={<AnalyticsPage />} />
+
+        {/* 🔹 Taksit Yönetimi */}
+        <Route path="/dashboard/installments" element={<InstallmentPlansPage />} />
 
         {/* 🔹 Ürün yönetimi */}
         <Route path="/dashboard/products" element={<ProductsPage />} />

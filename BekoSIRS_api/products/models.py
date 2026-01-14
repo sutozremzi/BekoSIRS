@@ -799,3 +799,147 @@ class Delivery(models.Model):
     def customer(self):
         """Shortcut to get customer from assignment"""
         return self.assignment.customer if self.assignment else None
+
+
+# -------------------------------
+# 🔹 Installment Plan Models
+# -------------------------------
+class InstallmentPlan(models.Model):
+    customer = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE, 
+        related_name='installment_plans',
+        limit_choices_to={'role': 'customer'},
+        verbose_name="Müşteri"
+    )
+    product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='installment_plans',
+        verbose_name="Ürün"
+    )
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Toplam Tutar")
+    down_payment = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Peşinat")
+    installment_count = models.PositiveIntegerField(verbose_name="Taksit Sayısı")
+    start_date = models.DateField(verbose_name="Başlangıç Tarihi")
+    
+    STATUS_CHOICES = (
+        ('active', 'Aktif'),
+        ('completed', 'Tamamlandı'),
+        ('cancelled', 'İptal Edildi'),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="Durum")
+    notes = models.TextField(blank=True, null=True, verbose_name="Notlar")
+    
+    created_by = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='created_installment_plans',
+        limit_choices_to={'role__in': ['admin', 'seller']},
+        verbose_name="Oluşturan"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Taksit Planı"
+        verbose_name_plural = "Taksit Planları"
+        indexes = [
+            models.Index(fields=['customer', 'status'], name='instplan_cust_status_idx'),
+            models.Index(fields=['status'], name='instplan_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.customer} - {self.product} ({self.get_status_display()})"
+
+
+class Installment(models.Model):
+    plan = models.ForeignKey(
+        InstallmentPlan, 
+        on_delete=models.CASCADE, 
+        related_name='installments',
+        verbose_name="Taksit Planı"
+    )
+    installment_number = models.PositiveIntegerField(verbose_name="Taksit No")
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Tutar")
+    due_date = models.DateField(verbose_name="Vade Tarihi")
+    payment_date = models.DateField(null=True, blank=True, verbose_name="Ödeme Tarihi")
+    
+    STATUS_CHOICES = (
+        ('pending', 'Bekliyor'),
+        ('customer_confirmed', 'Müşteri Onayladı'),
+        ('paid', 'Ödendi'),
+        ('overdue', 'Gecikmiş'),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Durum")
+    
+    customer_confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name="Müşteri Onay Zamanı")
+    admin_confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name="Admin Onay Zamanı")
+
+    class Meta:
+        ordering = ['plan', 'installment_number']
+        verbose_name = "Taksit"
+        verbose_name_plural = "Taksitler"
+        unique_together = ['plan', 'installment_number']
+        indexes = [
+            models.Index(fields=['status'], name='inst_status_idx'),
+            models.Index(fields=['due_date'], name='inst_due_date_idx'),
+            models.Index(fields=['plan', 'status'], name='inst_plan_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.plan} - Taksit {self.installment_number}"
+
+
+# -------------------------------
+# 🔹 Audit Log (Denetim Kaydı)
+# -------------------------------
+class AuditLog(models.Model):
+    ACTION_CHOICES = (
+        ('create', 'Oluşturma'),
+        ('update', 'Güncelleme'),
+        ('delete', 'Silme'),
+        ('login', 'Giriş'),
+        ('logout', 'Çıkış'),
+        ('login_failed', 'Başarısız Giriş'),
+        ('password_change', 'Şifre Değişikliği'),
+        ('password_reset', 'Şifre Sıfırlama'),
+        ('permission_change', 'Yetki Değişikliği'),
+        ('export', 'Veri Dışa Aktarma'),
+        ('api_access', 'API Erişimi'),
+        ('bulk_operation', 'Toplu İşlem'),
+    )
+
+    user = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='audit_logs',
+        verbose_name="Kullanıcı"
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name="İşlem")
+    model_name = models.CharField(max_length=100, null=True, blank=True, verbose_name="Model Adı")
+    object_id = models.IntegerField(null=True, blank=True, verbose_name="Nesne ID")
+    object_repr = models.CharField(max_length=255, null=True, blank=True, verbose_name="Nesne Temsili")
+    
+    changes = models.JSONField(null=True, blank=True, verbose_name="Değişiklikler")
+    
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP Adresi")
+    user_agent = models.CharField(max_length=500, null=True, blank=True, verbose_name="User Agent")
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Zaman Damgası")
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Denetim Kaydı"
+        verbose_name_plural = "Denetim Kayıtları"
+        indexes = [
+            models.Index(fields=['user', 'action'], name='audit_user_action_idx'),
+            models.Index(fields=['model_name', 'object_id'], name='audit_model_obj_idx'),
+            models.Index(fields=['timestamp'], name='audit_timestamp_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.action} - {self.timestamp}"

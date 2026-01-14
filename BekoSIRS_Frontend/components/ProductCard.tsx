@@ -1,7 +1,8 @@
 // components/ProductCard.tsx
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, memo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { wishlistAPI, viewHistoryAPI } from '../services/api';
@@ -22,14 +23,16 @@ interface ProductCardProps {
   onPress?: () => void;
   initialInWishlist?: boolean;
   compact?: boolean; // Yeni: Grid layout için kompakt mod
+  style?: any; // Allow style overrides
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({
+export const ProductCard = memo(({
   product,
   onPress,
   initialInWishlist = false,
-  compact = false
-}) => {
+  compact = false,
+  style
+}: ProductCardProps) => {
   const router = useRouter();
   const [inWishlist, setInWishlist] = useState(initialInWishlist);
   const [loading, setLoading] = useState(false);
@@ -73,9 +76,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const isInStock = (product.stock ?? 0) > 0;
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
+    <TouchableOpacity onPress={handlePress} activeOpacity={0.8} style={style}>
       <View style={compact ? styles.compactCard : styles.card}>
-        {imageSource && <Image source={{ uri: imageSource }} style={compact ? styles.compactImage : styles.image} />}
+        {imageSource && (
+          <Image
+            source={{ uri: imageSource }}
+            style={compact ? styles.compactImage : styles.image}
+            contentFit={compact ? 'contain' : 'cover'}
+            transition={200} // Smooth fade in
+            cachePolicy="memory-disk" // Cache images
+          />
+        )}
 
         {/* Wishlist Button */}
         <TouchableOpacity
@@ -124,7 +135,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </View>
     </TouchableOpacity>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -208,71 +219,69 @@ const styles = StyleSheet.create({
   // Compact Mode Styles (Grid Layout)
   compactCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 8, // Slightly smaller radius for tighter look
     marginBottom: 8,
-    marginHorizontal: 4,
+    // Removed marginHorizontal to respect grid gap
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
     elevation: 1,
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
     borderColor: '#f3f4f6',
-    width: '100%',
+    // Width will be controlled by parent
   },
   compactImage: {
     width: '100%',
-    height: 130,
+    aspectRatio: 1, // Enforce square aspect ratio
     backgroundColor: '#f9fafb',
   },
   compactWishlistButton: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   compactInfoContainer: {
-    padding: 8,
+    padding: 6,
+    // Ensure fixed height for text area alignment if needed, 
+    // but flex is usually better.
   },
   compactName: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
     color: '#111827',
-    marginBottom: 3,
-    lineHeight: 16,
+    marginBottom: 2,
+    lineHeight: 14,
+    height: 28, // Fix height for max 2 lines
   },
   compactPrice: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#E31E24',
-    marginTop: 3,
+    color: '#000', // Black for clean look
+    marginTop: 2,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 3,
-    gap: 3,
+    marginBottom: 2,
+    gap: 2,
   },
   ratingText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
-    color: '#111827',
+    color: '#4B5563',
   },
   reviewCount: {
-    fontSize: 9,
-    color: '#6B7280',
+    fontSize: 8,
+    color: '#9CA3AF',
   },
 });

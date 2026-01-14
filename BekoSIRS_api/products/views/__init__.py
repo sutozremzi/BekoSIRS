@@ -63,6 +63,21 @@ from .delivery_views import (
     ProductAssignmentViewSet,
 )
 
+# New Analytics & Installment Views (Manually Added)
+from .analytics_views import (
+    ChartsView,
+    SalesForecastView,
+    MarketingAutomationView,
+    AuditLogView
+)
+from .installment_views import (
+    InstallmentPlanViewSet,
+    InstallmentViewSet
+)
+from .stock_intelligence_views import (
+    StockIntelligenceDashboardView
+)
+
 __all__ = [
     # Auth
     'CustomTokenObtainPairSerializer',
@@ -99,4 +114,12 @@ __all__ = [
     'DeliveryViewSet',
     'DeliveryRouteViewSet',
     'ProductAssignmentViewSet',
+    # Analytics & Installments
+    'ChartsView', 
+    'SalesForecastView', 
+    'MarketingAutomationView', 
+    'AuditLogView',
+    'InstallmentPlanViewSet', 
+    'InstallmentViewSet',
+    'StockIntelligenceDashboardView'
 ]
