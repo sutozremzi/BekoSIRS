@@ -1,37 +1,21 @@
-BekoSIRS - Face ID (Biyometrik Giriş) Modülü Geliştirme Raporu
+## BekoSIRS - Eski Proje Kodlarında Yaptığım Değişiklikler ve Düzeltmeler
 
-Eski projede yer alan ön taslak halindeki Face ID / Biyometrik Giriş modülü analiz edilmiş ve sistemin stabil, güvenlir ve güncel standartlara uygun olarak çalışabilmesi için aşağıdaki yapısal revizyonlar ve yeni eklemeler yapılmıştır.
+Projeyi inceledikten sonra, eski altyapıda çalışan ancak eksiklikleri olan Login ve FaceID (Biyometrik) kısımlarında bazı düzeltmeler ve eklemeler yaptım. Yaptığım değişiklikler özetle şu şekilde:
 
----------------------------------------------------------
-A. UYGULANAN TEKNOLOJİ VE ÇALIŞMA MANTIĞI
----------------------------------------------------------
+### 1. "Çıkış Yap" Butonu Ekledim
+- **Eski Durum:** Uygulamada hesaptan çıkmak için herhangi bir buton yoktu.
+- **Benim Yaptığım:** `app/(drawer)/settings.tsx` dosyasında, Güvenlik sekmesinin altına kırmızı bir "Çıkış Yap" butonu ekledim. Tıklandığında cihazdaki tüm token'ları silecek (`clearAllTokens` ile) ve kullanıcıyı güvenle Login ekranına yönlendirecek fonksiyonu yazdım.
 
-Güvenlik politikaları ve KVKK (Kişisel Verilerin Korunması Kanunu) gereği, kullanıcıların yüz veya parmak izi verileri asla dış bir sunucuya veya veri tabanına aktarılmamalıdır. Bu nedenle, hazır Python kütüphaneleri (örn; OpenCV) ile yüz verisini işleyip sunucuya göndermek yerine mobil cihazların kendi işletim sistemlerinde bulunan "Native Secure Enclave" (Yerleşik Güvenli Çip) teknolojisi kullanılmıştır. 
+### 2. Eski API İstek Yollarını Güncelledim (404 Hatası Çözümü)
+- **Eski Durum:** Eski kod, Face ID ayarlarını açmak için doğrudan `/api/biometric/enable/` adresine istek atıyordu. Ancak Backend API yapımız `/api/v1/` olduğu için istekler boşa düşüyordu.
+- **Benim Yaptığım:** `hooks/useBiometric.ts` dosyasına girerek tüm biyometrik API rotalarının başına `/v1/` ekledim. İsteklerin Backend ile doğru haberleşmesini sağladım.
 
-Çalışma Mantığı:
-1) Uygulama, kullanıcının yüzünü görmek yerine cihazın işletim sistemine (iOS/Android) "Bu kişi cihazın sahibi mi?" sorusunu sorar. (`expo-local-authentication` kütüphanesi).
-2) Cihaz kendi donanımıyla kullanıcının yüzünü okur ve uygulamaya yalnızca "Evet" veya "Hayır" (Success/Error) yanıtını döner.
-3) Eğer yanıt "Evet" ise, uygulama önceden şifrelenmiş olarak cihazın güvenli belleğine (`expo-secure-store`) kaydettiği oturum onay kodlarını (Refresh ve Access Token) sunucuya iletir ve kullanıcı şifre yazmadan güvenle içeri alınır.
+### 3. Face ID Giriş Sonrası Atma Sorununu (401) Çözdüm
+- **Eski Durum:** Kullanıcı Face ID ile başarıyla giriş yapsa bile, alınan Access ve Refresh token'lar telefonun hafızasına kaydedilmiyordu. Uygulama ana sayfaya geçince token bulamadığı için kullanıcıyı atıp yeniden giriş istiyordu.
+- **Benim Yaptığım:** `app/login.tsx` dosyasındaki Face ID giriş fonksiyonuna (`handleBiometricLogin`) cihazın güvenli hafızasına token'ları eşzamanlı kaydeden `saveTokens` fonksiyonumu ekledim. Artık yüz okutulduğu an oturum kalıcı oluyor.
 
----------------------------------------------------------
-B. ESKİ PROJEDE YAPILAN KOD DEĞİŞİKLİKLERİ VE EKLENTİLER
----------------------------------------------------------
+### 4. Backend Hata İzleme (Log) Kayıtları Ekledim
+- **Eski Durum:** FaceID doğrulama veya kayıt sırasında sunucu tarafında hata olunca sebebi konsolda görünmüyordu.
+- **Benim Yaptığım:** `products/views/biometric_views.py` dosyamda yer alan `biometric_enable` fonksiyonuna hata mesajlarını (Serializer Errors) doğrudan terminale basacak print fonksiyonları ekledim ve süreci izlenebilir hale getirdim.
 
-1. API Uç Noktalarının (Endpoints) Versiyonlanması
-- Eski Halinde Ne Vardı: Mobil uygulama tarafında istekler versiyonsuz eski adreslere (örn: `/api/biometric/enable/`) gönderiliyordu.
-- Ne Değiştirildi: Backend'in (Arka uç) yeni yapısına uygun olarak `hooks/useBiometric.ts` dosyasındaki tüm API istekleri `/api/v1/...` rotasına bakacak şekilde güncellendi. Artık 404 (Bulunamadı) hataları yaşanmıyor.
-
-2. Access ve Refresh Token'ların Cihaza Kaydedilmesi (Kritik Düzeltme)
-- Eski Halinde Ne Vardı: Kullanıcı başarılı bir şekilde Face ID ile giriş yaptığında, sunucudan alınan oturum anahtarları (Token) cihazın hafızasına yazılmıyordu. Bu sebeple kullanıcı uygulamaya girer girmez sistem tarafından "Yetkisiz Erişim" sayılarak dışarı atılıyordu.
-- Ne Değiştirildi: `app/login.tsx` dosyası içerisindeki `handleBiometricLogin` fonksiyonuna `saveTokens` fonksiyonu entegre edildi. Başarılı yüz doğrulamasından sonra anında token'lar güvenceye alınarak kesintisiz oturum sağlandı.
-
-3. "Çıkış Yap" (Logout) Yeteneğinin Eklenmesi
-- Eski Halinde Ne Vardı: Ayarlar ekranında veya uygulamanın herhangi bir yerinde kullanıcının kendi isteğiyle hesabından çıkış yapabileceği bir mekanizma yoktu.
-- Eklendi: `app/(drawer)/settings.tsx` dosyası içerisine, Güvenlik sekmesinin altına kırmızı ve belirgin bir "Çıkış Yap" butonu eklendi. Bu buton sayesinde cihazdaki güvenli token'lar (`clearAllTokens` ile) tamamen silinerek uygulama giriş sayfasına (Login) geri döndürülmektedir.
-
-4. Arka Uç (Backend) Güvenlik Doğrulaması Logları
-- Eski Halinde Ne Vardı: Face ID için gerekli olan cihaz ID'si ve Refresh Token eşleşmelerindeki sorunlar sessizce başarısız oluyordu.
-- Eklendi: `BekoSIRS_api/products/views/biometric_views.py` içerisine, cihaz kayıt esnasında gelen hataları (`Serializer Errors`) terminale basacak detaylı log (kayıt) çıktıları eklendi. Bu sayede hata ayıklama süreci hızlandırıldı.
-
-Sonuç: 
-Biyometrik giriş sistemi baştan uca güvenli, sunucuyu yormayan ve modern mobil uygulama standartlarına yakışır bir şekilde aktif edilmiştir.
+**Özetle:** Mevcut `expo-local-authentication` (Yerleşik Native Face ID) altyapısını bozmadan, eksik entegrasyonlarını tamamlayarak sistemi uçtan uca çalışır, kullanıcıdan çıkış yapılabilir ve tamamen güvenli hale getirdim.
