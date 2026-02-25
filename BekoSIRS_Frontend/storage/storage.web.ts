@@ -8,13 +8,13 @@ const REFRESH_TOKEN_KEY = 'refreshToken';
 export async function saveToken(token: string): Promise<void> {
   try {
     if (!token) {
-      console.warn('⚠️ Attempted to save empty token');
+      if (__DEV__) console.warn('⚠️ Attempted to save empty token');
       return;
     }
     localStorage.setItem(TOKEN_KEY, token);
-    console.log('✅ Token saved successfully (web)');
+    if (__DEV__) console.log('✅ Token saved successfully (web)');
   } catch (error) {
-    console.error('❌ Error saving token (web):', error);
+    if (__DEV__) console.error('❌ Error saving token (web):', error);
     throw error;
   }
 }
@@ -24,13 +24,13 @@ export async function getToken(): Promise<string | null> {
   try {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
-      console.log('✅ Token retrieved successfully (web)');
+      if (__DEV__) console.log('✅ Token retrieved successfully (web)');
     } else {
-      console.log('ℹ️ No token found (web)');
+      if (__DEV__) console.log('ℹ️ No token found (web)');
     }
     return token;
   } catch (error) {
-    console.error('❌ Error getting token (web):', error);
+    if (__DEV__) console.error('❌ Error getting token (web):', error);
     return null;
   }
 }
@@ -39,9 +39,9 @@ export async function getToken(): Promise<string | null> {
 export async function deleteToken(): Promise<void> {
   try {
     localStorage.removeItem(TOKEN_KEY);
-    console.log('✅ Token deleted successfully (web)');
+    if (__DEV__) console.log('✅ Token deleted successfully (web)');
   } catch (error) {
-    console.error('❌ Error deleting token (web):', error);
+    if (__DEV__) console.error('❌ Error deleting token (web):', error);
     throw error;
   }
 }
@@ -50,13 +50,13 @@ export async function deleteToken(): Promise<void> {
 export async function saveRefreshToken(token: string): Promise<void> {
   try {
     if (!token) {
-      console.warn('⚠️ Attempted to save empty refresh token');
+      if (__DEV__) console.warn('⚠️ Attempted to save empty refresh token');
       return;
     }
     localStorage.setItem(REFRESH_TOKEN_KEY, token);
-    console.log('✅ Refresh token saved successfully (web)');
+    if (__DEV__) console.log('✅ Refresh token saved successfully (web)');
   } catch (error) {
-    console.error('❌ Error saving refresh token (web):', error);
+    if (__DEV__) console.error('❌ Error saving refresh token (web):', error);
     throw error;
   }
 }
@@ -67,7 +67,7 @@ export async function getRefreshToken(): Promise<string | null> {
     const token = localStorage.getItem(REFRESH_TOKEN_KEY);
     return token;
   } catch (error) {
-    console.error('❌ Error getting refresh token (web):', error);
+    if (__DEV__) console.error('❌ Error getting refresh token (web):', error);
     return null;
   }
 }
@@ -76,9 +76,9 @@ export async function getRefreshToken(): Promise<string | null> {
 export async function deleteRefreshToken(): Promise<void> {
   try {
     localStorage.removeItem(REFRESH_TOKEN_KEY);
-    console.log('✅ Refresh token deleted successfully (web)');
+    if (__DEV__) console.log('✅ Refresh token deleted successfully (web)');
   } catch (error) {
-    console.error('❌ Error deleting refresh token (web):', error);
+    if (__DEV__) console.error('❌ Error deleting refresh token (web):', error);
     throw error;
   }
 }
@@ -90,9 +90,9 @@ export async function saveTokens(accessToken: string, refreshToken: string): Pro
       saveToken(accessToken),
       saveRefreshToken(refreshToken)
     ]);
-    console.log('✅ Both tokens saved successfully (web)');
+    if (__DEV__) console.log('✅ Both tokens saved successfully (web)');
   } catch (error) {
-    console.error('❌ Error saving tokens (web):', error);
+    if (__DEV__) console.error('❌ Error saving tokens (web):', error);
     throw error;
   }
 }
@@ -104,9 +104,9 @@ export async function clearAllTokens(): Promise<void> {
       deleteToken(),
       deleteRefreshToken()
     ]);
-    console.log('✅ All tokens cleared successfully (web)');
+    if (__DEV__) console.log('✅ All tokens cleared successfully (web)');
   } catch (error) {
-    console.error('❌ Error clearing tokens (web):', error);
+    if (__DEV__) console.error('❌ Error clearing tokens (web):', error);
     throw error;
   }
 }
@@ -117,7 +117,7 @@ export async function isAuthenticated(): Promise<boolean> {
     const token = await getToken();
     return !!token;
   } catch (error) {
-    console.error('❌ Error checking authentication (web):', error);
+    if (__DEV__) console.error('❌ Error checking authentication (web):', error);
     return false;
   }
 }
@@ -138,10 +138,10 @@ export async function getTokenInfo(): Promise<{
       hasRefreshToken: !!refreshToken
     };
 
-    console.log('ℹ️ Token info (web):', info);
+    if (__DEV__) console.log('ℹ️ Token info (web):', info);
     return info;
   } catch (error) {
-    console.error('❌ Error getting token info (web):', error);
+    if (__DEV__) console.error('❌ Error getting token info (web):', error);
     return { hasAccessToken: false, hasRefreshToken: false };
   }
 }

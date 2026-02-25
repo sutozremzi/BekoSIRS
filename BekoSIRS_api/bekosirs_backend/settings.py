@@ -23,8 +23,9 @@ DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 # Default to localhost only for security
 _allowed_hosts = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1')
 ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts.split(',') if host.strip()]
-# Fix for mobile access
-ALLOWED_HOSTS.extend(['192.168.0.107', '*'])
+# Add local network IPs for mobile development access via .env
+# Example: ALLOWED_HOSTS=localhost,127.0.0.1,192.168.0.107
+
 
 # ------------------------------------------------------------
 # APPLICATIONS
@@ -66,17 +67,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# ------------------------------------------------------------
-# CORS SETTINGS
-# ------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = True  # Development only
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8081",
-    "http://192.168.1.100:8081",
-]
 
 
 # ------------------------------------------------------------

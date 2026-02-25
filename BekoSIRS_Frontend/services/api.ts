@@ -11,9 +11,11 @@ export const API_BASE_URL = __DEV__
   ? `http://${COMPUTER_IP}:8000/`
   : 'https://your-production-api.com/';
 
-console.log('🔗 API Base URL:', API_BASE_URL);
-console.log('📱 Device:', Constants.deviceName);
-console.log('🌐 Platform:', Constants.platform);
+if (__DEV__) {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+  console.log('📱 Device:', Constants.deviceName);
+  console.log('🌐 Platform:', Constants.platform);
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -31,17 +33,17 @@ api.interceptors.request.use(
       const token = await getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('✅ Token added to request');
+        if (__DEV__) console.log('✅ Token added to request');
       }
     } catch (error) {
-      console.error('❌ Error getting token:', error);
+      if (__DEV__) console.error('❌ Error getting token:', error);
     }
 
-    console.log('📤 Request:', config.method?.toUpperCase(), config.url);
+    if (__DEV__) console.log('📤 Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
   (error) => {
-    console.error('❌ Request interceptor error:', error);
+    if (__DEV__) console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -49,33 +51,30 @@ api.interceptors.request.use(
 // Response interceptor with detailed error logging
 api.interceptors.response.use(
   (response) => {
-    console.log('✅ Response:', response.status, response.config.url);
+    if (__DEV__) console.log('✅ Response:', response.status, response.config.url);
     return response;
   },
   (error) => {
-    if (error.response) {
-      // Server responded with error status
-      console.error('❌ Server Error:', {
-        status: error.response.status,
-        data: error.response.data,
-        url: error.config?.url
-      });
-    } else if (error.request) {
-      // Request made but no response received
-      console.error('❌ Network Error - No Response:', {
-        message: 'Cannot connect to backend',
-        url: error.config?.url,
-        baseURL: API_BASE_URL
-      });
-      console.error('💡 Troubleshooting:');
-      console.error('   1. Check if backend is running: python manage.py runserver 0.0.0.0:8000');
-      console.error('   2. Verify IP address is correct:', COMPUTER_IP);
-      console.error('   3. Ensure phone and computer are on same WiFi');
-      console.error('   4. Check Django ALLOWED_HOSTS includes:', COMPUTER_IP);
-      console.error('   5. Disable firewall temporarily to test');
-    } else {
-      // Error in request setup
-      console.error('❌ Request Setup Error:', error.message);
+    if (__DEV__) {
+      if (error.response) {
+        console.error('❌ Server Error:', {
+          status: error.response.status,
+          data: error.response.data,
+          url: error.config?.url
+        });
+      } else if (error.request) {
+        console.error('❌ Network Error - No Response:', {
+          message: 'Cannot connect to backend',
+          url: error.config?.url,
+          baseURL: API_BASE_URL
+        });
+        console.error('💡 Troubleshooting:');
+        console.error('   1. Backend çalışıyor mu: python manage.py runserver 0.0.0.0:8000');
+        console.error('   2. IP adresi doğru mu:', COMPUTER_IP);
+        console.error('   3. Telefon ve bilgisayar aynı WiFi\'da mı');
+      } else {
+        console.error('❌ Request Setup Error:', error.message);
+      }
     }
 
     // Return a more user-friendly error
@@ -90,27 +89,18 @@ api.interceptors.response.use(
   }
 );
 
-// Test connection function
+// Test connection function (only useful in development)
 export const testBackendConnection = async () => {
   try {
-    console.log('🔍 Testing backend connection...');
+    if (__DEV__) console.log('🔍 Testing backend connection...');
     const response = await axios.get(`${API_BASE_URL}admin/`, {
       timeout: 5000,
-      validateStatus: () => true // Accept any status to test connectivity
+      validateStatus: () => true
     });
-    console.log('✅ Backend is reachable! Status:', response.status);
+    if (__DEV__) console.log('✅ Backend is reachable! Status:', response.status);
     return true;
   } catch (error: any) {
-    console.error('❌ Backend connection test failed:');
-    if (error.code === 'ECONNABORTED') {
-      console.error('   ⏱️ Connection timeout - Backend not responding');
-    } else if (error.code === 'ENOTFOUND') {
-      console.error('   🌐 DNS resolution failed - Check IP address');
-    } else if (error.message.includes('Network Error')) {
-      console.error('   📡 Network error - Check WiFi connection');
-    } else {
-      console.error('   ❓ Unknown error:', error.message);
-    }
+    if (__DEV__) console.error('❌ Backend connection test failed:', error.message);
     return false;
   }
 };

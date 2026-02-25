@@ -7,13 +7,13 @@ const REFRESH_TOKEN_KEY = 'refreshToken';
 export async function saveToken(token: string): Promise<void> {
   try {
     if (!token) {
-      console.warn('⚠️ Attempted to save empty token');
+      if (__DEV__) console.warn('⚠️ Attempted to save empty token');
       return;
     }
     await SecureStore.setItemAsync(TOKEN_KEY, token);
-    console.log('✅ Token saved successfully');
+    if (__DEV__) console.log('✅ Token saved successfully');
   } catch (error) {
-    console.error('❌ Error saving token:', error);
+    if (__DEV__) console.error('❌ Error saving token:', error);
     throw error;
   }
 }
@@ -23,13 +23,13 @@ export async function getToken(): Promise<string | null> {
   try {
     const token = await SecureStore.getItemAsync(TOKEN_KEY);
     if (token) {
-      console.log('✅ Token retrieved successfully');
+      if (__DEV__) console.log('✅ Token retrieved successfully');
     } else {
-      console.log('ℹ️ No token found');
+      if (__DEV__) console.log('ℹ️ No token found');
     }
     return token;
   } catch (error) {
-    console.error('❌ Error getting token:', error);
+    if (__DEV__) console.error('❌ Error getting token:', error);
     return null;
   }
 }
@@ -38,9 +38,9 @@ export async function getToken(): Promise<string | null> {
 export async function deleteToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
-    console.log('✅ Token deleted successfully');
+    if (__DEV__) console.log('✅ Token deleted successfully');
   } catch (error) {
-    console.error('❌ Error deleting token:', error);
+    if (__DEV__) console.error('❌ Error deleting token:', error);
     throw error;
   }
 }
@@ -49,13 +49,13 @@ export async function deleteToken(): Promise<void> {
 export async function saveRefreshToken(token: string): Promise<void> {
   try {
     if (!token) {
-      console.warn('⚠️ Attempted to save empty refresh token');
+      if (__DEV__) console.warn('⚠️ Attempted to save empty refresh token');
       return;
     }
     await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
-    console.log('✅ Refresh token saved successfully');
+    if (__DEV__) console.log('✅ Refresh token saved successfully');
   } catch (error) {
-    console.error('❌ Error saving refresh token:', error);
+    if (__DEV__) console.error('❌ Error saving refresh token:', error);
     throw error;
   }
 }
@@ -66,7 +66,7 @@ export async function getRefreshToken(): Promise<string | null> {
     const token = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     return token;
   } catch (error) {
-    console.error('❌ Error getting refresh token:', error);
+    if (__DEV__) console.error('❌ Error getting refresh token:', error);
     return null;
   }
 }
@@ -75,9 +75,9 @@ export async function getRefreshToken(): Promise<string | null> {
 export async function deleteRefreshToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    console.log('✅ Refresh token deleted successfully');
+    if (__DEV__) console.log('✅ Refresh token deleted successfully');
   } catch (error) {
-    console.error('❌ Error deleting refresh token:', error);
+    if (__DEV__) console.error('❌ Error deleting refresh token:', error);
     throw error;
   }
 }
@@ -89,9 +89,9 @@ export async function saveTokens(accessToken: string, refreshToken: string): Pro
       saveToken(accessToken),
       saveRefreshToken(refreshToken)
     ]);
-    console.log('✅ Both tokens saved successfully');
+    if (__DEV__) console.log('✅ Both tokens saved successfully');
   } catch (error) {
-    console.error('❌ Error saving tokens:', error);
+    if (__DEV__) console.error('❌ Error saving tokens:', error);
     throw error;
   }
 }
@@ -103,9 +103,9 @@ export async function clearAllTokens(): Promise<void> {
       deleteToken(),
       deleteRefreshToken()
     ]);
-    console.log('✅ All tokens cleared successfully');
+    if (__DEV__) console.log('✅ All tokens cleared successfully');
   } catch (error) {
-    console.error('❌ Error clearing tokens:', error);
+    if (__DEV__) console.error('❌ Error clearing tokens:', error);
     throw error;
   }
 }
@@ -116,7 +116,7 @@ export async function isAuthenticated(): Promise<boolean> {
     const token = await getToken();
     return !!token;
   } catch (error) {
-    console.error('❌ Error checking authentication:', error);
+    if (__DEV__) console.error('❌ Error checking authentication:', error);
     return false;
   }
 }
@@ -137,10 +137,10 @@ export async function getTokenInfo(): Promise<{
       hasRefreshToken: !!refreshToken
     };
     
-    console.log('ℹ️ Token info:', info);
+    if (__DEV__) console.log('ℹ️ Token info:', info);
     return info;
   } catch (error) {
-    console.error('❌ Error getting token info:', error);
+    if (__DEV__) console.error('❌ Error getting token info:', error);
     return { hasAccessToken: false, hasRefreshToken: false };
   }
 }
