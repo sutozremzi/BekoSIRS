@@ -16,6 +16,7 @@ import AssignmentsPage from "./pages/AssignmentsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import DeliveriesPage from "./pages/DeliveriesPage";
 import DepotsPage from "./pages/DepotsPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 import AnalyticsPage from "./pages/AnalyticsPage";
 import InstallmentPlansPage from "./pages/InstallmentPlansPage";
@@ -44,8 +45,8 @@ export default function App() {
         <Route path="/dashboard/deliveries" element={<AuthGuard><DeliveriesPage /></AuthGuard>} />
         <Route path="/dashboard/depots" element={<AuthGuard><DepotsPage /></AuthGuard>} />
 
-        {/* 🔹 Bilinmeyen rota -> login'e yönlendir */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* 🔹 404 sayfası */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );

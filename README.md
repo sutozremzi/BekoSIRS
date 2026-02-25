@@ -53,6 +53,35 @@ Beko ürünleri için akıllı envanter yönetimi, ürün önerileri ve servis t
 
 ---
 
+## 🏗️ Mimari
+
+```mermaid
+graph TB
+    subgraph Clients
+        MOB["📱 Mobil App<br/>React Native / Expo"]
+        WEB["💻 Web Panel<br/>React + TypeScript"]
+    end
+
+    subgraph Backend
+        API["🖥️ Django REST API<br/>JWT Auth + DRF"]
+        ML["🤖 ML Engine<br/>scikit-learn"]
+        CELERY["⏰ Background Tasks"]
+    end
+
+    subgraph Data
+        DB["🗄️ Database<br/>SQLite / PostgreSQL"]
+        MEDIA["📁 Media Storage"]
+    end
+
+    MOB -->|HTTPS / REST| API
+    WEB -->|HTTPS / REST| API
+    API --> DB
+    API --> MEDIA
+    API --> ML
+    API --> CELERY
+    ML --> DB
+```
+
 ## 🛠️ Teknoloji Stack
 
 | Katman | Teknoloji |
