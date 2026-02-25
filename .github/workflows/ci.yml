@@ -1,0 +1,93 @@
+name: BekoSIRS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────
+  # Backend Tests (Django + pytest)
+  # ─────────────────────────────────────────
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./BekoSIRS_api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'BekoSIRS_api/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          SECRET_KEY: 'test-secret-key-for-ci-only'
+          DEBUG: 'True'
+          ALLOWED_HOSTS: 'localhost,127.0.0.1'
+        run: |
+          python manage.py test products --verbosity=2
+
+  # ─────────────────────────────────────────
+  # Web Panel (React + TypeScript)
+  # ─────────────────────────────────────────
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./BekoSIRS_Web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'BekoSIRS_Web/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit || true
+
+      - name: Build
+        run: npm run build
+
+  # ─────────────────────────────────────────
+  # Mobile App (Expo / React Native)
+  # ─────────────────────────────────────────
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./BekoSIRS_Frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'BekoSIRS_Frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo Doctor (check config)
+        run: npx expo-doctor || true

@@ -106,195 +106,12 @@ export const testBackendConnection = async () => {
 };
 
 // ----------------------------------------
-// 🔹 PRODUCT API
+// API modülleri ayrı dosyalara taşındı:
+// - productService.ts
+// - customerService.ts
+// - serviceModule.ts
+// Tüm export'lar index.ts üzerinden erişilebilir.
 // ----------------------------------------
-export const productAPI = {
-  // Get popular products (most assigned)
-  getPopularProducts: () => api.get('api/v1/products/popular/'),
-};
-
-// ----------------------------------------
-// 🔹 WISHLIST API
-// ----------------------------------------
-export const wishlistAPI = {
-  // İstek listesini getir
-  getWishlist: () => api.get('api/v1/wishlist/'),
-
-  // Ürün ekle
-  addItem: (productId: number, note?: string) =>
-    api.post('api/v1/wishlist/add-item/', {
-      product_id: productId,
-      note: note || '',
-      notify_on_price_drop: true,
-      notify_on_restock: true,
-    }),
-
-  // Ürün çıkar
-  removeItem: (productId: number) =>
-    api.delete(`api/v1/wishlist/remove-item/${productId}/`),
-
-  // Ürün listede mi kontrol et
-  checkItem: (productId: number) =>
-    api.get(`api/v1/wishlist/check/${productId}/`),
-};
-
-// ----------------------------------------
-// 🔹 VIEW HISTORY API
-// ----------------------------------------
-export const viewHistoryAPI = {
-  // Görüntüleme geçmişini getir
-  getHistory: () => api.get('api/v1/view-history/'),
-
-  // Görüntüleme kaydet
-  recordView: (productId: number) =>
-    api.post('api/v1/view-history/record/', { product_id: productId }),
-
-  // Geçmişi temizle
-  clearHistory: () => api.delete('api/v1/view-history/clear/'),
-};
-
-// ----------------------------------------
-// 🔹 REVIEW API
-// ----------------------------------------
-export const reviewAPI = {
-  // Kullanıcının yorumlarını getir
-  getMyReviews: () => api.get('api/v1/reviews/'),
-
-  // Ürüne ait yorumları getir
-  getProductReviews: (productId: number) =>
-    api.get(`api/v1/reviews/product/${productId}/`),
-
-  // Yorum ekle
-  addReview: (productId: number, rating: number, comment?: string) =>
-    api.post('api/v1/reviews/', {
-      product: productId,
-      rating,
-      comment: comment || '',
-    }),
-
-  // Yorumu güncelle
-  updateReview: (reviewId: number, rating: number, comment?: string) =>
-    api.patch(`api/v1/reviews/${reviewId}/`, { rating, comment }),
-
-  // Yorumu sil
-  deleteReview: (reviewId: number) => api.delete(`api/v1/reviews/${reviewId}/`),
-};
-
-// ----------------------------------------
-// 🔹 SERVICE REQUEST API
-// ----------------------------------------
-export const serviceRequestAPI = {
-  // Servis taleplerimi getir
-  getMyRequests: () => api.get('api/v1/service-requests/'),
-
-  // Yeni talep oluştur
-  createRequest: (
-    productOwnershipId: number,
-    requestType: 'repair' | 'maintenance' | 'warranty' | 'complaint' | 'other',
-    description: string
-  ) =>
-    api.post('api/v1/service-requests/', {
-      product_ownership: productOwnershipId,
-      request_type: requestType,
-      description,
-    }),
-
-  // Talep detayını getir
-  getRequestDetail: (requestId: number) =>
-    api.get(`api/v1/service-requests/${requestId}/`),
-
-  // Kuyruk durumunu getir
-  getQueueStatus: () => api.get('api/v1/service-requests/queue-status/'),
-};
-
-// ----------------------------------------
-// 🔹 NOTIFICATION API
-// ----------------------------------------
-export const notificationAPI = {
-  // Bildirimleri getir
-  getNotifications: () => api.get('api/v1/notifications/'),
-
-  // Okunmamış bildirim sayısı
-  getUnreadCount: () => api.get('api/v1/notifications/unread-count/'),
-
-  // Bildirimi okundu işaretle
-  markAsRead: (notificationId: number) =>
-    api.post(`api/v1/notifications/${notificationId}/read/`),
-
-  // Tümünü okundu işaretle
-  markAllAsRead: () => api.post('api/v1/notifications/read-all/'),
-
-  // Bildirim ayarlarını getir
-  getSettings: () => api.get('api/v1/notification-settings/'),
-
-  // Bildirim ayarlarını güncelle
-  updateSettings: (settings: {
-    notify_service_updates?: boolean;
-    notify_price_drops?: boolean;
-    notify_restock?: boolean;
-    notify_recommendations?: boolean;
-    notify_warranty_expiry?: boolean;
-    notify_general?: boolean;
-  }) => api.patch('api/v1/notification-settings/', settings),
-};
-
-// ----------------------------------------
-// 🔹 RECOMMENDATION API
-// ----------------------------------------
-export const recommendationAPI = {
-  // Önerileri getir
-  getRecommendations: () => api.get('api/v1/recommendations/'),
-
-  // Yeni öneriler oluştur
-  generateRecommendations: () => api.post('api/v1/recommendations/generate/'),
-
-  // Öneri tıklaması kaydet
-  recordClick: (recommendationId: number) =>
-    api.post(`api/v1/recommendations/${recommendationId}/click/`),
-};
-
-// ----------------------------------------
-// 🔹 PRODUCT OWNERSHIP API
-// ----------------------------------------
-export const productOwnershipAPI = {
-  // Sahip olduğum ürünleri getir (basit liste - my-products sayfası için)
-  getMyProducts: () => api.get('api/v1/my-products/'),
-
-  // Sahip olduğum ürünleri garanti bilgileriyle getir (servis talepleri için)
-  getMyOwnerships: () => api.get('api/v1/product-ownerships/my-ownerships/'),
-
-  // Ürün sahipliği detayı
-  getOwnershipDetail: (ownershipId: number) =>
-    api.get(`api/v1/product-ownerships/${ownershipId}/`),
-};
-
-// ----------------------------------------
-// 🔹 ASSIGNMENT / DELIVERY API
-// ----------------------------------------
-export const assignmentAPI = {
-  // Atamalarımı (Sipariş/Teslimat) getir
-  getMyAssignments: () => api.get('api/v1/assignments/'),
-};
-
-// ----------------------------------------
-// 🔹 LOCATION API (KKTC)
-// ----------------------------------------
-export const locationAPI = {
-  getDistricts: () => api.get('api/v1/locations/districts/'),
-  getAreas: (districtId: number) => api.get(`api/v1/locations/areas/?district=${districtId}`),
-};
-
-// ----------------------------------------
-// 🔹 INSTALLMENT / PAYMENT API
-// ----------------------------------------
-export const installmentAPI = {
-  // Get customer's own installment plans
-  getMyPlans: () => api.get('api/v1/installment-plans/my-plans/'),
-  // Get installments for a specific plan
-  getPlanInstallments: (planId: number) => api.get(`api/v1/installment-plans/${planId}/installments/`),
-  // Customer confirms payment
-  confirmPayment: (installmentId: number) => api.post(`api/v1/installments/${installmentId}/customer-confirm/`),
-};
 
 // ----------------------------------------
 // 🔹 IMAGE URL HELPER
@@ -306,12 +123,10 @@ export const installmentAPI = {
 export const getImageUrl = (imagePath: string | null | undefined): string | null => {
   if (!imagePath) return null;
 
-  // 1. If it's already a full URL, return it as is
   if (imagePath.startsWith('http') || imagePath.startsWith('https')) {
     return imagePath;
   }
 
-  // 2. If it's a relative path (e.g., "/media/products/img.jpg"), prepend backend URL
   const baseUrl = (api.defaults.baseURL || '').replace(/\/$/, '');
   const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
 
