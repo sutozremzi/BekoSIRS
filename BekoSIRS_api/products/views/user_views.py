@@ -178,43 +178,47 @@ def profile_view(request):
 @permission_classes([IsAuthenticated])
 def notification_settings_view(request):
     """GET/PUT/PATCH /api/notification-settings/ - Notification preferences."""
+    from products.models import UserNotificationPreference
+    
     user = request.user
+    prefs, _ = UserNotificationPreference.objects.get_or_create(user=user)
 
     if request.method == "GET":
         return Response({
-            "notify_service_updates": user.notify_service_updates,
-            "notify_price_drops": user.notify_price_drops,
-            "notify_restock": user.notify_restock,
-            "notify_recommendations": user.notify_recommendations,
-            "notify_warranty_expiry": user.notify_warranty_expiry,
-            "notify_general": user.notify_general,
+            "notify_service_updates": prefs.notify_service_updates,
+            "notify_price_drops": prefs.notify_price_drops,
+            "notify_restock": prefs.notify_restock,
+            "notify_recommendations": prefs.notify_recommendations,
+            "notify_warranty_expiry": prefs.notify_warranty_expiry,
+            "notify_general": prefs.notify_general,
         })
 
     data = request.data
     if "notify_service_updates" in data:
-        user.notify_service_updates = data["notify_service_updates"]
+        prefs.notify_service_updates = data["notify_service_updates"]
     if "notify_price_drops" in data:
-        user.notify_price_drops = data["notify_price_drops"]
+        prefs.notify_price_drops = data["notify_price_drops"]
     if "notify_restock" in data:
-        user.notify_restock = data["notify_restock"]
+        prefs.notify_restock = data["notify_restock"]
     if "notify_recommendations" in data:
-        user.notify_recommendations = data["notify_recommendations"]
+        prefs.notify_recommendations = data["notify_recommendations"]
     if "notify_warranty_expiry" in data:
-        user.notify_warranty_expiry = data["notify_warranty_expiry"]
+        prefs.notify_warranty_expiry = data["notify_warranty_expiry"]
     if "notify_general" in data:
-        user.notify_general = data["notify_general"]
+        prefs.notify_general = data["notify_general"]
 
-    user.save()
+    prefs.save()
 
     return Response({
         "success": True,
         "message": "Bildirim ayarları güncellendi",
         "settings": {
-            "notify_service_updates": user.notify_service_updates,
-            "notify_price_drops": user.notify_price_drops,
-            "notify_restock": user.notify_restock,
-            "notify_recommendations": user.notify_recommendations,
-            "notify_warranty_expiry": user.notify_warranty_expiry,
-            "notify_general": user.notify_general,
+            "notify_service_updates": prefs.notify_service_updates,
+            "notify_price_drops": prefs.notify_price_drops,
+            "notify_restock": prefs.notify_restock,
+            "notify_recommendations": prefs.notify_recommendations,
+            "notify_warranty_expiry": prefs.notify_warranty_expiry,
+            "notify_general": prefs.notify_general,
         }
     })
+

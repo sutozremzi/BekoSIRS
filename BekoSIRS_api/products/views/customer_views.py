@@ -274,11 +274,27 @@ class NotificationViewSet(viewsets.ModelViewSet):
         if not title or not message:
             return Response({'error': 'Başlık ve mesaj zorunludur'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Determine target users
+        # Determine target users via notification preferences
+        from products.models import UserNotificationPreference
         if target == 'customers':
-            target_users = CustomUser.objects.filter(role='customer', notify_general=True)
+            target_users = CustomUser.objects.filter(
+                role='customer',
+                notification_preferences__notify_general=True
+            )
         else:  # all
-            target_users = CustomUser.objects.filter(notify_general=True)
+            target_users = CustomUser.objects.filter(
+                notification_preferences__notify_general=True
+            )
+        # Also include users who don't have preferences yet (defaults are True)
+        if target == 'customers':
+            users_without_prefs = CustomUser.objects.filter(
+                role='customer'
+            ).exclude(notification_preferences__isnull=False)
+        else:
+            users_without_prefs = CustomUser.objects.exclude(
+                notification_preferences__isnull=False
+            )
+        target_users = target_users | users_without_prefs
         
         # Create notifications in bulk
         notifications = [

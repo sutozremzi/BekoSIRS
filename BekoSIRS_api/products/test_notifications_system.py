@@ -43,7 +43,7 @@ class TestNotificationSystem(APITestCase):
         data = {
             'title': 'Kampanya!',
             'message': 'Büyük indirim var.',
-            'target_audience': 'all'
+            'target': 'all'
         }
         
         response = self.client.post(self.send_bulk_url, data)

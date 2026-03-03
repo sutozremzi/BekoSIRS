@@ -19,6 +19,11 @@ drf-spectacular==0.29.0
 django-cors-headers==4.3.1
 
 # ==============================================================================
+# FILTERING
+# ==============================================================================
+django-filter==23.5
+
+# ==============================================================================
 # ENVIRONMENT & CONFIGURATION
 # ==============================================================================
 python-dotenv==1.0.0
@@ -27,7 +32,9 @@ python-dotenv==1.0.0
 # DATABASE DRIVERS
 # ==============================================================================
 # For production with Microsoft SQL Server
-mssql-django==1.3
+# Requires pyodbc + ODBC driver installed on the system
+# Uncomment for production MSSQL usage:
+# mssql-django==1.3
 # pyodbc is required for mssql-django (install system ODBC driver separately)
 # pyodbc==5.0.1
 

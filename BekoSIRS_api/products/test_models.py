@@ -65,15 +65,18 @@ class CustomUserModelTest(TestCase):
 
     def test_notification_preferences_default(self):
         """User should have notification preferences enabled by default."""
+        from products.models import UserNotificationPreference
         user = CustomUser.objects.create_user(
             username='notifyuser',
             email='notify@test.com',
             password='pass'
         )
-        self.assertTrue(user.notify_service_updates)
-        self.assertTrue(user.notify_price_drops)
-        self.assertTrue(user.notify_restock)
-        self.assertTrue(user.notify_recommendations)
+        # Preferences are stored in a separate model
+        prefs, _ = UserNotificationPreference.objects.get_or_create(user=user)
+        self.assertTrue(prefs.notify_service_updates)
+        self.assertTrue(prefs.notify_price_drops)
+        self.assertTrue(prefs.notify_restock)
+        self.assertTrue(prefs.notify_recommendations)
 
     def test_unique_email_constraint(self):
         """Email should be unique across users."""
