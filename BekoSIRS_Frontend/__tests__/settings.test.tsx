@@ -154,3 +154,4 @@ describe('SettingsScreen Tests', () => {
         // A thorough setup would test if replace was called with '/login'
     });
 });
+

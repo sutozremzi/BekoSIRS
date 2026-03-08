@@ -79,3 +79,4 @@ describe('RegisterScreen UI Tests', () => {
         });
     });
 });
+

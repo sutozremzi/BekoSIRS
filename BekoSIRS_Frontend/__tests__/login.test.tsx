@@ -61,3 +61,4 @@ describe('LoginScreen UI Tests', () => {
         expect(passwordInput.props.value).toBe('password123');
     });
 });
+
