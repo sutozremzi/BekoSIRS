@@ -8,15 +8,6 @@ from .models import (
 )
 
 
-@admin.register(CustomUser)
-class CustomUserAdmin(BaseUserAdmin):
-    list_display = ('username', 'email', 'role', 'is_active', 'is_staff')
-    list_filter = ('role', 'is_staff')
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ('Ek Bilgiler', {'fields': ('role', 'phone_number', 'biometric_enabled')}),
-    )
-    inlines = []
-
 class UserNotificationPreferenceInline(admin.StackedInline):
     model = UserNotificationPreference
     can_delete = False
@@ -27,7 +18,14 @@ class CustomerAddressInline(admin.StackedInline):
     can_delete = False
     verbose_name_plural = 'Adres Bilgileri'
 
-CustomUserAdmin.inlines = [CustomerAddressInline, UserNotificationPreferenceInline]
+@admin.register(CustomUser)
+class CustomUserAdmin(BaseUserAdmin):
+    list_display = ('username', 'email', 'role', 'is_active', 'is_staff')
+    list_filter = ('role', 'is_staff')
+    fieldsets = BaseUserAdmin.fieldsets + (
+        ('Ek Bilgiler', {'fields': ('role', 'phone_number', 'biometric_enabled')}),
+    )
+    inlines = [CustomerAddressInline, UserNotificationPreferenceInline]
 
 
 @admin.register(Category)

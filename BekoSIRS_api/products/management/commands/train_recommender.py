@@ -1,6 +1,6 @@
 # products/management/commands/train_recommender.py
 from django.core.management.base import BaseCommand
-from products.ml_recommender import HybridRecommender
+from products.ml_recommender import get_recommender
 
 
 class Command(BaseCommand):
@@ -10,25 +10,28 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Starting ML recommender training...'))
         
         try:
-            recommender = HybridRecommender()
+            recommender = get_recommender()
+            success = recommender.train(verbose=True)
             
-            # Display model info
-            self.stdout.write(self.style.SUCCESS(f'✓ Model trained successfully'))
-            
-            if recommender.products_df is not None:
-                self.stdout.write(f'  - Total products: {len(recommender.products_df)}')
-            
-            if recommender.similarity_matrix is not None:
-                self.stdout.write(f'  - Content-based similarity matrix: ✓')
+            if success:
+                self.stdout.write(self.style.SUCCESS(f'\n✓ Model trained successfully'))
+                metrics = recommender.get_metrics()
+                
+                content = metrics.get('content', {})
+                if content.get('is_trained'):
+                    self.stdout.write(f"  - Content model trained with {content.get('n_products', 0)} products")
+                else:
+                    self.stdout.write(self.style.WARNING("  - Content model skipped or failed"))
+                    
+                ncf = metrics.get('ncf')
+                if ncf:
+                    self.stdout.write(f"  - NCF Hit Rate @10: {ncf.get('hit_rate_at_10')}")
+                    self.stdout.write(f"  - NCF Train R2: {ncf.get('train_r2')}")
+                else:
+                    self.stdout.write(self.style.WARNING("  - NCF model skipped (insufficient interaction data)"))
+                
             else:
-                self.stdout.write(self.style.WARNING(f'  - Content-based similarity matrix: ✗'))
-            
-            if recommender.svd_model is not None:
-                self.stdout.write(f'  - Collaborative filtering model: ✓')
-            else:
-                self.stdout.write(self.style.WARNING(f'  - Collaborative filtering model: ✗ (insufficient data)'))
-            
-            self.stdout.write(self.style.SUCCESS('\nTraining completed!'))
+                self.stdout.write(self.style.WARNING('\n⚠️ Training did not complete successfully (possibly not enough data).'))
             
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Training failed: {str(e)}'))

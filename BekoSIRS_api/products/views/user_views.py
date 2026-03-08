@@ -52,7 +52,7 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     def set_role(self, request, pk=None):
         user = self.get_object()
         role = request.data.get("role")
-        if role not in ["admin", "seller", "customer"]:
+        if role not in ["admin", "seller", "customer", "delivery"]:
             return Response({"error": "Geçersiz rol"}, status=status.HTTP_400_BAD_REQUEST)
         user.role = role
         user.save()

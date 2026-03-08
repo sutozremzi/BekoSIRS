@@ -390,22 +390,47 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         
         # Generate if forced refresh OR if no recommendations exist (Cold Start fix)
         if refresh or not has_recommendations:
-            self._generate_recommendations(request.user)
+            self._generate_recommendations(request.user, ignore_cache=refresh)
 
         recommendations = Recommendation.objects.filter(
             customer=request.user
         ).select_related('product').order_by('-score')[:10]
 
-        return Response(RecommendationSerializer(recommendations, many=True).data)
+        # Fetch ml metrics
+        from products.ml_recommender import get_recommender
+        recommender = get_recommender()
+        metrics = recommender.get_metrics()
+        
+        # Format metrics to match what frontend expects
+        ncf_metrics = metrics.get('ncf', {})
+        content_metrics = metrics.get('content', {})
+        ml_metrics = {
+            'train_r2': ncf_metrics.get('train_r2') if ncf_metrics else None,
+            'test_r2': ncf_metrics.get('test_r2') if ncf_metrics else None,
+            'hit_rate_at_10': ncf_metrics.get('hit_rate_at_10') if ncf_metrics else None,
+            'n_interactions': ncf_metrics.get('n_interactions') if ncf_metrics else None,
+            'n_users': ncf_metrics.get('n_users') if ncf_metrics else None,
+            'n_products': ncf_metrics.get('n_products') if ncf_metrics else None,
+            'n_epochs': ncf_metrics.get('n_epochs') if ncf_metrics else None,
+            'final_loss': ncf_metrics.get('final_loss') if ncf_metrics else None,
+            'trained_at': ncf_metrics.get('trained_at') if ncf_metrics else None,
+            'content_products': content_metrics.get('n_products') if content_metrics else 0,
+            'weights': metrics.get('weights', {})
+        }
 
-    def _generate_recommendations(self, user):
+        return Response({
+            'recommendations': RecommendationSerializer(recommendations, many=True).data,
+            'ml_metrics': ml_metrics
+        })
+
+    def _generate_recommendations(self, user, ignore_cache=False):
         """Generate new recommendations using ML recommender."""
         try:
             from products.ml_recommender import get_recommender
             from products.models import Product  # Fallback import
             
             recommender = get_recommender()
-            recommendations = recommender.recommend(user, top_n=10)
+            recommendations = recommender.recommend(user, top_n=10, ignore_cache=ignore_cache)
             
             # FALLBACK: If ML returns empty (Cold User), show popular/random products
             if not recommendations:
@@ -435,7 +460,7 @@ class RecommendationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='generate')
     def generate(self, request):
         """POST /api/recommendations/generate/ - Force generate new recommendations."""
-        self._generate_recommendations(request.user)
+        self._generate_recommendations(request.user, ignore_cache=True)
         return Response({'success': 'Öneriler oluşturuldu'})
 
     @action(detail=True, methods=['post'], url_path='click')

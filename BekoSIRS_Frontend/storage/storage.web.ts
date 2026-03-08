@@ -42,7 +42,7 @@ export async function deleteToken(): Promise<void> {
     if (__DEV__) console.log('✅ Token deleted successfully (web)');
   } catch (error) {
     if (__DEV__) console.error('❌ Error deleting token (web):', error);
-    throw error;
+    // Don't throw to prevent blocking logout
   }
 }
 
@@ -79,7 +79,7 @@ export async function deleteRefreshToken(): Promise<void> {
     if (__DEV__) console.log('✅ Refresh token deleted successfully (web)');
   } catch (error) {
     if (__DEV__) console.error('❌ Error deleting refresh token (web):', error);
-    throw error;
+    // Don't throw to prevent blocking logout
   }
 }
 
@@ -107,7 +107,7 @@ export async function clearAllTokens(): Promise<void> {
     if (__DEV__) console.log('✅ All tokens cleared successfully (web)');
   } catch (error) {
     if (__DEV__) console.error('❌ Error clearing tokens (web):', error);
-    throw error;
+    // Don't throw to prevent blocking logout
   }
 }
 

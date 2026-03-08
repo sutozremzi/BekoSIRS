@@ -11,12 +11,26 @@ export default function RootLayout() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const checkAuth = async () => {
       const ok = await isAuthenticated();
-      setHasToken(ok);
-      setIsReady(true);
+      if (isMounted) {
+        setHasToken(ok);
+        setIsReady(true);
+      }
     };
+    
     checkAuth();
+    
+    const { DeviceEventEmitter } = require('react-native');
+    const subscription = DeviceEventEmitter.addListener('authStateChanged', () => {
+      checkAuth();
+    });
+
+    return () => { 
+      isMounted = false; 
+      subscription.remove();
+    };
   }, [segments]);
 
   useEffect(() => {

@@ -137,11 +137,22 @@ export const useAuth = () => {
   // 🔹 ÇIKIŞ YAPMA (LOGOUT)
   const logout = async () => {
     try {
+      const { clearAllTokens } = require('../storage/storage.native');
       await clearAllTokens();
+    } catch (error) {}
+    
+    try {
       await AsyncStorage.removeItem('userRole');
+      await AsyncStorage.removeItem('user_role');
       setAuthToken(null); // State'i güncelle
       console.log('🚪 Çıkış yapıldı.');
-      router.replace('/login' as any);
+      
+      const { DeviceEventEmitter } = require('react-native');
+      DeviceEventEmitter.emit('authStateChanged');
+      
+      setTimeout(() => {
+        router.replace('/login' as any);
+      }, 100);
     } catch (error) {
       console.error('Logout error:', error);
     }

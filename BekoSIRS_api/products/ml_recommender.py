@@ -1025,7 +1025,9 @@ class HybridRecommender:
         MAX_PER_CATEGORY = 4
         category_counts = {}
         diverse_items = []
+        added_pids = set()
 
+        # Pass 1: Strict filtering based on user's known categories
         for pid, score in sorted_items:
             if len(diverse_items) >= top_n:
                 break
@@ -1045,8 +1047,35 @@ class HybridRecommender:
                         'reason': reasons.get(pid, 'Sizin için seçildi'),
                     })
                     category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
+                    added_pids.add(pid)
             except Product.DoesNotExist:
                 continue
+
+        # Pass 2: If we still don't have enough items, relax the category constraint
+        if len(diverse_items) < top_n:
+            for pid, score in sorted_items:
+                if len(diverse_items) >= top_n:
+                    break
+                if pid in added_pids:
+                    continue
+                    
+                try:
+                    product = Product.objects.select_related('category').get(id=pid)
+                    cat_name = product.category.name if product.category else 'Other'
+
+                    # We don't check user_categories here, but still respect MAX_PER_CATEGORY 
+                    # (or we could even relax that if we want, but usually it's good to keep diversity)
+                    if category_counts.get(cat_name, 0) < MAX_PER_CATEGORY:
+                        diverse_items.append({
+                            'product': product,
+                            'product_id': pid,
+                            'score': round(score, 4),
+                            'reason': reasons.get(pid, 'Sizin için seçildi (Yeni Kategori)'),
+                        })
+                        category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
+                        added_pids.add(pid)
+                except Product.DoesNotExist:
+                    continue
 
         return diverse_items
 

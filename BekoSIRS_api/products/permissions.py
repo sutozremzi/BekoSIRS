@@ -18,6 +18,7 @@ class IsAdminOrReadOnly(BasePermission):
 class IsAdmin(BasePermission):
     """Allow access only to admin users."""
     def has_permission(self, request, view):
+        
         return request.user.is_authenticated and request.user.role == 'admin'
 
 
@@ -49,4 +50,7 @@ class IsOwnerOrAdmin(BasePermission):
 class IsDeliveryPerson(BasePermission):
     """Allow access only to delivery personnel."""
     def has_permission(self, request, view):
+        
+        
+
         return request.user.is_authenticated and request.user.role == 'delivery'
