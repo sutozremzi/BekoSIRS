@@ -13,8 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import api from '../../services/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { deleteToken } from '../../storage/storage.native';
+
+import { useAuth } from '../../hooks/useAuth';
+
 
 interface UserProfile {
     id: number;

@@ -96,8 +96,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthToken(null);
     setUserRole(null);
     await deleteToken();
+    try {
+      const { clearAllTokens } = require('../storage/storage.native');
+      await clearAllTokens();
+    } catch(e) {}
     await AsyncStorage.removeItem('userRole');
-    router.replace('/login');
+    await AsyncStorage.removeItem('user_role'); // Clear both variations just in case
+    
+    // Notify layout to re-check auth
+    const { DeviceEventEmitter } = require('react-native');
+    DeviceEventEmitter.emit('authStateChanged');
+    
+    setTimeout(() => {
+        router.replace('/login');
+    }, 100);
   };
 
   return (

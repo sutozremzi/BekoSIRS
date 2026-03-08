@@ -51,7 +51,8 @@ export const notificationAPI = {
 // 🔹 RECOMMENDATION API
 // ─────────────────────────────────────────
 export const recommendationAPI = {
-    getRecommendations: () => api.get('api/v1/recommendations/'),
+    getRecommendations: (refresh: boolean = false) => 
+        api.get(`api/v1/recommendations/${refresh ? '?refresh=true' : ''}`),
     generateRecommendations: () => api.post('api/v1/recommendations/generate/'),
     recordClick: (recommendationId: number) =>
         api.post(`api/v1/recommendations/${recommendationId}/click/`),
