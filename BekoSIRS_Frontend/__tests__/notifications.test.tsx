@@ -124,3 +124,4 @@ describe('NotificationsScreen Tests', () => {
         });
     });
 });
+

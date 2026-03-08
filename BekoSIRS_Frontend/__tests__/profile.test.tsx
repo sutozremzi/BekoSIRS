@@ -215,3 +215,4 @@ describe('ProfileScreen Tests', () => {
         expect(mockLogout).toHaveBeenCalled();
     });
 });
+
