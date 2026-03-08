@@ -1,3 +1,9 @@
+/**
+ * @file service-requests.test.tsx
+ * @description Servis Talepleri ekranı için birim testleri.
+ * Servis taleplerinin listelenmesi, sıra bilgisi gösterimi,
+ * yeni talep modalı açma ve boş durum görünümünü doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ServiceRequestsScreen from '../app/(drawer)/service-requests';

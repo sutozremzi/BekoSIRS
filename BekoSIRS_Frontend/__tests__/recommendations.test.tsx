@@ -1,3 +1,9 @@
+/**
+ * @file recommendations.test.tsx
+ * @description Yapay Zeka Önerileri ekranı için birim testleri.
+ * Görüntüleme geçmişine dayalı önerilerin listelenmesi, istek listesine
+ * ekleme ve ürün detay sayfasına yönlendirme işlemlerini doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import RecommendationsScreen from '../app/(drawer)/recommendations';

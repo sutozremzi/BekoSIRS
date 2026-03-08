@@ -1,3 +1,9 @@
+/**
+ * @file login.test.tsx
+ * @description Giriş ekranı için birim testleri.
+ * Kullanıcı adı/şifre girişi, Face ID ile giriş butonu
+ * ve form bileşenlerinin doğru render edildiğini doğrular.
+ */
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import LoginScreen from '../app/login';

@@ -1,3 +1,10 @@
+/**
+ * @file profile.test.tsx
+ * @description Kullanıcı Profili ekranı için birim testleri.
+ * Profil bilgilerinin görüntülenmesi, düzenleme modu, şifre değiştirme
+ * doğrulama, çıkış (logout) onayı ve oturum yoksa giriş sayfasına
+ * yönlendirmeyi doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ProfileScreen from '../app/(drawer)/(tabs)/profile';

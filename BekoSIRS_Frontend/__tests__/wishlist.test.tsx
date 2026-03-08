@@ -1,3 +1,9 @@
+/**
+ * @file wishlist.test.tsx
+ * @description İstek Listesi ekranı için birim testleri.
+ * İstek listesi öğelerinin listelenmesi, stok durumu gösterimi,
+ * ürün kaldırma onayı ve boş liste durumunu doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import WishlistScreen from '../app/(drawer)/(tabs)/wishlist';

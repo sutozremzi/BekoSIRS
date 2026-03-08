@@ -120,7 +120,7 @@ export const useBiometric = () => {
             }
 
             // Call backend to enable biometric
-            await api.post('/api/biometric/enable/', {
+            await api.post('/api/v1/biometric/enable/', {
                 device_id: deviceId,
                 refresh_token: refreshToken,
             });
@@ -155,7 +155,7 @@ export const useBiometric = () => {
         try {
             // Call backend to disable
             try {
-                await api.post('/api/biometric/disable/');
+                await api.post('/api/v1/biometric/disable/');
             } catch (e) {
                 // Continue even if backend call fails (user might be logged out)
             }
@@ -201,19 +201,19 @@ export const useBiometric = () => {
             // Authenticate with device biometric
             const authResult = await LocalAuthentication.authenticateAsync({
                 promptMessage: `${getBiometricDisplayName()} ile giriş yapın`,
-                cancelLabel: 'Şifre ile gir',
-                disableDeviceFallback: false,
+                cancelLabel: 'İptal',
+                disableDeviceFallback: false, // Passcode fallback'i kapatıp Face ID'yi zorluyoruz
             });
 
             if (!authResult.success) {
                 return {
                     success: false,
-                    error: authResult.error === 'user_cancel' ? 'cancelled' : 'Kimlik doğrulama başarısız.',
+                    error: authResult.error === 'user_cancel' ? 'cancelled' : `Cihaz Hatası: ${authResult.error || 'Kimlik doğrulama başarısız.'}`,
                 };
             }
 
             // Verify device with backend
-            const verifyResponse = await api.post('/api/biometric/verify-device/', {
+            const verifyResponse = await api.post('/api/v1/biometric/verify-device/', {
                 device_id: deviceId,
                 user_id: parseInt(userId),
             });
@@ -253,9 +253,12 @@ export const useBiometric = () => {
                 };
             }
 
+            const errorMsg = error.response?.data?.error || error.response?.data?.detail;
+            console.error('Biometric authentication failed:', errorMsg || error.message);
+
             return {
                 success: false,
-                error: error.response?.data?.error || 'Giriş başarısız.',
+                error: errorMsg || (error.request ? 'Sunucuya bağlanılamadı.' : 'Giriş işlemi başarısız oldu.'),
             };
         } finally {
             setLoading(false);

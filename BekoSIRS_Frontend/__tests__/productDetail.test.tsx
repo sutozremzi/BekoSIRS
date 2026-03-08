@@ -1,3 +1,10 @@
+/**
+ * @file productDetail.test.tsx
+ * @description Ürün Detay ekranı için birim testleri.
+ * API'den ürün bilgisi çekme, istek listesine ekleme/çıkarma,
+ * yalnızca ürün sahibine gösterilen servis talebi butonu
+ * ve değerlendirme (review) gönderme işlemlerini doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert, ActivityIndicator } from 'react-native';

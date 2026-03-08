@@ -1,3 +1,9 @@
+/**
+ * @file dashboard.test.tsx
+ * @description Ana ekran (Dashboard) için birim testleri.
+ * Ürün listesi, kategori filtreleme, sıralama, arama ve popüler ürünler
+ * bölümlerinin doğru çalıştığını doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import HomeScreen from '../app/(drawer)/(tabs)/index';

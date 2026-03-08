@@ -1,3 +1,9 @@
+/**
+ * @file products.test.tsx
+ * @description Ürün Kataloğu ekranı için birim testleri.
+ * API'den ürün listesi çekme, arama kutusuyla filtreleme,
+ * sonuç bulunamadı durumu ve API hata yönetimini doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';

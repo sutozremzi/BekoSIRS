@@ -15,6 +15,7 @@ import {
 import api from '../../services';
 import { useBiometric } from '../../hooks/useBiometric';
 import { getToken, getRefreshToken } from '../../storage/storage.native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
   const [activeTab, setActiveTab] = useState<'password' | 'email' | 'security'>('security');
@@ -61,18 +62,18 @@ export default function SettingsScreen() {
     if (value) {
       // Enable biometric
       if (!userId) {
-        Alert.alert('Hata', 'Kullanıcı bilgisi yüklenemedi. Lütfen sayfayı yenileyin.');
+        Alert.alert('Hata', 'Kullanıcı bilgisi yüklenemedi.');
         return;
       }
 
-      // Get token 
+      // Get refresh token from secure storage
       const token = await getToken();
       if (!token) {
         Alert.alert('Hata', 'Oturum bilgisi bulunamadı.');
         return;
       }
 
-      // For enabling, we need refresh token securely
+      // Get refresh token from secure storage
       const refreshToken = await getRefreshToken();
       if (!refreshToken) {
         Alert.alert(
@@ -242,6 +243,27 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               )}
+
+              {/* Logout Section moved here to avoid redundancy */}
+              <View style={[styles.sectionHeader, { marginTop: 30 }]}>
+                <Text style={styles.sectionTitle}>Oturum İşlemleri</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: '#DC2626' }]}
+                onPress={async () => {
+                  try {
+                    const { clearAllTokens } = require('../../storage/storage.native');
+                    const { router } = require('expo-router');
+                    await AsyncStorage.clear();
+                    await clearAllTokens();
+                    router.replace('/login');
+                  } catch (e) {
+                    console.error("Logout failed", e);
+                  }
+                }}
+              >
+                <Text style={styles.saveButtonText}>Çıkış Yap</Text>
+              </TouchableOpacity>
             </>
           )}
 
@@ -357,30 +379,6 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </>
           )}
-
-          {/* Logout Section */}
-          <View style={[styles.sectionHeader, { marginTop: 30 }]}>
-            <Text style={styles.sectionTitle}>Oturum İşlemleri</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.saveButton, { backgroundColor: '#DC2626' }]}
-            onPress={async () => {
-              try {
-                // Import is needed inside to avoid changing top-level imports and causing ESLint errors
-                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                const { router } = require('expo-router');
-                const { clearTokens } = require('../../storage/storage.native');
-
-                await AsyncStorage.clear();
-                await clearTokens();
-                router.replace('/login');
-              } catch (e) {
-                console.error("Logout failed", e);
-              }
-            }}
-          >
-            <Text style={styles.saveButtonText}>Çıkış Yap</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

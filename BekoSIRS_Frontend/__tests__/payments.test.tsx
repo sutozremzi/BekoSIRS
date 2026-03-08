@@ -1,3 +1,9 @@
+/**
+ * @file payments.test.tsx
+ * @description Ödemeler ekranı için birim testleri.
+ * Taksit planlarının listelenmesi, taksit detaylarının görüntülenmesi
+ * ve ödeme onaylama işlemlerinin doğru çalışmasını doğrular.
+ */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import PaymentsScreen from '../app/(drawer)/payments';
