@@ -252,6 +252,31 @@ class ServiceRequestViewSet(viewsets.ModelViewSet):
         )
         return Response({'success': 'Talep iptal edildi'})
 
+    @action(detail=True, methods=['post'], url_path='update-priority')
+    def update_priority(self, request, pk=None):
+        """POST /api/service-requests/{id}/update-priority/ - Update queue priority."""
+        if request.user.role not in ['admin', 'seller']:
+            return Response({'error': 'Yetkiniz yok'}, status=status.HTTP_403_FORBIDDEN)
+
+        service_request = self.get_object()
+        new_priority = request.data.get('priority')
+
+        if not new_priority or not str(new_priority).isdigit():
+            return Response({'error': 'Lütfen geçerli bir öncelik (1-10) değeri gönderin.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_priority = int(new_priority)
+        if new_priority < 1 or new_priority > 10:
+             return Response({'error': 'Öncelik değeri 1 ile 10 arasında olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            queue_entry = service_request.queue_entry
+            queue_entry.priority = new_priority
+            queue_entry.save()
+            return Response({'success': 'Servis önceliği güncellendi', 'new_priority': new_priority})
+        except ServiceQueue.DoesNotExist:
+            return Response({'error': 'Bu talep için aktif bir sıra bulunamadı.'}, status=status.HTTP_404_NOT_FOUND)
+
+
 
 class DashboardSummaryView(APIView):
     """Dashboard summary statistics for admin panel."""

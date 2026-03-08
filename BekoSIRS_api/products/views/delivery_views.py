@@ -254,6 +254,35 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
             qs = qs.filter(date=date)
         return qs
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        Rotayı siler ve içindeki teslimatları tekrar 'WAITING' (Bekliyor) durumuna getirir.
+        """
+        route = self.get_object()
+        
+        # Bu rotaya ait tüm teslimatları bul
+        # DeliveryRouteStop üzerinden Delivery'lere ulaş
+        delivery_ids = route.stops.values_list('delivery_id', flat=True)
+        
+        if delivery_ids:
+            # 1. Teslimatları sıfırla
+            Delivery.objects.filter(id__in=delivery_ids).update(
+                status='WAITING',
+                delivery_order=0,
+                distance_km=None,
+                eta_minutes=None,
+                route_batch_id=None
+            )
+            
+            # 2. ProductAssignment durumlarını da 'SCHEDULED' (Teslimat Planlandı) veya benzeri bir duruma geri çekmek 
+            # mantıklı olabilir çünkü atama yapıldı, rota silindi ama henüz yola çıkmadı. 
+            ProductAssignment.objects.filter(
+                delivery__id__in=delivery_ids
+            ).update(status='SCHEDULED')
+
+        # Son olarak rotayı sil (Cascade ile DeliveryRouteStop'lar otomatik silinecek)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=['post'])
     def optimize(self, request):
         """

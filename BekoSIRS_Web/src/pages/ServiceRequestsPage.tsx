@@ -37,6 +37,11 @@ interface ServiceRequest {
       name?: string;
     };
   };
+  queue_entry?: {
+    queue_number: number;
+    priority: number;
+    estimated_wait_time: number;
+  } | null;
 }
 
 // Simplified 3-status system
@@ -143,6 +148,28 @@ export default function ServiceRequestsPage() {
     }
   };
 
+  // Change priority
+  const handlePriorityChange = async (newPriority: string) => {
+    if (!selectedRequest) return;
+
+    setActionLoading(true);
+    try {
+      await api.post(`/service-requests/${selectedRequest.id}/update-priority/`, { priority: parseInt(newPriority) });
+      await fetchData(); // Refresh data
+
+      // Update locally
+      const updatedQueue = selectedRequest.queue_entry ?
+        { ...selectedRequest.queue_entry, priority: parseInt(newPriority) } : null;
+
+      const updated = { ...selectedRequest, queue_entry: updatedQueue };
+      setSelectedRequest(updated);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Öncelik güncellenemedi");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Save notes without changing status
   const handleSaveNotes = async () => {
     if (!selectedRequest) return;
@@ -197,6 +224,29 @@ export default function ServiceRequestsPage() {
     }
 
     return matchesSearch && matchesStatus && matchesTab;
+  }).sort((a, b) => {
+    // Only sort active requests by priority, leave history as is (newest first)
+    const aActive = ['pending', 'in_queue', 'in_progress'].includes(a.status);
+    const bActive = ['pending', 'in_queue', 'in_progress'].includes(b.status);
+
+    if (!aActive || !bActive) {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+
+    // Sort by Priority first (1 is highest priority)
+    const pA = a.queue_entry?.priority ?? 99;
+    const pB = b.queue_entry?.priority ?? 99;
+
+    if (pA !== pB) return pA - pB;
+
+    // If priorities are equal, sort by Queue Number (smaller means earlier in queue)
+    const qA = a.queue_entry?.queue_number ?? 999999;
+    const qB = b.queue_entry?.queue_number ?? 999999;
+
+    if (qA !== qB) return qA - qB;
+
+    // Fallback: older requests first
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
 
   const formatDate = (dateString: string) => {
@@ -516,6 +566,37 @@ export default function ServiceRequestsPage() {
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                 </div>
               </div>
+
+              {/* Priority Selector */}
+              {selectedRequest.queue_entry && (
+                <div>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Sıra Önceliği (Priority)</h3>
+                  <div className="relative">
+                    <select
+                      value={selectedRequest.queue_entry.priority.toString()}
+                      onChange={(e) => handlePriorityChange(e.target.value)}
+                      disabled={actionLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white font-medium disabled:opacity-50"
+                    >
+                      <option value="1">1 - En Acil (VIP)</option>
+                      <option value="2">2 - Çok Acil</option>
+                      <option value="3">3 - Acil</option>
+                      <option value="4">4 - Yüksek Öncelik</option>
+                      <option value="5">5 - Normal Öncelik</option>
+                      <option value="6">6 - Düşük Öncelik</option>
+                      <option value="7">7 - Çok Düşük Öncelik</option>
+                      <option value="8">8 - Bekleyebilir</option>
+                      <option value="9">9 - Arka Plan</option>
+                      <option value="10">10 - Son Sıra</option>
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Mevcut Sıra No: <span className="font-bold">{selectedRequest.queue_entry.queue_number}</span> |
+                    Tahmini Bekleme: <span className="font-bold">{selectedRequest.queue_entry.estimated_wait_time} dk</span>
+                  </p>
+                </div>
+              )}
 
               {/* Resolution Notes */}
               <div>

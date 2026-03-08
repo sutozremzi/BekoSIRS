@@ -83,6 +83,11 @@ export default function DeliveriesPage() {
     const [deleteId, setDeleteId] = useState<number | null>(null);
     const [deleting, setDeleting] = useState(false);
 
+    // Route Delete Modal
+    const [deleteRouteModalOpen, setDeleteRouteModalOpen] = useState(false);
+    const [deleteRouteId, setDeleteRouteId] = useState<number | null>(null);
+    const [deletingRoute, setDeletingRoute] = useState(false);
+
     useEffect(() => {
         fetchData();
         fetchStats();
@@ -174,6 +179,30 @@ export default function DeliveriesPage() {
         } finally {
             setDeleting(false);
             setDeleteId(null);
+        }
+    };
+
+    // --- Route Actions ---
+    const handleDeleteRoute = (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!id) return;
+        setDeleteRouteId(id);
+        setDeleteRouteModalOpen(true);
+    };
+
+    const confirmDeleteRoute = async () => {
+        if (!deleteRouteId) return;
+        try {
+            setDeletingRoute(true);
+            await api.delete(`/delivery-routes/${deleteRouteId}/`);
+            showToast("Rota silindi ve teslimatlar boşa çıkarıldı", "success");
+            fetchData(); fetchStats(); fetchRoutes();
+            setDeleteRouteModalOpen(false);
+        } catch (error: any) {
+            showToast(error.response?.data?.error || "Rota silme işlemi başarısız", "error");
+        } finally {
+            setDeletingRoute(false);
+            setDeleteRouteId(null);
         }
     };
 
@@ -493,7 +522,14 @@ export default function DeliveriesPage() {
                                                             <Lucide.UserPlus size={14} /> Teslimatçı Ata
                                                         </button>
                                                     )}
-                                                    <div className={`transition-transform ${expandedRouteId === route.id ? 'rotate-180' : ''}`}>
+                                                    <button
+                                                        onClick={(e) => handleDeleteRoute(route.id, e)}
+                                                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition-colors ml-1"
+                                                        title="Rotayı Sil"
+                                                    >
+                                                        <Lucide.Trash2 size={14} />
+                                                    </button>
+                                                    <div className={`transition-transform ml-2 ${expandedRouteId === route.id ? 'rotate-180' : ''}`}>
                                                         <Lucide.ChevronDown size={20} className="text-gray-400" />
                                                     </div>
                                                 </div>
@@ -776,6 +812,30 @@ export default function DeliveriesPage() {
                                 <button onClick={confirmDelete} disabled={deleting}
                                     className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                                     {deleting ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Sil"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Route Delete Confirmation Modal */}
+            {deleteRouteModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
+                        <div className="p-6 text-center">
+                            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Lucide.AlertTriangle size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">Rotayı Sil?</h3>
+                            <p className="text-gray-500 text-sm mb-6">Bu rotayı silmek, içindeki tüm teslimatları yerinden çıkarıp tekrar askıya (Bekliyor durumuna) alacaktır. Emin misiniz?</p>
+
+                            <div className="flex gap-3">
+                                <button onClick={() => setDeleteRouteModalOpen(false)} disabled={deletingRoute}
+                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                <button onClick={confirmDeleteRoute} disabled={deletingRoute}
+                                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {deletingRoute ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Rotayı Sil"}
                                 </button>
                             </div>
                         </div>
