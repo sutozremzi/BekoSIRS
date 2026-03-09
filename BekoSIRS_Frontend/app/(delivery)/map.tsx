@@ -34,7 +34,8 @@ export default function DeliveryMap() {
         const fetchRoute = async () => {
             try {
                 const res = await api.get('/api/v1/delivery-person/my_route/');
-                setDeliveries(res.data || []);
+                const data = res.data;
+                setDeliveries(Array.isArray(data) ? data : (Array.isArray(data?.deliveries) ? data.deliveries : []));
             } catch (error) {
                 console.error('Failed to fetch route:', error);
             } finally {
