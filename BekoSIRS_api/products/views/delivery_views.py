@@ -452,7 +452,7 @@ class DeliveryPersonViewSet(viewsets.GenericViewSet):
             delivered_by=request.user,
             scheduled_date=today
         ).select_related(
-            'assignment', 'assignment__customer', 'assignment__product'
+            'assignment', 'assignment__customer', 'assignment__customer__customer_address', 'assignment__product'
         ).order_by('delivery_order')
         
         route_info = None

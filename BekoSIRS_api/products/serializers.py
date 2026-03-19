@@ -647,6 +647,8 @@ class DeliverySerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     quantity = serializers.IntegerField(source='assignment.quantity', read_only=True)
     driver_name = serializers.SerializerMethodField()
+    address_lat = serializers.SerializerMethodField()
+    address_lng = serializers.SerializerMethodField()
     
     class Meta:
         model = Delivery
@@ -690,6 +692,26 @@ class DeliverySerializer(serializers.ModelSerializer):
         if obj.delivered_by:
             name = f"{obj.delivered_by.first_name} {obj.delivered_by.last_name}".strip()
             return name or obj.delivered_by.username
+        return None
+
+    def get_address_lat(self, obj):
+        if obj.address_lat:
+            return obj.address_lat
+        if obj.assignment and obj.assignment.customer:
+            try:
+                return obj.assignment.customer.customer_address.latitude
+            except Exception:
+                return None
+        return None
+
+    def get_address_lng(self, obj):
+        if obj.address_lng:
+            return obj.address_lng
+        if obj.assignment and obj.assignment.customer:
+            try:
+                return obj.assignment.customer.customer_address.longitude
+            except Exception:
+                return None
         return None
 
 class DeliveryRouteStopSerializer(serializers.ModelSerializer):

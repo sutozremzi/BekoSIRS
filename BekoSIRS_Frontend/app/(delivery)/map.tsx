@@ -24,6 +24,7 @@ interface Delivery {
     address_lng: number | null;
     status: string;
     delivery_order: number;
+    customer_address?: string;
 }
 
 export default function DeliveryMap() {
@@ -50,11 +51,27 @@ export default function DeliveryMap() {
             Alert.alert('Bilgi', 'Konum bilgisi mevcut değil');
             return;
         }
-        const url = Platform.select({
-            ios: `maps:0,0?q=${lat},${lng}(${label})`,
-            android: `geo:0,0?q=${lat},${lng}(${label})`,
-        });
-        Linking.openURL(url!);
+        
+        Alert.alert(
+            'Navigasyon',
+            'Hangi uygulama ile gitmek istersiniz?',
+            [
+                {
+                    text: 'Google Haritalar',
+                    onPress: () => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`)
+                },
+                {
+                    text: 'Yandex Navigasyon',
+                    onPress: () => {
+                        Linking.openURL(`yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lng}`).catch(() => {
+                            Alert.alert('Bilgi', 'Yandex Navigasyon bulunamadı, Google açılıyor...');
+                            Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+                        });
+                    }
+                },
+                { text: 'İptal', style: 'cancel' }
+            ]
+        );
     };
 
     const openAllInMaps = () => {
@@ -162,7 +179,7 @@ export default function DeliveryMap() {
                                     </View>
                                     <View style={styles.addressRow}>
                                         <Ionicons name="location-outline" size={16} color="#64748b" />
-                                        <Text style={styles.addressText} numberOfLines={2}>{delivery.address}</Text>
+                                        <Text style={styles.addressText} numberOfLines={2}>{delivery.address || delivery.customer_address || 'Adres belirtilmemiş'}</Text>
                                     </View>
                                     <TouchableOpacity
                                         style={styles.navigateButton}

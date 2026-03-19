@@ -35,7 +35,7 @@ export default function App() {
         <Route path="/dashboard/products" element={<AuthGuard><ProductsPage /></AuthGuard>} />
         <Route path="/dashboard/products/add" element={<AuthGuard><AddProductPage /></AuthGuard>} />
         <Route path="/dashboard/categories" element={<AuthGuard><CategoriesPage /></AuthGuard>} />
-        <Route path="/dashboard/users" element={<AuthGuard><UsersPage /></AuthGuard>} />
+        <Route path="/dashboard/users" element={<AuthGuard allowedRoles={["admin"]}><UsersPage /></AuthGuard>} />
         <Route path="/dashboard/customers" element={<AuthGuard><CustomersPage /></AuthGuard>} />
         <Route path="/dashboard/groups" element={<AuthGuard><GroupsPage /></AuthGuard>} />
         <Route path="/dashboard/service-requests" element={<AuthGuard><ServiceRequestsPage /></AuthGuard>} />

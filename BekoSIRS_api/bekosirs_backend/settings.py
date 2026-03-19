@@ -4,8 +4,8 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file and prefer local values in development.
+load_dotenv(override=True)
 
 # ------------------------------------------------------------
 # BASE CONFIG
@@ -95,20 +95,25 @@ WSGI_APPLICATION = 'bekosirs_backend.wsgi.application'
 # ------------------------------------------------------------
 # DATABASE
 # ------------------------------------------------------------
-# Use SQLite for development/testing if DB environment variables not set
-# Use MSSQL for production
-if os.getenv('DB_NAME'):
+# Use MSSQL only when all required connection settings are present.
+# Otherwise fall back to SQLite for local development/testing.
+_db_name = os.getenv('DB_NAME')
+_db_user = os.getenv('DB_USER')
+_db_password = os.getenv('DB_PASSWORD')
+_db_host = os.getenv('DB_HOST')
+
+if all([_db_name, _db_user, _db_password, _db_host]):
     DATABASES = {
         'default': {
             'ENGINE': 'mssql',
-            'NAME': os.environ['DB_NAME'],
-            'USER': os.environ['DB_USER'],
-            'PASSWORD': os.environ['DB_PASSWORD'],
-            'HOST': os.environ['DB_HOST'],
+            'NAME': _db_name,
+            'USER': _db_user,
+            'PASSWORD': _db_password,
+            'HOST': _db_host,
             'PORT': os.getenv('DB_PORT', '1433'),
             'OPTIONS': {
                 'driver': 'ODBC Driver 18 for SQL Server',
-                'extra_params': 'Encrypt=yes;TrustServerCertificate=yes',
+                'extra_params': 'Encrypt=no;TrustServerCertificate=yes',
             },
         }
     }

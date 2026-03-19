@@ -19,11 +19,12 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().order_by('id')
         role = self.request.query_params.get('role')
         if role:
             qs = qs.filter(role=role)
         return qs
+
 
     def get_serializer_class(self):
         if self.action == "create":

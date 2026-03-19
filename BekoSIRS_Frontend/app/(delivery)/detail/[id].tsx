@@ -24,6 +24,7 @@ interface DeliveryDetail {
     customer_name: string;
     customer_phone: string;
     address: string;
+    customer_address?: string;
     address_lat: number | null;
     address_lng: number | null;
     product_name: string;
@@ -66,12 +67,28 @@ export default function DeliveryDetailScreen() {
 
     const handleNavigate = () => {
         if (delivery?.address_lat && delivery?.address_lng) {
-            const scheme = Platform.select({ ios: 'maps:', android: 'geo:' });
-            const url = Platform.select({
-                ios: `maps:0,0?q=${delivery.address_lat},${delivery.address_lng}(${delivery.customer_name})`,
-                android: `geo:0,0?q=${delivery.address_lat},${delivery.address_lng}(${delivery.customer_name})`,
-            });
-            Linking.openURL(url!);
+            const lat = delivery.address_lat;
+            const lng = delivery.address_lng;
+            Alert.alert(
+                'Navigasyon',
+                'Hangi uygulama ile gitmek istersiniz?',
+                [
+                    {
+                        text: 'Google Haritalar',
+                        onPress: () => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`)
+                    },
+                    {
+                        text: 'Yandex Navigasyon',
+                        onPress: () => {
+                            Linking.openURL(`yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lng}`).catch(() => {
+                                Alert.alert('Bilgi', 'Yandex Navigasyon bulunamadı, Google açılıyor...');
+                                Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+                            });
+                        }
+                    },
+                    { text: 'İptal', style: 'cancel' }
+                ]
+            );
         } else {
             Alert.alert('Bilgi', 'Konum bilgisi bulunamadı');
         }
@@ -215,7 +232,7 @@ export default function DeliveryDetailScreen() {
                             <Ionicons name="location" size={24} color="#136dec" />
                         </View>
                         <View style={styles.addressInfo}>
-                            <Text style={styles.addressText}>{delivery.address}</Text>
+                            <Text style={styles.addressText}>{delivery.address || delivery.customer_address || 'Adres bulunamadı'}</Text>
                             <Text style={styles.addressLabel}>Teslimat Adresi</Text>
                         </View>
                     </View>
