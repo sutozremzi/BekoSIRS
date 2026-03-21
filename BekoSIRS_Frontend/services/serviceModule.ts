@@ -7,12 +7,15 @@ export const serviceRequestAPI = {
     getMyRequests: () => api.get('api/v1/service-requests/'),
 
     createRequest: (
-        productOwnershipId: number,
+        productId: number,
         requestType: 'repair' | 'maintenance' | 'warranty' | 'complaint' | 'other',
-        description: string
+        description: string,
+        sourceType: 'ownership' | 'assignment' = 'ownership'
     ) =>
         api.post('api/v1/service-requests/', {
-            product_ownership: productOwnershipId,
+            ...(sourceType === 'ownership'
+                ? { product_ownership: productId }
+                : { product_assignment: productId }),
             request_type: requestType,
             description,
         }),
