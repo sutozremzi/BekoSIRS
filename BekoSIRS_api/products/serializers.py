@@ -242,7 +242,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
     customer_phone = serializers.CharField(source='customer.phone_number', read_only=True)
     customer_email = serializers.CharField(source='customer.email', read_only=True)
     customer_address = serializers.SerializerMethodField()
-    product_name = serializers.CharField(source='product_ownership.product.name', read_only=True)
+    product_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.CharField(source='assigned_to.username', read_only=True)
     queue_entry = ServiceQueueSerializer(read_only=True)
     product_ownership_detail = ProductOwnershipSerializer(source='product_ownership', read_only=True)
@@ -250,10 +250,17 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceRequest
         fields = ['id', 'customer', 'customer_name', 'customer_phone', 'customer_email', 'customer_address',
-                  'product_ownership', 'product_ownership_detail',
+                  'product_ownership', 'product_assignment', 'product_ownership_detail',
                   'product_name', 'request_type', 'status', 'description', 'created_at', 'updated_at',
                   'assigned_to', 'assigned_to_name', 'resolution_notes', 'resolved_at', 'queue_entry']
         read_only_fields = ['id', 'customer', 'created_at', 'updated_at', 'resolved_at']
+
+    def get_product_name(self, obj):
+        if obj.product_ownership:
+            return obj.product_ownership.product.name
+        if obj.product_assignment:
+            return obj.product_assignment.product.name
+        return None
 
     def get_customer_address(self, obj):
         """Build customer address from various fields."""
@@ -278,7 +285,14 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceRequest
-        fields = ['product_ownership', 'request_type', 'description']
+        fields = ['product_ownership', 'product_assignment', 'request_type', 'description']
+
+    def validate(self, data):
+        if not data.get('product_ownership') and not data.get('product_assignment'):
+            raise serializers.ValidationError(
+                'product_ownership veya product_assignment alanlarından biri zorunludur.'
+            )
+        return data
 
 
 # ---------------------------
@@ -860,9 +874,10 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallmentPlan
         fields = [
-            'customer', 'product', 'total_amount', 'down_payment',
+            'id', 'customer', 'product', 'total_amount', 'down_payment',
             'installment_count', 'start_date', 'notes'
         ]
+        read_only_fields = ['id']
 
 
 class CustomerConfirmPaymentSerializer(serializers.Serializer):

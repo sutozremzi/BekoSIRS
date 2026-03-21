@@ -321,7 +321,14 @@ class ServiceRequest(models.Model):
     product_ownership = models.ForeignKey(
         ProductOwnership,
         on_delete=models.CASCADE,
-        related_name='service_requests'
+        related_name='service_requests',
+        null=True, blank=True
+    )
+    product_assignment = models.ForeignKey(
+        'ProductAssignment',
+        on_delete=models.CASCADE,
+        related_name='service_requests',
+        null=True, blank=True
     )
     request_type = models.CharField(max_length=20, choices=REQUEST_TYPE_CHOICES, default='repair')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -348,7 +355,13 @@ class ServiceRequest(models.Model):
         ]
 
     def __str__(self):
-        return f"SR-{self.id}: {self.customer.username} - {self.product_ownership.product.name}"
+        if self.product_ownership:
+            product_name = self.product_ownership.product.name
+        elif self.product_assignment:
+            product_name = self.product_assignment.product.name
+        else:
+            product_name = 'Ürün yok'
+        return f"SR-{self.id}: {self.customer.username} - {product_name}"
 
 
 # -------------------------------
