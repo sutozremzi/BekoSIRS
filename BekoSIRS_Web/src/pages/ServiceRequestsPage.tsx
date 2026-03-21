@@ -14,8 +14,9 @@ import {
   FileText,
   ChevronDown,
   Archive,
+  UserCheck,
 } from "lucide-react";
-import api from "../services/api";
+import { serviceRequestAPI, staffAPI } from "../services/api";
 
 interface ServiceRequest {
   id: number;
@@ -28,6 +29,8 @@ interface ServiceRequest {
   created_at: string;
   updated_at: string;
   resolution_notes: string | null;
+  assigned_to: number | null;
+  assigned_to_name: string | null;
   // Customer details (from API)
   customer_phone?: string;
   customer_email?: string;
@@ -42,6 +45,14 @@ interface ServiceRequest {
     priority: number;
     estimated_wait_time: number;
   } | null;
+}
+
+interface StaffUser {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  role: string;
 }
 
 // Simplified 3-status system
@@ -85,21 +96,25 @@ export default function ServiceRequestsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tümü");
   const [activeTab, setActiveTab] = useState("all");
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
 
   // Detail panel state
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [selectedAssignee, setSelectedAssignee] = useState<string>("");
 
   useEffect(() => {
     fetchData();
+    fetchStaffUsers();
   }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/service-requests/");
+      const response = await serviceRequestAPI.list();
       const requestsArray = Array.isArray(response.data) ? response.data : response.data.results || [];
       setRequests(requestsArray);
     } catch (err: any) {
@@ -109,11 +124,47 @@ export default function ServiceRequestsPage() {
     }
   };
 
+  const fetchStaffUsers = async () => {
+    try {
+      const res = await staffAPI.listStaff();
+      const all: StaffUser[] = res.data.results || res.data || [];
+      // Exclude customers — show everyone else who could be assigned work
+      setStaffUsers(all.filter((u) => u.role !== "customer"));
+    } catch {
+      // Non-critical, ignore
+    }
+  };
+
   // Open detail panel
   const openDetailPanel = (req: ServiceRequest) => {
     setSelectedRequest(req);
     setResolutionNotes(req.resolution_notes || "");
+    setSelectedAssignee(req.assigned_to ? String(req.assigned_to) : "");
     setShowDetailPanel(true);
+  };
+
+  // Assign to staff member
+  const handleAssign = async () => {
+    if (!selectedRequest || !selectedAssignee) return;
+    setAssignLoading(true);
+    try {
+      await serviceRequestAPI.assign(selectedRequest.id, parseInt(selectedAssignee));
+      await fetchData();
+      const assigneeName = staffUsers.find((u) => u.id === parseInt(selectedAssignee));
+      const updated: ServiceRequest = {
+        ...selectedRequest,
+        assigned_to: parseInt(selectedAssignee),
+        assigned_to_name: assigneeName
+          ? `${assigneeName.first_name} ${assigneeName.last_name}`.trim() || assigneeName.username
+          : selectedAssignee,
+        status: "in_progress",
+      };
+      setSelectedRequest(updated);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Atama yapılamadı");
+    } finally {
+      setAssignLoading(false);
+    }
   };
 
   // Change status
@@ -123,14 +174,11 @@ export default function ServiceRequestsPage() {
     setActionLoading(true);
     try {
       if (newStatus === "in_progress") {
-        await api.post(`/service-requests/${selectedRequest.id}/start/`);
+        await serviceRequestAPI.start(selectedRequest.id);
       } else if (newStatus === "completed") {
-        await api.post(`/service-requests/${selectedRequest.id}/complete/`, {
-          resolution_notes: resolutionNotes
-        });
+        await serviceRequestAPI.complete(selectedRequest.id, resolutionNotes);
       } else if (newStatus === "pending") {
-        // Reset to pending (use PATCH if available)
-        await api.patch(`/service-requests/${selectedRequest.id}/`, { status: "pending" });
+        await serviceRequestAPI.patch(selectedRequest.id, { status: "pending" });
       }
 
       await fetchData(); // Refresh data to update lists/tabs
@@ -154,7 +202,7 @@ export default function ServiceRequestsPage() {
 
     setActionLoading(true);
     try {
-      await api.post(`/service-requests/${selectedRequest.id}/update-priority/`, { priority: parseInt(newPriority) });
+      await serviceRequestAPI.updatePriority(selectedRequest.id, parseInt(newPriority));
       await fetchData(); // Refresh data
 
       // Update locally
@@ -176,9 +224,7 @@ export default function ServiceRequestsPage() {
 
     setActionLoading(true);
     try {
-      await api.patch(`/service-requests/${selectedRequest.id}/`, {
-        resolution_notes: resolutionNotes
-      });
+      await serviceRequestAPI.patch(selectedRequest.id, { resolution_notes: resolutionNotes });
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.error || "Notlar kaydedilemedi");
@@ -399,6 +445,7 @@ export default function ServiceRequestsPage() {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ürün</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tür</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Durum</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Atanan</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tarih</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">İşlem</th>
                   </tr>
@@ -438,6 +485,16 @@ export default function ServiceRequestsPage() {
                             <StatusIcon size={12} />
                             {status.label}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {req.assigned_to_name ? (
+                            <span className="flex items-center gap-1.5 text-xs text-purple-700 bg-purple-50 px-2 py-1 rounded-full w-fit">
+                              <UserCheck size={12} />
+                              {req.assigned_to_name}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-xs text-gray-500">
                           {formatDate(req.created_at)}
@@ -547,6 +604,52 @@ export default function ServiceRequestsPage() {
                 <p className="text-gray-800">{selectedRequest.description || "Açıklama yok"}</p>
               </div>
 
+              {/* Assign to Staff */}
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                <h3 className="text-xs font-bold text-purple-600 uppercase mb-3 flex items-center gap-2">
+                  <UserCheck size={14} /> Personele Ata
+                </h3>
+
+                {selectedRequest.assigned_to_name && (
+                  <div className="mb-3 flex items-center gap-2 text-sm text-purple-800 bg-white rounded-lg px-3 py-2 border border-purple-200">
+                    <UserCheck size={14} className="text-purple-500" />
+                    <span>Mevcut: <strong>{selectedRequest.assigned_to_name}</strong></span>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedAssignee}
+                      onChange={(e) => setSelectedAssignee(e.target.value)}
+                      disabled={assignLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
+                      className="w-full px-3 py-2.5 border border-purple-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm disabled:opacity-50"
+                    >
+                      <option value="">Kişi seçin...</option>
+                      {staffUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name && u.last_name
+                            ? `${u.first_name} ${u.last_name} (${u.role})`
+                            : `${u.username} (${u.role})`}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </div>
+                  <button
+                    onClick={handleAssign}
+                    disabled={!selectedAssignee || assignLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
+                    className="px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  >
+                    {assignLoading ? "..." : "Ata"}
+                  </button>
+                </div>
+
+                {staffUsers.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-2">Atanabilecek personel bulunamadı.</p>
+                )}
+              </div>
+
               {/* Status Selector */}
               <div>
                 <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Durum Değiştir</h3>
@@ -578,16 +681,9 @@ export default function ServiceRequestsPage() {
                       disabled={actionLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white font-medium disabled:opacity-50"
                     >
-                      <option value="1">1 - En Acil (VIP)</option>
-                      <option value="2">2 - Çok Acil</option>
-                      <option value="3">3 - Acil</option>
-                      <option value="4">4 - Yüksek Öncelik</option>
-                      <option value="5">5 - Normal Öncelik</option>
-                      <option value="6">6 - Düşük Öncelik</option>
-                      <option value="7">7 - Çok Düşük Öncelik</option>
-                      <option value="8">8 - Bekleyebilir</option>
-                      <option value="9">9 - Arka Plan</option>
-                      <option value="10">10 - Son Sıra</option>
+                      <option value="1">1 - Yüksek Öncelik</option>
+                      <option value="2">2 - Normal Öncelik</option>
+                      <option value="3">3 - Düşük Öncelik</option>
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                   </div>

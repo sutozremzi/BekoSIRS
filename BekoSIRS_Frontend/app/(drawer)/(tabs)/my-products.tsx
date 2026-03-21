@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
@@ -325,7 +326,12 @@ export default function MyProductsScreen() {
           }
         />
       ) : (
-        <View style={styles.emptyContainer}>
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#000']} />
+          }
+        >
           <View style={styles.emptyIconCircle}>
             <FontAwesome name="inbox" size={50} color="#D1D5DB" />
           </View>
@@ -339,7 +345,7 @@ export default function MyProductsScreen() {
           >
             <Text style={styles.browseButtonText}>Ürünlere Göz At</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -553,10 +559,11 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   emptyContainer: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
+    paddingVertical: 60,
   },
   emptyIconCircle: {
     width: 100,

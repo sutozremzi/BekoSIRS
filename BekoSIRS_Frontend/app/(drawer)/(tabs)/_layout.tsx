@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const THEME = {
     primary: '#E31E24',      // Beko kırmızısı
@@ -10,18 +11,20 @@ const THEME = {
 };
 
 export default function TabsLayout() {
+    const insets = useSafeAreaInsets();
+
     return (
         <Tabs
             screenOptions={{
-                headerShown: false, // Drawer'dan gelen header'ı kullanacağız
+                headerShown: false, // Drawer'dan gelen header'u kullanacağız
                 tabBarActiveTintColor: THEME.primary,
                 tabBarInactiveTintColor: THEME.gray,
                 tabBarStyle: {
                     backgroundColor: THEME.white,
                     borderTopWidth: 1,
                     borderTopColor: THEME.lightGray,
-                    height: 60,
-                    paddingBottom: 8,
+                    height: 60 + insets.bottom,
+                    paddingBottom: 8 + insets.bottom,
                     paddingTop: 8,
                     elevation: 10,
                     shadowColor: '#000',
@@ -44,15 +47,6 @@ export default function TabsLayout() {
                 }}
             />
 
-            {/* 2. Tab - Profil */}
-            <Tabs.Screen
-                name="profile"
-                options={{
-                    tabBarLabel: 'Hesabım',
-                    tabBarIcon: ({ color, size }) => <FontAwesome name="user" size={size} color={color} />,
-                }}
-            />
-
             {/* 3. Tab - Favoriler (Yıldız) */}
             <Tabs.Screen
                 name="wishlist"
@@ -68,6 +62,15 @@ export default function TabsLayout() {
                 options={{
                     tabBarLabel: 'Ürünlerim',
                     tabBarIcon: ({ color, size }) => <FontAwesome name="shopping-bag" size={size} color={color} />,
+                }}
+            />
+
+            {/* 5. Tab - Profil (Hesabım) */}
+            <Tabs.Screen
+                name="profile"
+                options={{
+                    tabBarLabel: 'Hesabım',
+                    tabBarIcon: ({ color, size }) => <FontAwesome name="user" size={size} color={color} />,
                 }}
             />
         </Tabs>

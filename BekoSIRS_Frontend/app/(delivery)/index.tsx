@@ -54,10 +54,11 @@ export default function DeliveryDashboard() {
 
     const fetchDeliveries = async () => {
         try {
-            const profileRes = await api.get('/api/v1/profile/');
+            const [profileRes, res] = await Promise.all([
+                api.get('/api/v1/profile/'),
+                api.get('/api/v1/delivery-person/my_route/')
+            ]);
             setUserName(profileRes.data.first_name || profileRes.data.username || 'Teslimatçı');
-
-            const res = await api.get('/api/v1/delivery-person/my_route/');
             // New response format: { route: {...}, deliveries: [...] }
             if (res.data.deliveries) {
                 setDeliveries(res.data.deliveries);
@@ -140,7 +141,7 @@ export default function DeliveryDashboard() {
                         </View>
                     </View>
                     <View style={styles.headerActions}>
-                        <TouchableOpacity style={styles.headerButton}>
+                        <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/(drawer)/notifications' as any)}>
                             <Ionicons name="notifications" size={24} color="#fff" />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.headerButton} onPress={logout}>
@@ -311,25 +312,6 @@ export default function DeliveryDashboard() {
                 <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* Bottom Navigation */}
-            <View style={styles.bottomNav}>
-                <TouchableOpacity style={styles.navItem}>
-                    <Ionicons name="grid" size={26} color="#E31E24" />
-                    <Text style={[styles.navLabel, { color: '#E31E24' }]}>Panel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(delivery)/map')}>
-                    <Ionicons name="compass-outline" size={26} color="#94a3b8" />
-                    <Text style={styles.navLabel}>Harita</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem}>
-                    <Ionicons name="time-outline" size={26} color="#94a3b8" />
-                    <Text style={styles.navLabel}>Geçmiş</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(delivery)/profile' as any)}>
-                    <Ionicons name="person-outline" size={26} color="#94a3b8" />
-                    <Text style={styles.navLabel}>Profil</Text>
-                </TouchableOpacity>
-            </View>
         </SafeAreaView>
     );
 }
@@ -592,28 +574,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 14,
         fontWeight: '600',
-    },
-    bottomNav: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 12,
-        paddingBottom: 28,
-        borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
-    },
-    navItem: {
-        alignItems: 'center',
-        gap: 4,
-    },
-    navLabel: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#94a3b8',
     },
     actionHint: {
         flexDirection: 'row',

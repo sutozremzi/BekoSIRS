@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   SafeAreaView,
   FlatList,
@@ -15,8 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { serviceRequestAPI, productOwnershipAPI } from '../../services';
-import { Picker } from '@react-native-picker/picker';
+import { serviceRequestAPI, productOwnershipAPI, assignmentAPI } from '../../services';
 
 interface ServiceRequest {
   id: number;
@@ -33,15 +32,15 @@ interface ServiceRequest {
   };
 }
 
-interface ProductOwnership {
+// Hem ProductOwnership hem ProductAssignment için ortak tip
+interface ProductOption {
   id: number;
+  type: 'ownership' | 'assignment';
   product: {
     id: number;
     name: string;
     brand: string;
   };
-  purchase_date: string;
-  warranty_end_date: string;
 }
 
 const StatusConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -63,25 +62,45 @@ const RequestTypeConfig: Record<string, string> = {
 const ServiceRequestsScreen = () => {
   const params = useLocalSearchParams();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [products, setProducts] = useState<ProductOwnership[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Params-based modal already handled flag
+  const paramsHandledRef = useRef(false);
+
   // Form state
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [requestType, setRequestType] = useState<string>('repair');
   const [description, setDescription] = useState('');
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [requestsRes, productsRes] = await Promise.all([
-        serviceRequestAPI.getMyRequests(),
-        productOwnershipAPI.getMyOwnerships(),
+      const [requestsRes, ownershipsRes, assignmentsRes] = await Promise.all([
+        serviceRequestAPI.getMyRequests().catch(() => ({ data: [] })),
+        productOwnershipAPI.getMyOwnerships().catch(() => ({ data: [] })),
+        assignmentAPI.getMyAssignments().catch(() => ({ data: [] })),
       ]);
-      setRequests(requestsRes.data);
-      setProducts(productsRes.data);
+
+      const requestsData = requestsRes.data?.results ?? requestsRes.data ?? [];
+      setRequests(Array.isArray(requestsData) ? requestsData : []);
+
+      // Owned products (delivered)
+      const ownerships: ProductOption[] = (Array.isArray(ownershipsRes.data) ? ownershipsRes.data : [])
+        .map((o: any) => ({ id: o.id, type: 'ownership' as const, product: o.product }));
+
+      // Assigned products (pending delivery) — exclude duplicates already in ownerships
+      const ownedProductIds = new Set(ownerships.map(o => o.product.id));
+      const assignmentsData = assignmentsRes.data?.results || assignmentsRes.data || [];
+      const assignments: ProductOption[] = (Array.isArray(assignmentsData) ? assignmentsData : [])
+        .filter((a: any) => !ownedProductIds.has(a.product?.id))
+        .map((a: any) => ({ id: a.id, type: 'assignment' as const, product: a.product }));
+
+      setProducts([...ownerships, ...assignments]);
     } catch (error) {
       console.error('Service requests fetch error:', error);
     } finally {
@@ -99,15 +118,21 @@ const ServiceRequestsScreen = () => {
     fetchData();
   }, [fetchData]);
 
-  // Handle params for auto-open
+  // Reset ref when params change (new navigation)
   useEffect(() => {
-    if (params.openModal === 'true' && products.length > 0) {
+    paramsHandledRef.current = false;
+  }, [params.openModal, params.productId]);
+
+  // Handle params for auto-open — only fire once per navigation
+  useEffect(() => {
+    if (params.openModal === 'true' && products.length > 0 && !paramsHandledRef.current) {
+      paramsHandledRef.current = true;
       setModalVisible(true);
       if (params.productId) {
         const pId = Number(params.productId);
-        const ownership = products.find(p => p.product.id === pId);
-        if (ownership) {
-          setSelectedProduct(ownership.id);
+        const option = products.find(p => p.product.id === pId);
+        if (option) {
+          setSelectedProduct(option.id);
         }
       }
     }
@@ -125,10 +150,12 @@ const ServiceRequestsScreen = () => {
 
     setSubmitting(true);
     try {
+      const selectedOption = products.find(p => p.id === selectedProduct);
       await serviceRequestAPI.createRequest(
         selectedProduct,
         requestType as any,
-        description
+        description,
+        selectedOption?.type === 'assignment' ? 'assignment' : 'ownership'
       );
       Alert.alert('Başarılı', 'Servis talebiniz oluşturuldu');
       setModalVisible(false);
@@ -248,38 +275,61 @@ const ServiceRequestsScreen = () => {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Text style={styles.label}>Ürün Seçin</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={selectedProduct}
-                  onValueChange={(value) => setSelectedProduct(value)}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Ürün seçin..." value={null} />
-                  {products.map((p: ProductOwnership) => (
-                    <Picker.Item
-                      key={p.id}
-                      label={`${p.product.name} - ${p.product.brand}`}
-                      value={p.id}
-                    />
-                  ))}
-                </Picker>
-              </View>
+              <Text style={styles.label}>Ürün Seçin ({products.length} ürün)</Text>
+              <TouchableOpacity
+                style={styles.selectorButton}
+                onPress={() => setProductPickerOpen(!productPickerOpen)}
+              >
+                <Text style={selectedProduct ? styles.selectorText : styles.selectorPlaceholder}>
+                  {selectedProduct
+                    ? (() => { const p = products.find(x => x.id === selectedProduct); return p ? p.product.name : 'Ürün seçin...'; })()
+                    : 'Ürün seçin...'}
+                </Text>
+                <FontAwesome name={productPickerOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#666" />
+              </TouchableOpacity>
+              {productPickerOpen && (
+                <View style={styles.selectorList}>
+                  {products.length === 0 ? (
+                    <Text style={styles.selectorEmpty}>Atanmış ürün bulunamadı</Text>
+                  ) : (
+                    products.map((p: ProductOption) => (
+                      <TouchableOpacity
+                        key={`${p.type}-${p.id}`}
+                        style={[styles.selectorItem, selectedProduct === p.id && styles.selectorItemActive]}
+                        onPress={() => { setSelectedProduct(p.id); setProductPickerOpen(false); }}
+                      >
+                        <Text style={[styles.selectorItemText, selectedProduct === p.id && styles.selectorItemTextActive]}>
+                          {p.product.name}{p.product.brand ? ` - ${p.product.brand}` : ''}{p.type === 'assignment' ? ' (Beklemede)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              )}
 
               <Text style={styles.label}>Talep Türü</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={requestType}
-                  onValueChange={(value) => setRequestType(value)}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Tamir" value="repair" />
-                  <Picker.Item label="Bakım" value="maintenance" />
-                  <Picker.Item label="Garanti" value="warranty" />
-                  <Picker.Item label="Şikayet" value="complaint" />
-                  <Picker.Item label="Diğer" value="other" />
-                </Picker>
-              </View>
+              <TouchableOpacity
+                style={styles.selectorButton}
+                onPress={() => setTypePickerOpen(!typePickerOpen)}
+              >
+                <Text style={styles.selectorText}>
+                  {{'repair':'Tamir','maintenance':'Bakım','warranty':'Garanti','complaint':'Şikayet','other':'Diğer'}[requestType] || 'Tamir'}
+                </Text>
+                <FontAwesome name={typePickerOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#666" />
+              </TouchableOpacity>
+              {typePickerOpen && (
+                <View style={styles.selectorList}>
+                  {[['repair','Tamir'],['maintenance','Bakım'],['warranty','Garanti'],['complaint','Şikayet'],['other','Diğer']].map(([val, label]) => (
+                    <TouchableOpacity
+                      key={val}
+                      style={[styles.selectorItem, requestType === val && styles.selectorItemActive]}
+                      onPress={() => { setRequestType(val); setTypePickerOpen(false); }}
+                    >
+                      <Text style={[styles.selectorItemText, requestType === val && styles.selectorItemTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               <Text style={styles.label}>Sorun Açıklaması</Text>
               <TextInput
@@ -501,8 +551,57 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#f9f9f9',
   },
-  picker: {
-    height: 50,
+  selectorButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  selectorText: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+  selectorPlaceholder: {
+    fontSize: 14,
+    color: '#999',
+    flex: 1,
+  },
+  selectorList: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  selectorItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectorItemActive: {
+    backgroundColor: '#000',
+  },
+  selectorItemText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  selectorItemTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  selectorEmpty: {
+    padding: 14,
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
   textArea: {
     borderWidth: 1,

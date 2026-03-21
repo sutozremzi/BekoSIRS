@@ -69,8 +69,8 @@ export default function DrawerLayout() {
         drawerActiveTintColor: THEME.primary,
         drawerInactiveTintColor: THEME.accent,
         drawerActiveBackgroundColor: '#F3F4F6',
-        drawerLabelStyle: { marginLeft: -10, fontSize: 15, fontWeight: '600' },
-        drawerItemStyle: { borderRadius: 12, marginHorizontal: 8, marginVertical: 2 },
+        drawerLabelStyle: { marginLeft: -10, fontSize: 16, fontWeight: '600' },
+        drawerItemStyle: { borderRadius: 12, marginHorizontal: 12, marginVertical: 8, paddingVertical: 4 },
         headerLeft: () => <DrawerToggleButton />,
       }}
     >
@@ -162,7 +162,8 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: THEME.border,
     marginHorizontal: 20,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 16,
   },
   footer: {
     padding: 20,

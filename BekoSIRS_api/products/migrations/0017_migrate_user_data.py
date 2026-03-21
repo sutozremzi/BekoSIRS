@@ -12,16 +12,26 @@ def migrate_user_data(apps, schema_editor):
         # However, apps.get_model uses the HISTORICAL model.
         # Ensure we access fields safely.
 
-        preference, created = UserNotificationPreference.objects.get_or_create(user=user)
-        # Sadece created ise güncelle veya her durumda güncelle?
-        # En güvenlisi veriyi kopyalamak
-        preference.notify_service_updates = getattr(user, 'notify_service_updates', True)
-        preference.notify_price_drops = getattr(user, 'notify_price_drops', True)
-        preference.notify_restock = getattr(user, 'notify_restock', True)
-        preference.notify_recommendations = getattr(user, 'notify_recommendations', True)
-        preference.notify_warranty_expiry = getattr(user, 'notify_warranty_expiry', True)
-        preference.notify_general = getattr(user, 'notify_general', True)
-        preference.save()
+        preference, created = UserNotificationPreference.objects.get_or_create(
+            user=user,
+            defaults={
+                'notify_service_updates': getattr(user, 'notify_service_updates', True),
+                'notify_price_drops': getattr(user, 'notify_price_drops', True),
+                'notify_restock': getattr(user, 'notify_restock', True),
+                'notify_recommendations': getattr(user, 'notify_recommendations', True),
+                'notify_warranty_expiry': getattr(user, 'notify_warranty_expiry', True),
+                'notify_general': getattr(user, 'notify_general', True),
+            }
+        )
+        
+        if not created:
+            preference.notify_service_updates = getattr(user, 'notify_service_updates', True)
+            preference.notify_price_drops = getattr(user, 'notify_price_drops', True)
+            preference.notify_restock = getattr(user, 'notify_restock', True)
+            preference.notify_recommendations = getattr(user, 'notify_recommendations', True)
+            preference.notify_warranty_expiry = getattr(user, 'notify_warranty_expiry', True)
+            preference.notify_general = getattr(user, 'notify_general', True)
+            preference.save()
 
         # 2. Adres Bilgilerini Taşı
         # Kontrol edelim: Herhangi bir adres verisi var mı?

@@ -17,25 +17,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../../../hooks/useAuth';
 import { useRouter } from 'expo-router';
 import api, { locationAPI } from '../../../services';
-
-// Dynamically import MapView only if not on web to prevent webpack crashes
-let MapView: any = null;
-let Marker: any = null;
-let Polyline: any = null;
-let PROVIDER_GOOGLE: any = null; // Also conditionally import PROVIDER_GOOGLE
-if (Platform.OS !== 'web') {
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  Polyline = Maps.Polyline;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-} else {
-  // Mock implementations for web
-  MapView = ({ children, style }: any) => <View style={[style, { backgroundColor: '#e1e4e8', justifyContent: 'center', alignItems: 'center' }]}><Text>Harita Web'de Desteklenmiyor</Text>{children}</View>;
-  Marker = ({ children }: any) => <>{children}</>;
-  Polyline = () => null;
-  PROVIDER_GOOGLE = null; // No provider on web mock
-}
+import MapView, { Marker, PROVIDER_GOOGLE } from '../../../components/MapModule';
 
 interface UserProfile {
   id: number;

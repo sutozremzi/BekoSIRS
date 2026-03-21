@@ -76,6 +76,8 @@ export const installmentAPI = {
     adminApprovePayment: (installmentId: number) => api.post(`installments/${installmentId}/approve/`),
     createPlan: (data: any) => api.post('installment-plans/', data),
     getPlan: (id: number) => api.get(`installment-plans/${id}/`),
+    cancelPlan: (id: number) => api.patch(`installment-plans/${id}/`, { status: 'cancelled' }),
+    updatePlanNotes: (id: number, notes: string) => api.patch(`installment-plans/${id}/`, { notes }),
 };
 
 // ----------------------------------------
@@ -90,6 +92,31 @@ export const productAPI = {
 // ----------------------------------------
 export const customerAPI = {
     list: (params?: any) => api.get('customers/', { params }),
+    get: (id: number) => api.get(`customers/${id}/`),
+};
+
+// ----------------------------------------
+// 🔹 STAFF / USER LIST API
+// ----------------------------------------
+export const staffAPI = {
+    // Returns all non-customer users (admin, seller, delivery, etc.)
+    listStaff: () => api.get('users/', { params: { page_size: 200 } }),
+};
+
+// ----------------------------------------
+// 🔹 SERVICE REQUEST API
+// ----------------------------------------
+export const serviceRequestAPI = {
+    list: () => api.get('service-requests/'),
+    assign: (id: number, assignedToId: number) =>
+        api.post(`service-requests/${id}/assign/`, { assigned_to: assignedToId }),
+    start: (id: number) => api.post(`service-requests/${id}/start/`),
+    complete: (id: number, resolutionNotes: string) =>
+        api.post(`service-requests/${id}/complete/`, { resolution_notes: resolutionNotes }),
+    cancel: (id: number) => api.post(`service-requests/${id}/cancel/`),
+    updatePriority: (id: number, priority: number) =>
+        api.post(`service-requests/${id}/update-priority/`, { priority }),
+    patch: (id: number, data: any) => api.patch(`service-requests/${id}/`, data),
 };
 
 // ----------------------------------------

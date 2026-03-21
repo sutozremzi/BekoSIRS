@@ -4,12 +4,12 @@ import Constants from 'expo-constants';
 
 // 🔹 Get your computer's local IP address
 // Replace this with YOUR actual IP address from ipconfig/ifconfig
-const COMPUTER_IP = '172.20.10.6';
+const COMPUTER_IP = '192.168.1.4';
 
-// 🔹 Expo Go requires using your computer's local network IP
+// 🔹 Read from .env if available, otherwise fallback to local IP
 export const API_BASE_URL = __DEV__
-  ? `http://${COMPUTER_IP}:8000/`
-  : 'https://your-production-api.com/';
+  ? process.env.EXPO_PUBLIC_API_URL || `http://${COMPUTER_IP}:8000/`
+  : process.env.EXPO_PUBLIC_PROD_API_URL || 'https://api.bekosirs.com/';
 
 if (__DEV__) {
   console.log('🔗 API Base URL:', API_BASE_URL);

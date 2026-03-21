@@ -17,6 +17,12 @@ const {
     Loader2 = () => <span>↻</span>,
     RefreshCw = () => <span>↺</span>,
     Plus = () => <span>+</span>,
+    Ban = () => <span>🚫</span>,
+    Phone = () => <span>📞</span>,
+    Mail = () => <span>✉</span>,
+    FileText = () => <span>📄</span>,
+    Pencil = () => <span>✏</span>,
+    Save = () => <span>💾</span>,
 } = Lucide as any;
 
 interface InstallmentPlan {
@@ -35,6 +41,15 @@ interface InstallmentPlan {
     paid_amount: string;
     progress_percentage: number;
     created_at: string;
+    notes?: string;
+}
+
+interface CustomerDetail {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number?: string;
 }
 
 interface Installment {
@@ -66,6 +81,12 @@ export default function InstallmentPlansPage() {
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [approvingId, setApprovingId] = useState<number | null>(null);
     const [searchParams, setSearchParams] = useSearchParams();
+    const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
+    const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+    const [cancellingPlan, setCancellingPlan] = useState(false);
+    const [editingNotes, setEditingNotes] = useState(false);
+    const [notesValue, setNotesValue] = useState("");
+    const [savingNotes, setSavingNotes] = useState(false);
 
     // Creation Modal State
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -88,7 +109,7 @@ export default function InstallmentPlansPage() {
 
     const fetchDropdowns = async () => {
         try {
-            const custRes = await customerAPI.list();
+            const custRes = await customerAPI.list({ role: 'customer', page_size: 1000 });
             setCustomers(custRes.data.results || custRes.data);
         } catch (error) {
             console.error("Error fetching customers:", error);
@@ -201,6 +222,9 @@ export default function InstallmentPlansPage() {
         setSearchParams({});
         setSelectedPlan(null);
         setInstallments([]);
+        setCustomerDetail(null);
+        setEditingNotes(false);
+        setCancelConfirmOpen(false);
     };
 
     useEffect(() => {
@@ -214,7 +238,16 @@ export default function InstallmentPlansPage() {
                 try {
                     // Plan detayını çek (listeden bağımsız)
                     const response = await installmentAPI.getPlan(Number(planId));
-                    setSelectedPlan(response.data);
+                    const plan = response.data;
+                    setSelectedPlan(plan);
+                    setNotesValue(plan.notes || "");
+                    // Müşteri bilgisini çek
+                    try {
+                        const custRes = await customerAPI.get(plan.customer);
+                        setCustomerDetail(custRes.data);
+                    } catch {
+                        setCustomerDetail(null);
+                    }
                     // Taksitleri çek
                     await fetchInstallments(Number(planId));
                 } catch (error) {
@@ -247,6 +280,37 @@ export default function InstallmentPlansPage() {
             showToast("error", "Ödeme onaylanamadı");
         } finally {
             setApprovingId(null);
+        }
+    };
+
+    const handleCancelPlan = async () => {
+        if (!selectedPlan) return;
+        setCancellingPlan(true);
+        try {
+            await installmentAPI.cancelPlan(selectedPlan.id);
+            setSelectedPlan({ ...selectedPlan, status: 'cancelled', status_display: 'İptal Edildi' });
+            setCancelConfirmOpen(false);
+            showToast("success", "Plan iptal edildi");
+            fetchPlans();
+        } catch (error: any) {
+            showToast("error", error.response?.data?.detail || "Plan iptal edilemedi");
+        } finally {
+            setCancellingPlan(false);
+        }
+    };
+
+    const handleSaveNotes = async () => {
+        if (!selectedPlan) return;
+        setSavingNotes(true);
+        try {
+            await installmentAPI.updatePlanNotes(selectedPlan.id, notesValue);
+            setSelectedPlan({ ...selectedPlan, notes: notesValue });
+            setEditingNotes(false);
+            showToast("success", "Not kaydedildi");
+        } catch (error: any) {
+            showToast("error", "Not kaydedilemedi");
+        } finally {
+            setSavingNotes(false);
         }
     };
 
@@ -307,11 +371,37 @@ export default function InstallmentPlansPage() {
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900">{selectedPlan.product_name}</h1>
-                                <p className="text-gray-600">Müşteri: {selectedPlan.customer_name}</p>
+                                <div className="flex items-center gap-4 mt-1 flex-wrap">
+                                    <p className="text-gray-600">Müşteri: <span className="font-medium">{selectedPlan.customer_name}</span></p>
+                                    {customerDetail?.phone_number && (
+                                        <span className="flex items-center gap-1 text-sm text-gray-500">
+                                            <Phone className="w-3 h-3" />
+                                            {customerDetail.phone_number}
+                                        </span>
+                                    )}
+                                    {customerDetail?.email && (
+                                        <span className="flex items-center gap-1 text-sm text-gray-500">
+                                            <Mail className="w-3 h-3" />
+                                            {customerDetail.email}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(selectedPlan.status)}`}>
-                                {selectedPlan.status_display}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(selectedPlan.status)}`}>
+                                    {selectedPlan.status_display}
+                                </span>
+                                {selectedPlan.status === 'active' && (
+                                    <button
+                                        onClick={() => setCancelConfirmOpen(true)}
+                                        data-testid="cancel-plan-btn"
+                                        className="flex items-center gap-1 px-3 py-1 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium"
+                                    >
+                                        <Ban className="w-4 h-4" />
+                                        İptal Et
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-4 gap-4 mb-4">
@@ -333,7 +423,7 @@ export default function InstallmentPlansPage() {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 mb-4">
                             <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-green-500 transition-all duration-500"
@@ -341,6 +431,55 @@ export default function InstallmentPlansPage() {
                                 />
                             </div>
                             <span className="text-lg font-bold">{selectedPlan.progress_percentage}%</span>
+                        </div>
+
+                        {/* Not Bölümü */}
+                        <div className="border-t border-gray-100 pt-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="flex items-center gap-1 text-sm font-medium text-gray-600">
+                                    <FileText className="w-4 h-4" /> Plan Notu
+                                </span>
+                                {!editingNotes && selectedPlan.status !== 'cancelled' && (
+                                    <button
+                                        onClick={() => { setEditingNotes(true); setNotesValue(selectedPlan.notes || ""); }}
+                                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800"
+                                    >
+                                        <Pencil className="w-3 h-3" /> Düzenle
+                                    </button>
+                                )}
+                            </div>
+                            {editingNotes ? (
+                                <div className="flex gap-2">
+                                    <textarea
+                                        data-testid="notes-textarea"
+                                        value={notesValue}
+                                        onChange={e => setNotesValue(e.target.value)}
+                                        rows={2}
+                                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-black focus:border-transparent resize-none"
+                                        placeholder="Plana not ekleyin..."
+                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <button
+                                            onClick={handleSaveNotes}
+                                            disabled={savingNotes}
+                                            data-testid="save-notes-btn"
+                                            className="flex items-center gap-1 px-3 py-1 bg-black text-white rounded-lg text-sm disabled:opacity-50"
+                                        >
+                                            <Save className="w-3 h-3" /> {savingNotes ? "..." : "Kaydet"}
+                                        </button>
+                                        <button
+                                            onClick={() => setEditingNotes(false)}
+                                            className="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                                        >
+                                            Vazgeç
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500 italic">
+                                    {selectedPlan.notes || "Not eklenmemiş"}
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -364,38 +503,87 @@ export default function InstallmentPlansPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {installments.map((inst) => (
-                                        <tr key={inst.id} className={inst.is_overdue ? "bg-red-50" : ""}>
-                                            <td className="px-4 py-4">
-                                                <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-900 text-white rounded-full font-bold text-sm">
-                                                    {inst.installment_number}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4 font-medium">{formatCurrency(inst.amount)}</td>
-                                            <td className="px-4 py-4">{formatDate(inst.due_date)}</td>
-                                            <td className="px-4 py-4">{inst.payment_date ? formatDate(inst.payment_date) : "-"}</td>
-                                            <td className="px-4 py-4">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(inst.status)}`}>
-                                                    {inst.status_display}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4 text-right">
-                                                {inst.status === "customer_confirmed" && (
-                                                    <button
-                                                        onClick={() => handleApprovePayment(inst.id)}
-                                                        disabled={approvingId === inst.id}
-                                                        className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
-                                                    >
-                                                        {approvingId === inst.id ? "..." : "Onayla"}
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {installments.map((inst) => {
+                                        const isOverdue = inst.is_overdue;
+                                        const daysAbs = Math.abs(inst.days_until_due);
+                                        let daysLabel = "";
+                                        if (inst.status !== 'paid' && inst.status !== 'customer_confirmed') {
+                                            if (isOverdue) daysLabel = `${daysAbs} gün gecikmiş`;
+                                            else if (inst.days_until_due === 0) daysLabel = "Bugün son gün";
+                                            else daysLabel = `${inst.days_until_due} gün kaldı`;
+                                        }
+                                        return (
+                                            <tr
+                                                key={inst.id}
+                                                data-testid={`installment-row-${inst.id}`}
+                                                className={isOverdue ? "bg-red-50 border-l-4 border-red-500" : ""}
+                                            >
+                                                <td className="px-4 py-4">
+                                                    <span className={`inline-flex items-center justify-center w-8 h-8 ${isOverdue ? 'bg-red-600' : 'bg-gray-900'} text-white rounded-full font-bold text-sm`}>
+                                                        {inst.installment_number}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-4 font-medium">{formatCurrency(inst.amount)}</td>
+                                                <td className="px-4 py-4">
+                                                    <div>{formatDate(inst.due_date)}</div>
+                                                    {daysLabel && (
+                                                        <div className={`text-xs mt-0.5 font-medium ${isOverdue ? 'text-red-600' : 'text-amber-600'}`}>
+                                                            {daysLabel}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-4">{inst.payment_date ? formatDate(inst.payment_date) : "-"}</td>
+                                                <td className="px-4 py-4">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(inst.status)}`}>
+                                                        {inst.status_display}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-4 text-right">
+                                                    {inst.status === "customer_confirmed" && (
+                                                        <button
+                                                            onClick={() => handleApprovePayment(inst.id)}
+                                                            disabled={approvingId === inst.id}
+                                                            className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
+                                                        >
+                                                            {approvingId === inst.id ? "..." : "Onayla"}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         )}
                     </div>
+
+                    {/* İptal Onay Modalı */}
+                    {cancelConfirmOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                            <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+                                <h3 className="text-lg font-bold text-gray-900 mb-2">Planı İptal Et</h3>
+                                <p className="text-gray-600 text-sm mb-6">
+                                    <strong>{selectedPlan?.product_name}</strong> için oluşturulan taksit planı iptal edilecek. Bu işlem geri alınamaz.
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setCancelConfirmOpen(false)}
+                                        className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm"
+                                    >
+                                        Vazgeç
+                                    </button>
+                                    <button
+                                        onClick={handleCancelPlan}
+                                        disabled={cancellingPlan}
+                                        data-testid="confirm-cancel-btn"
+                                        className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium text-sm"
+                                    >
+                                        {cancellingPlan ? "İptal ediliyor..." : "Evet, İptal Et"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <ToastContainer toasts={toasts} onRemove={removeToast} />
                 </main>

@@ -45,13 +45,20 @@ export default function RootLayout() {
       return;
     }
 
-    if (hasToken && inAuthPage) {
-      // Decide where to go based on role
+    if (hasToken) {
+      // Kullanıcı rolünü alıp o role ait sayfalarda kalmasını garantiye al
       AsyncStorage.getItem('userRole').then(role => {
-        if (role === 'delivery') {
-          router.replace('/(delivery)');
-        } else {
-          router.replace('/(drawer)');
+        const isDeliveryRole = role === 'delivery';
+
+        if (inAuthPage) {
+          // Oturumu açıkken login/register gibi sayfalara girerse otomatik yönlendir
+          router.replace((isDeliveryRole ? '/(delivery)' : '/(drawer)') as any);
+        } else if (inDrawer && isDeliveryRole) {
+          // KORUMA: Teslimatçı, müşteri arayüzüne (drawer) girmeye çalışırsa geri at
+          router.replace('/(delivery)' as any);
+        } else if (inDelivery && !isDeliveryRole) {
+          // KORUMA: Müşteri, teslimat paneline girmeye çalışırsa geri at
+          router.replace('/(drawer)' as any);
         }
       });
       return;

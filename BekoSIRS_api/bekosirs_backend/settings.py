@@ -4,8 +4,8 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file and prefer local values in development.
+load_dotenv(override=True)
 
 # ------------------------------------------------------------
 # BASE CONFIG
@@ -95,20 +95,42 @@ WSGI_APPLICATION = 'bekosirs_backend.wsgi.application'
 # ------------------------------------------------------------
 # DATABASE
 # ------------------------------------------------------------
-# Use SQLite for development/testing if DB environment variables not set
-# Use MSSQL for production
-# Database configuration - using PostgreSQL for Supabase with SQLite fallback for tests/local
-if os.getenv('DB_HOST'):
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'postgres'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+# Use MSSQL or PostgreSQL depending on DB_ENGINE environment variable
+# Otherwise fall back to SQLite for local development/testing.
+_db_engine = os.getenv('DB_ENGINE', 'mssql')
+_db_name = os.getenv('DB_NAME')
+_db_user = os.getenv('DB_USER')
+_db_password = os.getenv('DB_PASSWORD')
+_db_host = os.getenv('DB_HOST')
+_db_port = os.getenv('DB_PORT')
+
+if all([_db_name, _db_user, _db_password, _db_host]):
+    if _db_engine.lower() in ['postgresql', 'django.db.backends.postgresql', 'postgres']:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': _db_name,
+                'USER': _db_user,
+                'PASSWORD': _db_password,
+                'HOST': _db_host,
+                'PORT': _db_port or '6543',
+            }
         }
-    }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'mssql',
+                'NAME': _db_name,
+                'USER': _db_user,
+                'PASSWORD': _db_password,
+                'HOST': _db_host,
+                'PORT': _db_port or '1433',
+                'OPTIONS': {
+                    'driver': 'ODBC Driver 18 for SQL Server',
+                    'extra_params': 'Encrypt=no;TrustServerCertificate=yes',
+                },
+            }
+        }
 else:
     # SQLite fallback for local development/testing or CI
     DATABASES = {
@@ -218,8 +240,8 @@ CACHE_TTL_MEDIUM = 60 * 30    # 30 minutes
 CACHE_TTL_LONG = 60 * 60 * 2  # 2 hours
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),

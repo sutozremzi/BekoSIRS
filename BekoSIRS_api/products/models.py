@@ -320,7 +320,14 @@ class ServiceRequest(models.Model):
     product_ownership = models.ForeignKey(
         ProductOwnership,
         on_delete=models.CASCADE,
-        related_name='service_requests'
+        related_name='service_requests',
+        null=True, blank=True
+    )
+    product_assignment = models.ForeignKey(
+        'ProductAssignment',
+        on_delete=models.CASCADE,
+        related_name='service_requests',
+        null=True, blank=True
     )
     request_type = models.CharField(max_length=20, choices=REQUEST_TYPE_CHOICES, default='repair')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -347,20 +354,36 @@ class ServiceRequest(models.Model):
         ]
 
     def __str__(self):
-        return f"SR-{self.id}: {self.customer.username} - {self.product_ownership.product.name}"
+        if self.product_ownership:
+            product_name = self.product_ownership.product.name
+        elif self.product_assignment:
+            product_name = self.product_assignment.product.name
+        else:
+            product_name = 'Ürün yok'
+        return f"SR-{self.id}: {self.customer.username} - {product_name}"
 
 
 # -------------------------------
 # 🔹 ServiceQueue (Servis Kuyruğu)
 # -------------------------------
 class ServiceQueue(models.Model):
+    PRIORITY_CHOICES = (
+        (1, 'Yüksek Öncelik'),
+        (2, 'Normal Öncelik'),
+        (3, 'Düşük Öncelik'),
+    )
+
     service_request = models.OneToOneField(
         ServiceRequest,
         on_delete=models.CASCADE,
         related_name='queue_entry'
     )
     queue_number = models.PositiveIntegerField()
-    priority = models.PositiveIntegerField(default=5, help_text="1=En yüksek, 10=En düşük")
+    priority = models.PositiveIntegerField(
+        choices=PRIORITY_CHOICES,
+        default=2,
+        help_text="Öncelik Seviyesi (1=Yüksek, 2=Normal, 3=Düşük)"
+    )
     estimated_wait_time = models.PositiveIntegerField(default=0, help_text="Tahmini bekleme süresi (dakika)")
     entered_queue_at = models.DateTimeField(auto_now_add=True)
 

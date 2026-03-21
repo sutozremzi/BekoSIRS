@@ -120,12 +120,20 @@ export default function ProductDetailScreen() {
 
   const checkOwnership = async () => {
     try {
-      const response = await productOwnershipAPI.getMyOwnerships();
-      // response.data is ProductOwnership[]
-      if (Array.isArray(response.data)) {
-        const owned = response.data.some((item: any) => item.product.id === Number(id));
-        setIsOwned(owned);
-      }
+      const [ownershipRes, assignmentRes] = await Promise.all([
+        productOwnershipAPI.getMyOwnerships().catch(() => ({ data: [] })),
+        api.get('api/v1/assignments/').catch(() => ({ data: [] })),
+      ]);
+
+      const ownerships = Array.isArray(ownershipRes.data) ? ownershipRes.data : [];
+      const assignmentsData = assignmentRes.data?.results || assignmentRes.data || [];
+      const assignments = Array.isArray(assignmentsData) ? assignmentsData : [];
+
+      const productId = Number(id);
+      const owned = ownerships.some((item: any) => item.product?.id === productId);
+      const assigned = assignments.some((item: any) => item.product?.id === productId);
+
+      setIsOwned(owned || assigned);
     } catch (error) {
       console.log('Ownership check error', error);
     }
@@ -227,24 +235,26 @@ export default function ProductDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Wishlist Button Overlay on Image */}
-        <View style={styles.wishlistOverlay}>
-          <TouchableOpacity
-            onPress={handleWishlistToggle}
-            style={styles.wishlistHeaderButton}
-            disabled={wishlistLoading}
-          >
-            {wishlistLoading ? (
-              <ActivityIndicator size="small" color="#f44336" />
-            ) : (
-              <FontAwesome
-                name={inWishlist ? 'heart' : 'heart-o'}
-                size={22}
-                color={inWishlist ? '#f44336' : '#666'}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
+        {/* Wishlist Button Overlay on Image — hidden if already owned/assigned */}
+        {!isOwned && (
+          <View style={styles.wishlistOverlay}>
+            <TouchableOpacity
+              onPress={handleWishlistToggle}
+              style={styles.wishlistHeaderButton}
+              disabled={wishlistLoading}
+            >
+              {wishlistLoading ? (
+                <ActivityIndicator size="small" color="#f44336" />
+              ) : (
+                <FontAwesome
+                  name={inWishlist ? 'heart' : 'heart-o'}
+                  size={22}
+                  color={inWishlist ? '#f44336' : '#666'}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Product Image */}
         <View style={styles.imageContainer}>
@@ -380,20 +390,22 @@ export default function ProductDetailScreen() {
 
       {/* Bottom Action Buttons */}
       <View style={styles.bottomActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.wishlistButton]}
-          onPress={handleWishlistToggle}
-          disabled={wishlistLoading}
-        >
-          <FontAwesome
-            name={inWishlist ? 'heart' : 'heart-o'}
-            size={20}
-            color={inWishlist ? '#f44336' : '#666'}
-          />
-          <Text style={[styles.actionButtonText, inWishlist && { color: '#f44336' }]}>
-            {inWishlist ? 'Listede' : 'İstek Listesi'}
-          </Text>
-        </TouchableOpacity>
+        {!isOwned && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.wishlistButton]}
+            onPress={handleWishlistToggle}
+            disabled={wishlistLoading}
+          >
+            <FontAwesome
+              name={inWishlist ? 'heart' : 'heart-o'}
+              size={20}
+              color={inWishlist ? '#f44336' : '#666'}
+            />
+            <Text style={[styles.actionButtonText, inWishlist && { color: '#f44336' }]}>
+              {inWishlist ? 'Listede' : 'İstek Listesi'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {isOwned && (
           <TouchableOpacity

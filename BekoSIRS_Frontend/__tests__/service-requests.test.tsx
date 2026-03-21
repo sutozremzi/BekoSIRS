@@ -7,7 +7,7 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ServiceRequestsScreen from '../app/(drawer)/service-requests';
-import { serviceRequestAPI, productOwnershipAPI } from '../services';
+import { serviceRequestAPI, productOwnershipAPI, assignmentAPI } from '../services';
 import { Alert } from 'react-native';
 
 // Mock expo-router
@@ -36,6 +36,9 @@ jest.mock('../services', () => ({
     },
     productOwnershipAPI: {
         getMyOwnerships: jest.fn(),
+    },
+    assignmentAPI: {
+        getMyAssignments: jest.fn(),
     },
 }));
 
@@ -100,6 +103,7 @@ describe('ServiceRequestsScreen Tests', () => {
         jest.clearAllMocks();
         (serviceRequestAPI.getMyRequests as jest.Mock).mockResolvedValue({ data: mockRequestsData });
         (productOwnershipAPI.getMyOwnerships as jest.Mock).mockResolvedValue({ data: mockProductsData });
+        (assignmentAPI.getMyAssignments as jest.Mock).mockResolvedValue({ data: [] });
         (serviceRequestAPI.createRequest as jest.Mock).mockResolvedValue({ data: { success: true } });
     });
 
@@ -140,7 +144,7 @@ describe('ServiceRequestsScreen Tests', () => {
     it('opens new request modal when "Yeni Talep" is clicked', async () => {
         const { getByText } = render(<ServiceRequestsScreen />);
 
-        // Wait for the button
+        // Wait for data to load and button to appear
         await waitFor(() => expect(getByText('Yeni Talep')).toBeTruthy());
 
         fireEvent.press(getByText('Yeni Talep'));
@@ -148,6 +152,12 @@ describe('ServiceRequestsScreen Tests', () => {
         await waitFor(() => {
             expect(getByText('Yeni Servis Talebi')).toBeTruthy();
             expect(getByText('Sorun Açıklaması')).toBeTruthy();
+        });
+
+        // Open the product dropdown to see items
+        fireEvent.press(getByText('Ürün seçin...'));
+
+        await waitFor(() => {
             expect(getByText('Buzdolabı - Beko')).toBeTruthy(); // Checks if picker items loaded
         });
     });

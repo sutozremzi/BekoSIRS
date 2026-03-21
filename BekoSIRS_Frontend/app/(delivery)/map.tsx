@@ -11,7 +11,7 @@ import {
     ScrollView,
     Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../services';
@@ -24,9 +24,11 @@ interface Delivery {
     address_lng: number | null;
     status: string;
     delivery_order: number;
+    customer_address?: string;
 }
 
 export default function DeliveryMap() {
+    const insets = useSafeAreaInsets();
     const [deliveries, setDeliveries] = useState<Delivery[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -50,11 +52,27 @@ export default function DeliveryMap() {
             Alert.alert('Bilgi', 'Konum bilgisi mevcut değil');
             return;
         }
-        const url = Platform.select({
-            ios: `maps:0,0?q=${lat},${lng}(${label})`,
-            android: `geo:0,0?q=${lat},${lng}(${label})`,
-        });
-        Linking.openURL(url!);
+        
+        Alert.alert(
+            'Navigasyon',
+            'Hangi uygulama ile gitmek istersiniz?',
+            [
+                {
+                    text: 'Google Haritalar',
+                    onPress: () => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`)
+                },
+                {
+                    text: 'Yandex Navigasyon',
+                    onPress: () => {
+                        Linking.openURL(`yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lng}`).catch(() => {
+                            Alert.alert('Bilgi', 'Yandex Navigasyon bulunamadı, Google açılıyor...');
+                            Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+                        });
+                    }
+                },
+                { text: 'İptal', style: 'cancel' }
+            ]
+        );
     };
 
     const openAllInMaps = () => {
@@ -92,7 +110,7 @@ export default function DeliveryMap() {
             <StatusBar barStyle="dark-content" />
 
             {/* Header */}
-            <SafeAreaView style={styles.header} edges={['top']}>
+            <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
                 <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => router.back()}
@@ -103,7 +121,7 @@ export default function DeliveryMap() {
                 <TouchableOpacity style={styles.mapButton} onPress={openAllInMaps}>
                     <Ionicons name="navigate" size={20} color="#005696" />
                 </TouchableOpacity>
-            </SafeAreaView>
+            </View>
 
             {/* Stats Summary */}
             <View style={styles.statsSummary}>
@@ -162,7 +180,7 @@ export default function DeliveryMap() {
                                     </View>
                                     <View style={styles.addressRow}>
                                         <Ionicons name="location-outline" size={16} color="#64748b" />
-                                        <Text style={styles.addressText} numberOfLines={2}>{delivery.address}</Text>
+                                        <Text style={styles.addressText} numberOfLines={2}>{delivery.address || delivery.customer_address || 'Adres belirtilmemiş'}</Text>
                                     </View>
                                     <TouchableOpacity
                                         style={styles.navigateButton}
@@ -177,8 +195,9 @@ export default function DeliveryMap() {
                     })
                 )}
 
-                <View style={{ height: 32 }} />
+                <View style={{ height: 100 }} />
             </ScrollView>
+
         </View>
     );
 }
@@ -265,6 +284,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
+        flexGrow: 1,
     },
     sectionTitle: {
         fontSize: 16,
@@ -273,7 +293,9 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     emptyState: {
+        flex: 1,
         alignItems: 'center',
+        justifyContent: 'center',
         paddingVertical: 48,
     },
     emptyText: {
