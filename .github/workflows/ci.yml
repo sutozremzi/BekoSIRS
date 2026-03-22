@@ -47,6 +47,9 @@ jobs:
           DB_PORT: '6543'
         run: |
           pytest --no-header -v --override-ini="addopts=--nomigrations" -p no:cacheprovider \
+            --cov=products --cov=bekosirs_backend \
+            --cov-report=term-missing \
+            --cov-fail-under=25 \
             --ignore=test_notifications.py \
             --ignore=test_installments.py \
             --ignore=products/test_biometric.py
