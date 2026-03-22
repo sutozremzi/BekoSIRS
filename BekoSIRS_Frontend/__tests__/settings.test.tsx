@@ -29,6 +29,12 @@ jest.mock('../hooks/useBiometric', () => ({
     useBiometric: jest.fn(),
 }));
 
+// Mock expo-camera (used for Face ID registration)
+jest.mock('expo-camera', () => ({
+    CameraView: 'CameraView',
+    useCameraPermissions: () => [{ granted: false }, jest.fn()],
+}));
+
 // Mock Storage
 jest.mock('../storage/storage.native', () => ({
     getToken: jest.fn(),
@@ -50,22 +56,22 @@ jest.spyOn(Alert, 'alert');
 describe('SettingsScreen Tests', () => {
     const mockEnableBiometric = jest.fn();
     const mockDisableBiometric = jest.fn();
-    const mockCheckIfEnabled = jest.fn();
 
     beforeEach(() => {
         jest.clearAllMocks();
 
         (useBiometric as jest.Mock).mockReturnValue({
-            isAvailable: true,
-            isEnabled: false,
-            displayName: 'Face ID',
             loading: false,
             enableBiometric: mockEnableBiometric,
             disableBiometric: mockDisableBiometric,
-            checkIfEnabled: mockCheckIfEnabled,
         });
 
-        (api.get as jest.Mock).mockResolvedValue({ data: { id: 1 } });
+        (api.get as jest.Mock).mockImplementation((url: string) => {
+            if (url.includes('biometric/status')) {
+                return Promise.resolve({ data: { biometric_enabled: false } });
+            }
+            return Promise.resolve({ data: { id: 1 } });
+        });
         (api.post as jest.Mock).mockResolvedValue({ data: { success: true } });
     });
 
@@ -78,9 +84,9 @@ describe('SettingsScreen Tests', () => {
             expect(getByText('Şifre')).toBeTruthy();
             expect(getByText('İletişim')).toBeTruthy();
 
-            // Biometric info
-            expect(getByText('Biyometrik Giriş')).toBeTruthy();
-            expect(getByText('Face ID')).toBeTruthy();
+            // Biometric info (updated text from Face ID integration)
+            expect(getByText('Biyometrik Giriş (Face ID)')).toBeTruthy();
+            expect(getByText('Yüz Tanıma (Face ID)')).toBeTruthy();
             expect(getByText('Devre dışı')).toBeTruthy();
         });
     });
