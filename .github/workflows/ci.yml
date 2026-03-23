@@ -44,7 +44,7 @@ jobs:
           DB_USER: 'postgres.lvgruacuivsrkwnhkoet'
           DB_PASSWORD: 'fUovx0Y9IY3E2q9u'
           DB_HOST: 'aws-1-eu-west-1.pooler.supabase.com'
-          DB_PORT: '6543'
+          DB_PORT: '5432'
         run: |
           pytest --no-header -v --override-ini="addopts=--nomigrations" -p no:cacheprovider \
             --reuse-db \
