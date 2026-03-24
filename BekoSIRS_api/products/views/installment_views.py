@@ -5,7 +5,6 @@ from products.serializers import (
     InstallmentPlanSerializer, InstallmentPlanListSerializer,
     InstallmentPlanDetailSerializer, InstallmentPlanCreateSerializer,
     InstallmentSerializer, AdminApprovePaymentSerializer,
-    InstallmentEditSerializer
 )
 from products.push_notifications import send_push_to_user
 
