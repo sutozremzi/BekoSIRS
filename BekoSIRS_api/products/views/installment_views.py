@@ -5,8 +5,8 @@ from products.serializers import (
     InstallmentPlanSerializer, InstallmentPlanListSerializer,
     InstallmentPlanDetailSerializer, InstallmentPlanCreateSerializer,
     InstallmentSerializer, AdminApprovePaymentSerializer,
-    InstallmentEditSerializer
 )
+from products.push_notifications import send_push_to_user
 
 
 def _mark_overdue_installments():
@@ -42,6 +42,17 @@ def _mark_overdue_installments():
                 related_product=product,
             ))
         Notification.objects.bulk_create(notifications, ignore_conflicts=True)
+
+        # Push notification gönder
+        for inst in newly_overdue:
+            customer = inst.plan.customer
+            product = inst.plan.product
+            days_late = (today - inst.due_date).days
+            send_push_to_user(
+                customer,
+                'Gecikmiş Taksit',
+                f"{product.name if product else 'Ürününüz'} için {inst.installment_number}. taksidiniz {days_late} gün gecikmiş."
+            )
 
 
 class InstallmentPlanViewSet(viewsets.ModelViewSet):
@@ -137,7 +148,16 @@ class InstallmentViewSet(viewsets.ModelViewSet):
             if not plan.installments.exclude(status='paid').exists():
                 plan.status = 'completed'
                 plan.save()
-                
+
+            # Push notification to customer
+            customer = plan.customer
+            product_name = plan.product.name if plan.product else 'Ürününüz'
+            send_push_to_user(
+                customer,
+                'Ödeme Onaylandı',
+                f"{product_name} için {installment.installment_number}. taksidiniz onaylandı."
+            )
+
             return response.Response({'status': 'success'})
         return response.Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
