@@ -3,7 +3,8 @@
 # BEKOSIRS HİBRİT ÖNERİ SİSTEMİ (RECOMMENDATION ENGINE) TEKNİK REFERANS REHBERİ
 # ==============================================================================
 #
-# ADIM 1: GİRDİ VERİLERİ VE ETKİLEŞİM AĞIRLIKLARI
+# ADIM 1: GİRDİ VERİLERİ VE ETKİLEŞİM AĞIRLIKLARI. //?????????????bu puanlar neye göre veriliyor??????????????? puanlama ağırlıklaırnla oyna
+
 # ------------------------------------------------------------------------------
 # 1.1. Etkileşim Puanları (İki farklı yerde hesaplanır):
 #   - Satın Alma (Purchase): 5.0 Puan (En güçlü sinyal)
@@ -39,7 +40,7 @@
 #      14. Kullanıcının özel olarak bu ürünü kaç kez görüntülediği.
 #   - Tüm bu veriler MinMaxScaler ile 0-1 arasına çekilip ağa sokulur.
 #
-# 2.2. İçerik Tabanlı Filtreleme (Content-Based - TF-IDF & Kosinüs Benzerliği):
+# 2.2. İçerik Tabanlı Filtreleme (Content-Based - TF-IDF & Kosinüs Benzerliği): //.  ??????????bag of words yoksa sadece tf idf?????  
 #   - TF-IDF Vectorizer en çok geçen 5000 kelime/ikili kelime grubunu (1-2 ngram) çıkarır.
 #   - Ürünler arası Kosinüs Benzerliği (Cosine Similarity) hesaplanır.
 #   - Kategori Bonusu: Eğer iki ürün aynı kategorideyse, benzerlik skorlarına statik +0.15 eklenir.
@@ -53,7 +54,7 @@
 #   - NCF, Content ve Popülerlik modellerinden gelen skorlar kendi içlerindeki en yüksek değere (max) 
 #     bölünerek 0 ile 1 arasına (Normalize) çekilir.
 # 
-# 2. Hibrit Formül Ağırlıkları (WEIGHTS):
+# 2. Hibrit Formül Ağırlıkları (WEIGHTS): //genel weightleri değiştir r2 değişiyor mu
 #   - Nihai Puan = (NCF Skoru x 0.5) + (Content Skoru x 0.3) + (Popülerlik Skoru x 0.2)
 #
 # 3. Anlık Bonuslar (Boosts):
