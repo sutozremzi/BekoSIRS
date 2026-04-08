@@ -75,11 +75,13 @@
 # - Etiketleme (Reasoning): Ürünün puanı en çok nereden geldiyse veya hangi bonusu aldıysa,
 #   "Aramalarınıza göre", "Bütçenize uygun", "[Kategori] beğenenler bunu da beğendi" gibi dinamik metinler üretilir.
 # ==============================================================================    
+import math
 import os
 import time
 import threading
 import logging
 import warnings
+from datetime import date as dt_date, datetime as dt_datetime, time as dt_time, timezone as dt_timezone
 
 import numpy as np
 import pandas as pd
@@ -106,6 +108,41 @@ NCF_MODEL_PATH = os.path.join(ML_MODELS_DIR, 'ncf_model.pkl')
 CONTENT_MODEL_PATH = os.path.join(ML_MODELS_DIR, 'content_model.pkl')
 ENCODERS_PATH = os.path.join(ML_MODELS_DIR, 'encoders.pkl')
 METRICS_PATH = os.path.join(ML_MODELS_DIR, 'metrics.pkl')
+
+
+# ---------------------------------------------------------------------------
+# Time-aware scoring helpers
+# ---------------------------------------------------------------------------
+def temporal_weight(interaction_date, half_life_days=30):
+    """
+    Compute an exponential decay multiplier for time-sensitive interactions.
+
+    We use half-life based decay because it is easy to reason about:
+    every `half_life_days` window halves the original contribution instead of
+    dropping it abruptly at a fixed threshold.
+    """
+    # Some legacy rows may not have a timestamp; keeping full weight is safer
+    # than discarding a valid interaction signal entirely.
+    if interaction_date is None:
+        return 1.0
+
+    normalized_date = interaction_date
+    if isinstance(normalized_date, dt_date) and not isinstance(normalized_date, dt_datetime):
+        # Purchase rows store only a calendar date, so we normalize them to the
+        # start of that day in UTC to keep the decay formula consistent.
+        normalized_date = dt_datetime.combine(normalized_date, dt_time.min)
+
+    if normalized_date.tzinfo is None:
+        # Recommendation timestamps should be compared in the same timezone so
+        # the half-life behaves deterministically across environments.
+        normalized_date = normalized_date.replace(tzinfo=dt_timezone.utc)
+
+    now = dt_datetime.now(dt_timezone.utc)
+    days_old = max(0, (now - normalized_date).days)
+
+    # Exponential decay keeps recent activity dominant while still preserving
+    # a diminishing contribution from older interactions.
+    return math.exp(-math.log(2) * days_old / half_life_days)
 
 
 # ---------------------------------------------------------------------------
@@ -813,6 +850,13 @@ class HybridRecommender:
     WEIGHT_CONTENT = 0.3
     WEIGHT_POPULARITY = 0.2
 
+    # Temporal decay half-life values are tuned by interaction intent:
+    # purchases stay meaningful longer, while views should reflect recency.
+    DECAY_PURCHASE_DAYS = 90
+    DECAY_WISHLIST_DAYS = 45
+    DECAY_REVIEW_DAYS = 60
+    DECAY_VIEW_DAYS = 30
+
     CACHE_TTL = getattr(settings, 'CACHE_TTL_LONG', 7200)
 
     def __new__(cls):
@@ -1026,28 +1070,52 @@ class HybridRecommender:
 
         interactions = {}
 
-        # Purchases (weight=5.0)
-        for pid in ProductOwnership.objects.filter(
+        # Purchases are a durable preference signal, so we decay them slowly.
+        for ownership in ProductOwnership.objects.filter(
             customer=user
-        ).values_list('product_id', flat=True):
-            interactions[pid] = interactions.get(pid, 0) + 5.0
+        ).values('product_id', 'purchase_date'):
+            decay = temporal_weight(
+                ownership['purchase_date'],
+                half_life_days=self.DECAY_PURCHASE_DAYS,
+            )
+            interactions[ownership['product_id']] = (
+                interactions.get(ownership['product_id'], 0) + (5.0 * decay)
+            )
 
-        # Reviews with rating > 3 (weight=rating)
+        # Positive reviews stay useful for longer because they capture explicit intent.
         for r in Review.objects.filter(
             customer=user, rating__gt=3
-        ).values('product_id', 'rating'):
-            interactions[r['product_id']] = interactions.get(r['product_id'], 0) + float(r['rating'])
+        ).values('product_id', 'rating', 'created_at'):
+            decay = temporal_weight(
+                r['created_at'],
+                half_life_days=self.DECAY_REVIEW_DAYS,
+            )
+            interactions[r['product_id']] = (
+                interactions.get(r['product_id'], 0) + (float(r['rating']) * decay)
+            )
 
-        # Wishlist items (weight=3.0) — positive signal
-        for pid in WishlistItem.objects.filter(
+        # Wishlist intent can go stale faster than a purchase but should still
+        # outlive casual browsing, so it gets a medium half-life.
+        for item in WishlistItem.objects.filter(
             wishlist__customer=user
-        ).values_list('product_id', flat=True):
-            interactions[pid] = interactions.get(pid, 0) + 3.0
+        ).values('product_id', 'added_at'):
+            decay = temporal_weight(
+                item['added_at'],
+                half_life_days=self.DECAY_WISHLIST_DAYS,
+            )
+            interactions[item['product_id']] = (
+                interactions.get(item['product_id'], 0) + (3.0 * decay)
+            )
 
-        # ALL views weighted by view_count (capped at 15 to avoid one product dominating)
-        for vh in ViewHistory.objects.filter(customer=user).values('product_id', 'view_count'):
-            weight = min(vh['view_count'], 15)  # Cap at 15
-            interactions[vh['product_id']] = interactions.get(vh['product_id'], 0) + weight
+        # Views reflect short-term intent, so they decay fastest. We still cap
+        # view_count to prevent one heavily refreshed page from dominating.
+        for vh in ViewHistory.objects.filter(customer=user).values('product_id', 'view_count', 'viewed_at'):
+            weight = min(vh['view_count'], 15)
+            decay = temporal_weight(
+                vh['viewed_at'],
+                half_life_days=self.DECAY_VIEW_DAYS,
+            )
+            interactions[vh['product_id']] = interactions.get(vh['product_id'], 0) + (weight * decay)
 
         # Dismissed recommendations (weight=-3.0) — negative signal
         # Mirrors wishlist's +3.0 but inverted: penalizes similar products
