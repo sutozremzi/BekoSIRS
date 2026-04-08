@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLanguage } from '../../../context/LanguageContext';
+import { t } from '../../../i18n';
 
 const THEME = {
     primary: '#E31E24',      // Beko kırmızısı
@@ -12,11 +14,13 @@ const THEME = {
 
 export default function TabsLayout() {
     const insets = useSafeAreaInsets();
+    const { language } = useLanguage();
 
     return (
         <Tabs
+            key={language}
             screenOptions={{
-                headerShown: false, // Drawer'dan gelen header'u kullanacağız
+                headerShown: false,
                 tabBarActiveTintColor: THEME.primary,
                 tabBarInactiveTintColor: THEME.gray,
                 tabBarStyle: {
@@ -42,7 +46,7 @@ export default function TabsLayout() {
             <Tabs.Screen
                 name="index"
                 options={{
-                    tabBarLabel: 'Ana Sayfa',
+                    tabBarLabel: t('nav.home'),
                     tabBarIcon: ({ color, size }) => <FontAwesome name="home" size={size} color={color} />,
                 }}
             />
@@ -51,7 +55,7 @@ export default function TabsLayout() {
             <Tabs.Screen
                 name="wishlist"
                 options={{
-                    tabBarLabel: 'Favoriler',
+                    tabBarLabel: t('nav.favorites'),
                     tabBarIcon: ({ color, size }) => <FontAwesome name="star" size={size} color={color} />,
                 }}
             />
@@ -60,7 +64,7 @@ export default function TabsLayout() {
             <Tabs.Screen
                 name="my-products"
                 options={{
-                    tabBarLabel: 'Ürünlerim',
+                    tabBarLabel: t('nav.myProducts'),
                     tabBarIcon: ({ color, size }) => <FontAwesome name="shopping-bag" size={size} color={color} />,
                 }}
             />
@@ -69,7 +73,7 @@ export default function TabsLayout() {
             <Tabs.Screen
                 name="profile"
                 options={{
-                    tabBarLabel: 'Hesabım',
+                    tabBarLabel: t('nav.myAccount'),
                     tabBarIcon: ({ color, size }) => <FontAwesome name="user" size={size} color={color} />,
                 }}
             />

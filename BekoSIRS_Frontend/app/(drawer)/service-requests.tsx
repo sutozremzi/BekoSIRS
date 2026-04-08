@@ -16,6 +16,8 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { serviceRequestAPI, productOwnershipAPI, assignmentAPI } from '../../services';
+import { useLanguage } from '../../context/LanguageContext';
+import { t } from '../../i18n';
 
 interface ServiceRequest {
   id: number;
@@ -43,25 +45,26 @@ interface ProductOption {
   };
 }
 
-const StatusConfig: Record<string, { label: string; color: string; icon: string }> = {
-  pending: { label: 'Beklemede', color: '#FF9800', icon: 'clock-o' },
-  in_queue: { label: 'Sırada', color: '#2196F3', icon: 'list-ol' },
-  in_progress: { label: 'İşlemde', color: '#9C27B0', icon: 'cog' },
-  completed: { label: 'Tamamlandı', color: '#4CAF50', icon: 'check-circle' },
-  cancelled: { label: 'İptal', color: '#f44336', icon: 'times-circle' },
-};
-
-const RequestTypeConfig: Record<string, string> = {
-  repair: 'Tamir',
-  maintenance: 'Bakım',
-  warranty: 'Garanti',
-  complaint: 'Şikayet',
-  other: 'Diğer',
-};
-
 const ServiceRequestsScreen = () => {
   const params = useLocalSearchParams();
+  const { language } = useLanguage();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  const StatusConfig: Record<string, { label: string; color: string; icon: string }> = {
+    pending: { label: t('service.pending'), color: '#FF9800', icon: 'clock-o' },
+    in_queue: { label: t('service.inQueue'), color: '#2196F3', icon: 'list-ol' },
+    in_progress: { label: t('service.inProgress'), color: '#9C27B0', icon: 'cog' },
+    completed: { label: t('service.completed'), color: '#4CAF50', icon: 'check-circle' },
+    cancelled: { label: t('service.cancelled'), color: '#f44336', icon: 'times-circle' },
+  };
+
+  const RequestTypeConfig: Record<string, string> = {
+    repair: t('service.repair'),
+    maintenance: t('service.maintenance'),
+    warranty: t('service.warranty'),
+    complaint: t('service.complaint'),
+    other: t('service.other'),
+  };
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,11 +143,11 @@ const ServiceRequestsScreen = () => {
 
   const handleCreateRequest = async () => {
     if (!selectedProduct) {
-      Alert.alert('Hata', 'Lütfen bir ürün seçin');
+      Alert.alert(t('common.error'), t('service.selectProductError'));
       return;
     }
     if (!description.trim()) {
-      Alert.alert('Hata', 'Lütfen sorun açıklaması girin');
+      Alert.alert(t('common.error'), t('service.descriptionError'));
       return;
     }
 
@@ -157,21 +160,22 @@ const ServiceRequestsScreen = () => {
         description,
         selectedOption?.type === 'assignment' ? 'assignment' : 'ownership'
       );
-      Alert.alert('Başarılı', 'Servis talebiniz oluşturuldu');
+      Alert.alert(t('common.success'), t('service.created'));
       setModalVisible(false);
       setSelectedProduct(null);
       setRequestType('repair');
       setDescription('');
       fetchData();
     } catch (error) {
-      Alert.alert('Hata', 'Servis talebi oluşturulamadı');
+      Alert.alert(t('common.error'), t('service.createFailed'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('tr-TR', {
+    const locale = language === 'tr' ? 'tr-TR' : 'en-US';
+    return new Date(dateString).toLocaleDateString(locale, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -205,7 +209,7 @@ const ServiceRequestsScreen = () => {
           <View style={styles.queueInfo}>
             <FontAwesome name="list-ol" size={14} color="#2196F3" />
             <Text style={styles.queueText}>
-              Sıra No: {item.queue_entry.queue_number} | Tahmini Bekleme: {item.queue_entry.estimated_wait_time} dk
+              Sıra No: {item.queue_entry.queue_number} | {t('service.estimatedWait')}: {item.queue_entry.estimated_wait_time} {t('service.minutes')}
             </Text>
           </View>
         )}
@@ -237,22 +241,22 @@ const ServiceRequestsScreen = () => {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Servis Taleplerim</Text>
+            <Text style={styles.headerTitle}>{t('service.title')}</Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => setModalVisible(true)}
             >
               <FontAwesome name="plus" size={16} color="#fff" />
-              <Text style={styles.addButtonText}>Yeni Talep</Text>
+              <Text style={styles.addButtonText}>{t('service.newRequest')}</Text>
             </TouchableOpacity>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <FontAwesome name="wrench" size={80} color="#ccc" />
-            <Text style={styles.emptyTitle}>Servis Talebi Yok</Text>
+            <Text style={styles.emptyTitle}>{t('service.noRequests')}</Text>
             <Text style={styles.emptyText}>
-              Henüz bir servis talebiniz bulunmuyor
+              {t('service.noRequestsDesc')}
             </Text>
           </View>
         }
@@ -268,29 +272,29 @@ const ServiceRequestsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Servis Talebi</Text>
+              <Text style={styles.modalTitle}>{t('service.newServiceRequest')}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <FontAwesome name="times" size={24} color="#333" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Text style={styles.label}>Ürün Seçin ({products.length} ürün)</Text>
+              <Text style={styles.label}>{t('service.selectProduct')} ({products.length})</Text>
               <TouchableOpacity
                 style={styles.selectorButton}
                 onPress={() => setProductPickerOpen(!productPickerOpen)}
               >
                 <Text style={selectedProduct ? styles.selectorText : styles.selectorPlaceholder}>
                   {selectedProduct
-                    ? (() => { const p = products.find(x => x.id === selectedProduct); return p ? p.product.name : 'Ürün seçin...'; })()
-                    : 'Ürün seçin...'}
+                    ? (() => { const p = products.find(x => x.id === selectedProduct); return p ? p.product.name : t('service.selectProductPlaceholder'); })()
+                    : t('service.selectProductPlaceholder')}
                 </Text>
                 <FontAwesome name={productPickerOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#666" />
               </TouchableOpacity>
               {productPickerOpen && (
                 <View style={styles.selectorList}>
                   {products.length === 0 ? (
-                    <Text style={styles.selectorEmpty}>Atanmış ürün bulunamadı</Text>
+                    <Text style={styles.selectorEmpty}>{t('service.noProducts')}</Text>
                   ) : (
                     products.map((p: ProductOption) => (
                       <TouchableOpacity
@@ -299,7 +303,7 @@ const ServiceRequestsScreen = () => {
                         onPress={() => { setSelectedProduct(p.id); setProductPickerOpen(false); }}
                       >
                         <Text style={[styles.selectorItemText, selectedProduct === p.id && styles.selectorItemTextActive]}>
-                          {p.product.name}{p.product.brand ? ` - ${p.product.brand}` : ''}{p.type === 'assignment' ? ' (Beklemede)' : ''}
+                          {p.product.name}{p.product.brand ? ` - ${p.product.brand}` : ''}{p.type === 'assignment' ? ` (${t('service.pendingDelivery')})` : ''}
                         </Text>
                       </TouchableOpacity>
                     ))
@@ -307,19 +311,19 @@ const ServiceRequestsScreen = () => {
                 </View>
               )}
 
-              <Text style={styles.label}>Talep Türü</Text>
+              <Text style={styles.label}>{t('service.requestType')}</Text>
               <TouchableOpacity
                 style={styles.selectorButton}
                 onPress={() => setTypePickerOpen(!typePickerOpen)}
               >
                 <Text style={styles.selectorText}>
-                  {{'repair':'Tamir','maintenance':'Bakım','warranty':'Garanti','complaint':'Şikayet','other':'Diğer'}[requestType] || 'Tamir'}
+                  {RequestTypeConfig[requestType] || t('service.repair')}
                 </Text>
                 <FontAwesome name={typePickerOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#666" />
               </TouchableOpacity>
               {typePickerOpen && (
                 <View style={styles.selectorList}>
-                  {[['repair','Tamir'],['maintenance','Bakım'],['warranty','Garanti'],['complaint','Şikayet'],['other','Diğer']].map(([val, label]) => (
+                  {Object.entries(RequestTypeConfig).map(([val, label]) => (
                     <TouchableOpacity
                       key={val}
                       style={[styles.selectorItem, requestType === val && styles.selectorItemActive]}
@@ -331,12 +335,12 @@ const ServiceRequestsScreen = () => {
                 </View>
               )}
 
-              <Text style={styles.label}>Sorun Açıklaması</Text>
+              <Text style={styles.label}>{t('service.description')}</Text>
               <TextInput
                 style={styles.textArea}
                 multiline
                 numberOfLines={4}
-                placeholder="Sorununuzu detaylı olarak açıklayın..."
+                placeholder={t('service.descriptionPlaceholder')}
                 value={description}
                 onChangeText={setDescription}
                 textAlignVertical="top"
@@ -348,7 +352,7 @@ const ServiceRequestsScreen = () => {
                 style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.cancelButtonText}>İptal</Text>
+                <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.submitButton, submitting && styles.disabledButton]}
@@ -358,7 +362,7 @@ const ServiceRequestsScreen = () => {
                 {submitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.submitButtonText}>Gönder</Text>
+                  <Text style={styles.submitButtonText}>{t('service.submit')}</Text>
                 )}
               </TouchableOpacity>
             </View>

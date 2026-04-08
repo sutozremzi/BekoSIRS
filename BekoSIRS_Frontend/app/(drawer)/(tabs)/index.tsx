@@ -18,6 +18,8 @@ import api, { wishlistAPI, productAPI, recommendationAPI } from '../../../servic
 import { ProductCard } from '../../../components/ProductCard';
 import { useRouter, Router } from 'expo-router';
 import { getToken } from '../../../storage/storage.native';
+import { useLanguage } from '../../../context/LanguageContext';
+import { t } from '../../../i18n';
 
 const { width } = Dimensions.get('window');
 const GAP = 12;
@@ -112,7 +114,7 @@ const HomeListHeader = ({
       <FontAwesome name="search" size={16} color="#9CA3AF" style={styles.searchIcon} />
       <TextInput
         style={styles.searchInput}
-        placeholder="Ürün veya marka ara..."
+        placeholder={t('home.searchPlaceholder')}
         placeholderTextColor="#9CA3AF"
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -133,9 +135,9 @@ const HomeListHeader = ({
     {recommendedProducts.length > 0 && !searchQuery && (
       <View style={styles.popularSection}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Size Özel Öneriler</Text>
+          <Text style={styles.sectionTitle}>{t('home.recommendations')}</Text>
           <TouchableOpacity onPress={() => router.push('/(drawer)/recommendations')}>
-            <Text style={styles.seeAll}>Tümünü Gör</Text>
+            <Text style={styles.seeAll}>{t('home.seeAll')}</Text>
           </TouchableOpacity>
         </View>
         <ScrollView
@@ -158,9 +160,9 @@ const HomeListHeader = ({
     {popularProducts.length > 0 && !searchQuery && (
       <View style={styles.popularSection}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Popüler Ürünler</Text>
+          <Text style={styles.sectionTitle}>{t('home.popular')}</Text>
           <TouchableOpacity>
-            <Text style={styles.seeAll}>Tümünü Gör</Text>
+            <Text style={styles.seeAll}>{t('home.seeAll')}</Text>
           </TouchableOpacity>
         </View>
         <ScrollView
@@ -195,7 +197,7 @@ const HomeListHeader = ({
             selectedCategory === null && styles.categoryChipTextActive,
           ]}
         >
-          Tümü
+          {t('home.all')}
         </Text>
       </TouchableOpacity>
       {categories.map((cat) => (
@@ -221,7 +223,7 @@ const HomeListHeader = ({
 
     {/* Sıralama Filtreleri */}
     <View style={styles.sortSection}>
-      <Text style={styles.sortTitle}>Sırala:</Text>
+      <Text style={styles.sortTitle}>{t('home.sortBy')}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -232,7 +234,7 @@ const HomeListHeader = ({
           onPress={() => setSortBy('all')}
         >
           <Text style={[styles.sortChipText, sortBy === 'all' && styles.sortChipTextActive]}>
-            Tümü
+            {t('home.all')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -240,7 +242,7 @@ const HomeListHeader = ({
           onPress={() => setSortBy('reviews')}
         >
           <Text style={[styles.sortChipText, sortBy === 'reviews' && styles.sortChipTextActive]}>
-            En Çok Değerlendirilen
+            {t('home.mostReviewed')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -248,7 +250,7 @@ const HomeListHeader = ({
           onPress={() => setSortBy('comments')}
         >
           <Text style={[styles.sortChipText, sortBy === 'comments' && styles.sortChipTextActive]}>
-            En Çok Yorum Alan
+            {t('home.mostCommented')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -256,7 +258,7 @@ const HomeListHeader = ({
           onPress={() => setSortBy('popular')}
         >
           <Text style={[styles.sortChipText, sortBy === 'popular' && styles.sortChipTextActive]}>
-            En Çok Satılan
+            {t('home.bestSelling')}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -270,10 +272,10 @@ const HomeListHeader = ({
             {selectedCategory !== null &&
               `Kategori: ${categories.find((c) => c.id === selectedCategory)?.name}`}
             {searchQuery && selectedCategory !== null && ' • '}
-            {searchQuery && `Arama: "${searchQuery}"`}
+            {searchQuery && `${t('home.search')}: "${searchQuery}"`}
           </Text>
           <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersButton}>
-            <Text style={styles.clearFiltersText}>Temizle</Text>
+            <Text style={styles.clearFiltersText}>{t('home.clearFilters')}</Text>
           </TouchableOpacity>
         </View>
       )
@@ -439,7 +441,7 @@ const HomeScreen = () => {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#000000" />
-        <Text style={{ marginTop: 10, color: '#666' }}>Ürünler yükleniyor...</Text>
+        <Text style={{ marginTop: 10, color: '#666' }}>{t('home.productsLoading')}</Text>
       </View>
     );
   }
@@ -483,16 +485,16 @@ const HomeScreen = () => {
           <View style={styles.emptyContainer}>
             <FontAwesome name="search" size={60} color="#ccc" />
             <Text style={styles.emptyTitle}>
-              {isSearching ? 'Aranıyor...' : 'Ürün Bulunamadı'}
+              {isSearching ? t('home.searching') : t('home.noProducts')}
             </Text>
             <Text style={styles.emptyText}>
               {searchQuery
-                ? `"${searchQuery}" için sonuç bulunamadı.`
-                : 'Arama kriterlerinize uygun ürün bulunamadı.'}
+                ? `"${searchQuery}" ${t('home.noResultsFor')}`
+                : t('home.noResultsCriteria')}
             </Text>
             {(searchQuery || selectedCategory !== null) && (
               <TouchableOpacity style={styles.clearButton2} onPress={clearFilters}>
-                <Text style={styles.clearButton2Text}>Filtreleri Temizle</Text>
+                <Text style={styles.clearButton2Text}>{t('home.clearAllFilters')}</Text>
               </TouchableOpacity>
             )}
           </View>

@@ -20,6 +20,8 @@ import { useBiometric } from '../hooks/useBiometric';
 import { saveTokens } from '../storage/storage.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useLanguage } from '../context/LanguageContext';
+import { t } from '../i18n';
 
 const LoginScreen = () => {
     const [username, setUsername] = useState('');
@@ -33,6 +35,7 @@ const LoginScreen = () => {
 
     const { login, loading: authLoading } = useAuth();
     const { loginWithFace, loading: bioLoading } = useBiometric();
+    const { language } = useLanguage(); // triggers re-render on language change
 
     const handleLogin = async () => {
         await login(username, password);
@@ -47,7 +50,7 @@ const LoginScreen = () => {
                 currentUsername = savedUsername;
                 setUsername(currentUsername); // State'i güncelle ki kamera modalı bilsin
             } else {
-                Alert.alert("Bilgi", "Face ID kullanabilmek için lütfen uygulamanıza en az 1 kere şifrenizle giriş yapın.");
+                Alert.alert(t('common.error'), t('login.faceIdInfo'));
                 return;
             }
         }
@@ -55,7 +58,7 @@ const LoginScreen = () => {
         if (!permission?.granted) {
             const result = await requestPermission();
             if (!result.granted) {
-                Alert.alert("Hata", "Kamera izni gereklidir.");
+                Alert.alert(t('common.error'), t('login.cameraPermission'));
                 return;
             }
         }
@@ -75,11 +78,11 @@ const LoginScreen = () => {
                     await AsyncStorage.setItem('userRole', 'customer');
                     router.replace('/(drawer)' as any);
                 } else {
-                    Alert.alert("Giriş Başarısız", result.error || "Yüz doğrulama başarısız oldu.");
+                    Alert.alert(t('login.loginFailed'), result.error || t('login.faceVerifyFailed'));
                 }
             } catch (error) {
                 setShowCamera(false);
-                Alert.alert("Hata", "Fotoğraf çekilirken bir sorun oluştu.");
+                Alert.alert(t('common.error'), t('login.photoError'));
             }
         }
     };
@@ -103,9 +106,9 @@ const LoginScreen = () => {
                         <View style={styles.logoBadge}>
                             <Text style={styles.logoText}>BEKO</Text>
                         </View>
-                        <Text style={styles.title}>Hoş Geldiniz</Text>
+                        <Text style={styles.title}>{t('login.welcome')}</Text>
                         <Text style={styles.subtitle}>
-                            Ürün yönetim sistemine güvenli erişim sağlayın
+                            {t('login.subtitle')}
                         </Text>
                     </View>
 
@@ -122,7 +125,7 @@ const LoginScreen = () => {
                                 <>
                                     <Text style={styles.biometricIcon}>👤</Text>
                                     <Text style={styles.biometricButtonText}>
-                                        Face ID ile Giriş
+                                        {t('login.faceId')}
                                     </Text>
                                 </>
                             )}
@@ -130,16 +133,16 @@ const LoginScreen = () => {
 
                         <View style={styles.divider}>
                             <View style={styles.line} />
-                            <Text style={styles.dividerText}>veya şifre ile</Text>
+                            <Text style={styles.dividerText}>{t('login.orPassword')}</Text>
                             <View style={styles.line} />
                         </View>
 
                         <View style={styles.inputSection}>
-                            <Text style={styles.label}>Kullanıcı Adı</Text>
+                            <Text style={styles.label}>{t('login.username')}</Text>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
-                                    placeholder="Kullanıcı adınızı girin"
+                                    placeholder={t('login.usernamePlaceholder')}
                                     value={username}
                                     onChangeText={setUsername}
                                     autoCapitalize="none"
@@ -151,7 +154,7 @@ const LoginScreen = () => {
                         </View>
 
                         <View style={styles.inputSection}>
-                            <Text style={styles.label}>Şifre</Text>
+                            <Text style={styles.label}>{t('login.password')}</Text>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
@@ -178,7 +181,7 @@ const LoginScreen = () => {
                             style={styles.forgotPassContainer}
                             onPress={() => router.push('/forgot-password' as any)}
                         >
-                            <Text style={styles.forgotPassText}>Şifremi Unuttum</Text>
+                            <Text style={styles.forgotPassText}>{t('login.forgotPassword')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -190,13 +193,13 @@ const LoginScreen = () => {
                             {authLoading ? (
                                 <ActivityIndicator color="#FFFFFF" />
                             ) : (
-                                <Text style={styles.buttonText}>Giriş Yap</Text>
+                                <Text style={styles.buttonText}>{t('login.login')}</Text>
                             )}
                         </TouchableOpacity>
 
                         <View style={styles.divider}>
                             <View style={styles.line} />
-                            <Text style={styles.dividerText}>veya</Text>
+                            <Text style={styles.dividerText}>{t('common.or')}</Text>
                             <View style={styles.line} />
                         </View>
 
@@ -205,13 +208,13 @@ const LoginScreen = () => {
                             onPress={() => router.push('/register' as any)}
                             disabled={isLoading}
                         >
-                            <Text style={styles.secondaryButtonText}>Yeni Hesap Oluştur</Text>
+                            <Text style={styles.secondaryButtonText}>{t('login.createAccount')}</Text>
                         </TouchableOpacity>
                     </View>
 
                     <View style={styles.footer}>
                         <Text style={styles.footerCopyright}>
-                            © 2025 Beko Global. Tüm hakları saklıdır.
+                            {t('login.copyright')}
                         </Text>
                     </View>
                 </ScrollView>
@@ -228,14 +231,14 @@ const LoginScreen = () => {
                         >
                             <View style={styles.cameraOverlay}>
                                 <View style={styles.faceOutline} />
-                                <Text style={styles.cameraText}>Lütfen yüzünüzü çerçeveye ortalayın</Text>
+                                <Text style={styles.cameraText}>{t('login.cameraGuide')}</Text>
                             </View>
                             <View style={styles.cameraControls}>
                                 <TouchableOpacity 
                                     style={styles.closeCameraButton} 
                                     onPress={() => setShowCamera(false)}
                                 >
-                                    <Text style={styles.cameraButtonText}>İptal</Text>
+                                    <Text style={styles.cameraButtonText}>{t('common.cancel')}</Text>
                                 </TouchableOpacity>
                                 
                                 <TouchableOpacity 

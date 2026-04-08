@@ -14,6 +14,8 @@ import {
 import { FontAwesome } from '@expo/vector-icons';
 import { wishlistAPI, viewHistoryAPI } from '../../../services';
 import { useRouter } from 'expo-router';
+import { useLanguage } from '../../../context/LanguageContext';
+import { t } from '../../../i18n';
 
 interface WishlistItem {
   id: number;
@@ -43,6 +45,7 @@ const WishlistScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const { language } = useLanguage();
 
   const fetchWishlist = useCallback(async () => {
     try {
@@ -67,19 +70,19 @@ const WishlistScreen = () => {
 
   const handleRemoveItem = async (productId: number, productName: string) => {
     Alert.alert(
-      'Ürünü Kaldır',
-      `"${productName}" istek listenizden kaldırılsın mı?`,
+      t('wishlist.removeTitle'),
+      `"${productName}" ${t('wishlist.removeConfirm')}`,
       [
-        { text: 'İptal', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Kaldır',
+          text: t('wishlist.remove'),
           style: 'destructive',
           onPress: async () => {
             try {
               await wishlistAPI.removeItem(productId);
               fetchWishlist();
             } catch (error) {
-              Alert.alert('Hata', 'Ürün kaldırılamadı');
+              Alert.alert(t('common.error'), t('wishlist.removeFailed'));
             }
           },
         },
@@ -125,7 +128,7 @@ const WishlistScreen = () => {
               <Text style={styles.category}>{product.category_name}</Text>
             )}
             <Text style={styles.price}>
-              {parseFloat(product.price).toLocaleString('tr-TR', {
+              {parseFloat(product.price).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US', {
                 style: 'currency',
                 currency: 'TRY',
               })}
@@ -138,13 +141,13 @@ const WishlistScreen = () => {
                 ]}
               >
                 <Text style={styles.stockText}>
-                  {isInStock ? `Stokta (${product.stock})` : 'Stok Yok'}
+                  {isInStock ? `${t('home.inStock')} (${product.stock})` : t('home.outOfStock')}
                 </Text>
               </View>
             </View>
             {item.note && (
               <Text style={styles.note} numberOfLines={1}>
-                Not: {item.note}
+                {t('wishlist.note')}: {item.note}
               </Text>
             )}
           </View>
@@ -158,7 +161,7 @@ const WishlistScreen = () => {
                   await wishlistAPI.updateItem(product.id, { notify_on_price_drop: !item.notify_on_price_drop });
                   fetchWishlist();
                 } catch (e) {
-                  Alert.alert('Hata', 'Güncelleme başarısız');
+                  Alert.alert(t('common.error'), t('wishlist.updateFailed'));
                 }
               }}
               style={[styles.notifyBadge, !item.notify_on_price_drop && { backgroundColor: '#ddd' }]}
@@ -172,7 +175,7 @@ const WishlistScreen = () => {
                   await wishlistAPI.updateItem(product.id, { notify_on_restock: !item.notify_on_restock });
                   fetchWishlist();
                 } catch (e) {
-                  Alert.alert('Hata', 'Güncelleme başarısız');
+                  Alert.alert(t('common.error'), t('wishlist.updateFailed'));
                 }
               }}
               style={[styles.notifyBadge, { backgroundColor: item.notify_on_restock ? '#2196F3' : '#ddd' }]}
@@ -211,24 +214,24 @@ const WishlistScreen = () => {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.title}>İstek Listem</Text>
+            <Text style={styles.title}>{t('wishlist.title')}</Text>
             <Text style={styles.subtitle}>
-              {wishlist?.item_count || 0} ürün
+              {wishlist?.item_count || 0} {t('wishlist.productCount')}
             </Text>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <FontAwesome name="heart-o" size={80} color="#ccc" />
-            <Text style={styles.emptyTitle}>İstek Listeniz Boş</Text>
+            <Text style={styles.emptyTitle}>{t('wishlist.emptyTitle')}</Text>
             <Text style={styles.emptyText}>
-              Beğendiğiniz ürünleri buraya ekleyebilirsiniz
+              {t('wishlist.emptyDesc')}
             </Text>
             <TouchableOpacity
               style={styles.browseButton}
               onPress={() => router.push('/')}
             >
-              <Text style={styles.browseButtonText}>Ürünlere Göz At</Text>
+              <Text style={styles.browseButtonText}>{t('wishlist.browse')}</Text>
             </TouchableOpacity>
           </View>
         }

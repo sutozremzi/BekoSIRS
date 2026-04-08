@@ -5,6 +5,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { useNavigation } from '@react-navigation/native';
 import { DrawerActions } from '@react-navigation/native';
+import { useLanguage } from '../../context/LanguageContext';
+import { t } from '../../i18n';
 
 // Beko tema renkleri
 const THEME = {
@@ -23,6 +25,7 @@ const THEME = {
 };
 
 function CustomDrawerContent(props: any) {
+  const { language } = useLanguage();
   return (
     <DrawerContentScrollView {...props} style={{ backgroundColor: THEME.background }}>
       <View style={styles.header}>
@@ -30,7 +33,7 @@ function CustomDrawerContent(props: any) {
           <Text style={styles.logoText}>BEKO</Text>
         </View>
         <Text style={styles.brandName}>BekoSIRS</Text>
-        <Text style={styles.tagline}>Akıllı Envanter Sistemi</Text>
+        <Text style={styles.tagline}>{t('nav.tagline')}</Text>
       </View>
       <View style={styles.divider} />
       <DrawerItemList {...props} />
@@ -59,8 +62,10 @@ function DrawerToggleButton() {
 }
 
 export default function DrawerLayout() {
+  const { language } = useLanguage();
   return (
     <Drawer
+      key={language}
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerStyle: { backgroundColor: THEME.black },
@@ -78,7 +83,7 @@ export default function DrawerLayout() {
       <Drawer.Screen
         name="(tabs)"
         options={{
-          drawerLabel: 'Ana Sayfa',
+          drawerLabel: t('nav.home'),
           title: 'BekoSIRS',
           drawerIcon: ({ color, size }) => <FontAwesome name="home" size={size} color={color} />,
         }}
@@ -88,40 +93,40 @@ export default function DrawerLayout() {
       <Drawer.Screen
         name="recommendations"
         options={{
-          drawerLabel: 'Size Özel Öneriler',
-          title: 'Öneriler',
+          drawerLabel: t('nav.recommendations'),
+          title: t('nav.recommendationsShort'),
           drawerIcon: ({ color, size }) => <FontAwesome name="lightbulb-o" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
         name="service-requests"
         options={{
-          drawerLabel: 'Servis Taleplerim',
-          title: 'Servis Talepleri',
+          drawerLabel: t('nav.serviceRequests'),
+          title: t('nav.serviceRequestsShort'),
           drawerIcon: ({ color, size }) => <FontAwesome name="wrench" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
         name="payments"
         options={{
-          drawerLabel: 'Ödemelerim',
-          title: 'Ödemelerim',
+          drawerLabel: t('nav.payments'),
+          title: t('nav.payments'),
           drawerIcon: ({ color, size }) => <FontAwesome name="credit-card" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
         name="notifications"
         options={{
-          drawerLabel: 'Bildirimler',
-          title: 'Bildirimler',
+          drawerLabel: t('nav.notifications'),
+          title: t('nav.notifications'),
           drawerIcon: ({ color, size }) => <FontAwesome name="bell" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
         name="settings"
         options={{
-          drawerLabel: 'Ayarlar',
-          title: 'Ayarlar',
+          drawerLabel: t('nav.settings'),
+          title: t('nav.settings'),
           drawerIcon: ({ color, size }) => <FontAwesome name="cog" size={size} color={color} />,
         }}
       />

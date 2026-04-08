@@ -18,10 +18,14 @@ import { useBiometric } from '../../hooks/useBiometric';
 import { getToken, getRefreshToken } from '../../storage/storage.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useLanguage } from '../../context/LanguageContext';
+import { t } from '../../i18n';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function SettingsScreen() {
-  const [activeTab, setActiveTab] = useState<'password' | 'email' | 'security'>('security');
+  const [activeTab, setActiveTab] = useState<'password' | 'email' | 'security' | 'preferences'>('security');
   const [loading, setLoading] = useState(false);
+  const { language, changeLanguage } = useLanguage();
 
   // Şifre değiştirme state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -49,10 +53,43 @@ export default function SettingsScreen() {
   // User info state
   const [userId, setUserId] = useState<number | null>(null);
 
+  const { logout } = useAuth();
+  const [notifyPrefs, setNotifyPrefs] = useState({
+    notify_service_updates: false,
+    notify_price_drops: false,
+    notify_restock: false,
+    notify_recommendations: false,
+    notify_warranty_expiry: false,
+    notify_general: false,
+  });
+
   useEffect(() => {
     loadUserInfo();
     checkBiometricStatus();
+    loadNotificationSettings();
   }, []);
+
+  const loadNotificationSettings = async () => {
+    try {
+      const response = await api.get('/api/v1/notification-settings/');
+      setNotifyPrefs(response.data);
+    } catch (err) {
+      console.error('Failed to load notification settings:', err);
+    }
+  };
+
+  const handleToggleNotification = async (key: keyof typeof notifyPrefs, value: boolean) => {
+    const originalSettings = { ...notifyPrefs };
+    setNotifyPrefs(prev => ({ ...prev, [key]: value }));
+    try {
+      await api.patch('/api/v1/notification-settings/', { [key]: value });
+    } catch (error) {
+      console.error('Notification update error:', error);
+      Alert.alert(t('common.error'), t('settings.settingFailed') || 'Ayar güncellenemedi');
+      setNotifyPrefs(originalSettings); // rollback on failure
+    }
+  };
+
 
   const loadUserInfo = async () => {
     try {
@@ -189,7 +226,7 @@ export default function SettingsScreen() {
               onPress={() => setActiveTab('security')}
             >
               <Text style={[styles.tabText, activeTab === 'security' && styles.tabTextActive]}>
-                Güvenlik
+                {t('settings.security')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -197,7 +234,7 @@ export default function SettingsScreen() {
               onPress={() => setActiveTab('password')}
             >
               <Text style={[styles.tabText, activeTab === 'password' && styles.tabTextActive]}>
-                Şifre
+                {t('settings.password')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -205,7 +242,15 @@ export default function SettingsScreen() {
               onPress={() => setActiveTab('email')}
             >
               <Text style={[styles.tabText, activeTab === 'email' && styles.tabTextActive]}>
-                İletişim
+                {t('settings.contact')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'preferences' && styles.tabActive]}
+              onPress={() => setActiveTab('preferences')}
+            >
+              <Text style={[styles.tabText, activeTab === 'preferences' && styles.tabTextActive]}>
+                {t('settings.preferences')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -217,19 +262,19 @@ export default function SettingsScreen() {
           {activeTab === 'security' && (
             <>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Biyometrik Giriş (Face ID)</Text>
+                <Text style={styles.sectionTitle}>{t('settings.biometricTitle')}</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Yüz Tanıma ile hızlı ve güvenli sistem kullanımı sağlayın. Sadece biyometrik temsil (matematiksel vektör) sistemlerimize kaydedilir ve hiçbir fotoğraf veritabanımızda tutulmaz.
+                  {t('settings.biometricDescription')}
                 </Text>
               </View>
 
               <View style={styles.settingRow}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Yüz Tanıma (Face ID)</Text>
+                  <Text style={styles.settingLabel}>{t('settings.faceIdLabel')}</Text>
                   <Text style={styles.settingDescription}>
                     {biometricEnabled
-                      ? 'Aktif - Giriş ekranında kullanabilirsiniz'
-                      : 'Devre dışı'}
+                      ? t('settings.faceIdActive')
+                      : t('settings.faceIdInactive')}
                   </Text>
                 </View>
                 {biometricLoading ? (
@@ -248,14 +293,13 @@ export default function SettingsScreen() {
                 <View style={styles.infoBox}>
                   <Text style={styles.infoIcon}>ℹ️</Text>
                   <Text style={styles.infoText}>
-                    Yüz Tanıma etkinleştirildi. Giriş sayfasından kullanıcı adınız ile sistemlerimize giriş yapabilirsiniz.
+                    {t('settings.faceIdInfo')}
                   </Text>
                 </View>
               )}
 
-              {/* Logout Section moved here to avoid redundancy */}
               <View style={[styles.sectionHeader, { marginTop: 30 }]}>
-                <Text style={styles.sectionTitle}>Oturum İşlemleri</Text>
+                <Text style={styles.sectionTitle}>{t('settings.sessionTitle')}</Text>
               </View>
               <TouchableOpacity
                 style={[styles.saveButton, { backgroundColor: '#DC2626' }]}
@@ -271,8 +315,10 @@ export default function SettingsScreen() {
                   }
                 }}
               >
-                <Text style={styles.saveButtonText}>Çıkış Yap</Text>
+                <Text style={styles.saveButtonText}>{t('settings.logout')}</Text>
               </TouchableOpacity>
+
+
             </>
           )}
 
@@ -280,15 +326,15 @@ export default function SettingsScreen() {
           {activeTab === 'password' && (
             <>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Şifre Güncelleme</Text>
+                <Text style={styles.sectionTitle}>{t('settings.passwordTitle')}</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Hesap güvenliğinizi korumak için şifrenizi güncel tutun.
+                  {t('settings.passwordDescription')}
                 </Text>
               </View>
 
               <View style={styles.formGroup}>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Mevcut Şifre</Text>
+                  <Text style={styles.label}>{t('settings.currentPassword')}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="••••••••"
@@ -300,10 +346,10 @@ export default function SettingsScreen() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Yeni Şifre</Text>
+                  <Text style={styles.label}>{t('settings.newPassword')}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="En az 6 karakter"
+                    placeholder={t('settings.minChars')}
                     value={newPassword}
                     onChangeText={setNewPassword}
                     secureTextEntry
@@ -312,10 +358,10 @@ export default function SettingsScreen() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Yeni Şifre (Tekrar)</Text>
+                  <Text style={styles.label}>{t('settings.newPasswordRepeat')}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Tekrar giriniz"
+                    placeholder={t('settings.repeatPlaceholder')}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
@@ -332,7 +378,7 @@ export default function SettingsScreen() {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.saveButtonText}>Şifreyi Güncelle</Text>
+                  <Text style={styles.saveButtonText}>{t('settings.updatePassword')}</Text>
                 )}
               </TouchableOpacity>
             </>
@@ -342,15 +388,15 @@ export default function SettingsScreen() {
           {activeTab === 'email' && (
             <>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>E-posta Bilgileri</Text>
+                <Text style={styles.sectionTitle}>{t('settings.emailTitle')}</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Bildirimleri alabilmek için güncel adresinizi girin.
+                  {t('settings.emailDescription')}
                 </Text>
               </View>
 
               <View style={styles.formGroup}>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Yeni E-posta Adresi</Text>
+                  <Text style={styles.label}>{t('settings.newEmail')}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="ornek@beko.com"
@@ -363,10 +409,10 @@ export default function SettingsScreen() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Onay Şifresi</Text>
+                  <Text style={styles.label}>{t('settings.confirmPasswordForEmail')}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Doğrulama için şifreniz"
+                    placeholder={t('settings.confirmPasswordPlaceholder')}
                     value={passwordForEmail}
                     onChangeText={setPasswordForEmail}
                     secureTextEntry
@@ -383,9 +429,94 @@ export default function SettingsScreen() {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.saveButtonText}>E-postayı Güncelle</Text>
+                  <Text style={styles.saveButtonText}>{t('settings.updateEmail')}</Text>
                 )}
               </TouchableOpacity>
+            </>
+          )}
+
+          {/* Preferences Tab — Issue #39 */}
+          {activeTab === 'preferences' && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{t('settings.preferencesTitle')}</Text>
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>{t('settings.languageLabel')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('settings.languageDescription')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.languageSelector}>
+                <TouchableOpacity
+                  style={[
+                    styles.languageOption,
+                    language === 'tr' && styles.languageOptionActive,
+                  ]}
+                  onPress={() => changeLanguage('tr')}
+                >
+                  <Text style={styles.languageFlag}>🇹🇷</Text>
+                  <Text
+                    style={[
+                      styles.languageText,
+                      language === 'tr' && styles.languageTextActive,
+                    ]}
+                  >
+                    Türkçe
+                  </Text>
+                  {language === 'tr' && <Text style={styles.checkMark}>✓</Text>}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.languageOption,
+                    language === 'en' && styles.languageOptionActive,
+                  ]}
+                  onPress={() => changeLanguage('en')}
+                >
+                  <Text style={styles.languageFlag}>🇬🇧</Text>
+                  <Text
+                    style={[
+                      styles.languageText,
+                      language === 'en' && styles.languageTextActive,
+                    ]}
+                  >
+                    English
+                  </Text>
+                  {language === 'en' && <Text style={styles.checkMark}>✓</Text>}
+                </TouchableOpacity>
+              </View>
+
+              {/* Notification Settings */}
+              <View style={[styles.sectionHeader, { marginTop: 30 }]}>
+                <Text style={styles.sectionTitle}>{t('settings.notificationSettings')}</Text>
+                <Text style={styles.sectionSubtitle}>{t('settings.notificationsDesc')}</Text>
+              </View>
+
+              {[
+                { key: 'notify_service_updates', label: t('settings.notifyServiceUpdates') },
+                { key: 'notify_price_drops', label: t('settings.notifyPriceDrops') },
+                { key: 'notify_restock', label: t('settings.notifyRestock') },
+                { key: 'notify_recommendations', label: t('settings.notifyRecommendations') },
+                { key: 'notify_warranty_expiry', label: t('settings.notifyWarrantyExpiry') },
+                { key: 'notify_general', label: t('settings.notifyGeneral') },
+              ].map((item) => (
+                <View key={item.key} style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>{item.label}</Text>
+                  </View>
+                  <Switch
+                    value={notifyPrefs[item.key as keyof typeof notifyPrefs]}
+                    onValueChange={(val) => handleToggleNotification(item.key as keyof typeof notifyPrefs, val)}
+                    trackColor={{ false: '#d1d5db', true: '#10B981' }}
+                    thumbColor={Platform.OS === 'ios' ? '#fff' : notifyPrefs[item.key as keyof typeof notifyPrefs] ? '#fff' : '#f4f3f4'}
+                  />
+                </View>
+              ))}
             </>
           )}
         </View>
@@ -642,5 +773,39 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  languageSelector: {
+    gap: 12,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  languageOptionActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  languageFlag: {
+    fontSize: 28,
+    marginRight: 14,
+  },
+  languageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    flex: 1,
+  },
+  languageTextActive: {
+    color: '#1E40AF',
+  },
+  checkMark: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 });

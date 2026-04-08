@@ -13,9 +13,11 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import api, { wishlistAPI, viewHistoryAPI, reviewAPI, productOwnershipAPI } from '../../services';
+import { useLanguage } from '../../context/LanguageContext';
+import { t } from '../../i18n';
 
 interface Product {
   id: number;
@@ -50,6 +52,7 @@ export default function ProductDetailScreen() {
   const [inWishlist, setInWishlist] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [isOwned, setIsOwned] = useState(false);
+  const { language } = useLanguage();
 
   // Review states
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -75,7 +78,7 @@ export default function ProductDetailScreen() {
       setProduct(response.data);
       checkWishlistStatus();
     } catch (error) {
-      Alert.alert('Hata', 'Ürün bilgisi yüklenemedi');
+      Alert.alert(t('common.error'), t('product.loadError'));
       router.back();
     } finally {
       setLoading(false);
@@ -145,14 +148,14 @@ export default function ProductDetailScreen() {
       if (inWishlist) {
         await wishlistAPI.removeItem(Number(id));
         setInWishlist(false);
-        Alert.alert('Başarılı', 'Ürün istek listesinden kaldırıldı');
+        Alert.alert(t('common.success'), t('product.removedFromWishlist'));
       } else {
         await wishlistAPI.addItem(Number(id));
         setInWishlist(true);
-        Alert.alert('Başarılı', 'Ürün istek listesine eklendi');
+        Alert.alert(t('common.success'), t('product.addedToWishlist'));
       }
     } catch (error: any) {
-      Alert.alert('Hata', error.response?.data?.error || 'İşlem başarısız');
+      Alert.alert(t('common.error'), error.response?.data?.error || t('product.actionFailed'));
     } finally {
       setWishlistLoading(false);
     }
@@ -167,7 +170,7 @@ export default function ProductDetailScreen() {
 
   const handleSubmitReview = async () => {
     if (userRating === 0) {
-      Alert.alert('Hata', 'Lütfen bir puan seçin');
+      Alert.alert(t('common.error'), t('product.ratingError'));
       return;
     }
 
@@ -175,8 +178,8 @@ export default function ProductDetailScreen() {
     try {
       await reviewAPI.addReview(Number(id), userRating, userComment);
       Alert.alert(
-        'Başarılı',
-        'Değerlendirmeniz gönderildi. Onaylandıktan sonra görünecektir.'
+        t('common.success'),
+        t('product.reviewSent')
       );
       setShowReviewModal(false);
       setUserRating(0);
@@ -185,7 +188,7 @@ export default function ProductDetailScreen() {
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail ||
         error.response?.data?.error ||
-        'Bu ürünü zaten değerlendirdiniz';
+        t('product.alreadyReviewed');
       Alert.alert('Hata', errorMsg);
     } finally {
       setSubmittingReview(false);
@@ -224,7 +227,7 @@ export default function ProductDetailScreen() {
   if (!product) {
     return (
       <View style={styles.center}>
-        <Text>Ürün bulunamadı</Text>
+        <Text>{t('product.notFound')}</Text>
       </View>
     );
   }
@@ -234,6 +237,12 @@ export default function ProductDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen 
+        options={{
+          headerTitle: t('product.headerTitle'),
+          headerBackTitle: t('common.back'),
+        }} 
+      />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Wishlist Button Overlay on Image — hidden if already owned/assigned */}
         {!isOwned && (
@@ -273,7 +282,7 @@ export default function ProductDetailScreen() {
             ]}
           >
             <Text style={styles.stockBadgeText}>
-              {isInStock ? `Stokta (${product.stock})` : 'Stok Yok'}
+              {isInStock ? `${t('product.inStock')} (${product.stock})` : t('product.outOfStock')}
             </Text>
           </View>
         </View>
@@ -294,7 +303,7 @@ export default function ProductDetailScreen() {
             <View style={styles.ratingSummary}>
               {renderStars(Math.round(averageRating))}
               <Text style={styles.ratingText}>
-                {averageRating} ({reviews.length} değerlendirme)
+                {averageRating} ({reviews.length} {t('product.reviewCount')})
               </Text>
             </View>
           )}
@@ -306,7 +315,7 @@ export default function ProductDetailScreen() {
                 currency: 'TRY',
               })}
             </Text>
-            <Text style={styles.vatText}>KDV Dahil</Text>
+            <Text style={styles.vatText}>{t('product.vatIncluded')}</Text>
           </View>
 
           {/* Warranty Info */}
@@ -314,7 +323,7 @@ export default function ProductDetailScreen() {
             <View style={styles.warrantyContainer}>
               <FontAwesome name="shield" size={18} color="#4CAF50" />
               <Text style={styles.warrantyText}>
-                {product.warranty_months} Ay Garanti
+                {product.warranty_months} {t('product.monthWarranty')}
               </Text>
             </View>
           )}
@@ -322,7 +331,7 @@ export default function ProductDetailScreen() {
           {/* Description */}
           {product.description && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Ürün Açıklaması</Text>
+              <Text style={styles.sectionTitle}>{t('product.description')}</Text>
               <Text style={styles.description}>{product.description}</Text>
             </View>
           )}
@@ -330,7 +339,7 @@ export default function ProductDetailScreen() {
           {/* Features */}
           {product.features && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Özellikler</Text>
+              <Text style={styles.sectionTitle}>{t('product.features')}</Text>
               <Text style={styles.features}>{product.features}</Text>
             </View>
           )}
@@ -338,14 +347,14 @@ export default function ProductDetailScreen() {
           {/* Reviews Section */}
           <View style={styles.section}>
             <View style={styles.reviewsHeader}>
-              <Text style={styles.sectionTitle}>Değerlendirmeler</Text>
+              <Text style={styles.sectionTitle}>{t('product.reviews')}</Text>
               {isOwned && (
                 <TouchableOpacity
                   style={styles.addReviewButton}
                   onPress={() => setShowReviewModal(true)}
                 >
                   <FontAwesome name="plus" size={14} color="#000" />
-                  <Text style={styles.addReviewText}>Değerlendir</Text>
+                  <Text style={styles.addReviewText}>{t('product.addReview')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -371,7 +380,7 @@ export default function ProductDetailScreen() {
                       <Text style={styles.reviewComment}>{review.comment}</Text>
                     )}
                     <Text style={styles.reviewDate}>
-                      {new Date(review.created_at).toLocaleDateString('tr-TR')}
+                      {new Date(review.created_at).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')}
                     </Text>
                   </View>
                 ))}
@@ -380,7 +389,7 @@ export default function ProductDetailScreen() {
               <View style={styles.noReviews}>
                 <FontAwesome name="comments-o" size={40} color="#D1D5DB" />
                 <Text style={styles.noReviewsText}>
-                  Henüz değerlendirme yok. İlk değerlendiren siz olun!
+                  {t('product.noReviews')}
                 </Text>
               </View>
             )}
@@ -402,7 +411,7 @@ export default function ProductDetailScreen() {
               color={inWishlist ? '#f44336' : '#666'}
             />
             <Text style={[styles.actionButtonText, inWishlist && { color: '#f44336' }]}>
-              {inWishlist ? 'Listede' : 'İstek Listesi'}
+              {inWishlist ? t('product.inList') : t('product.wishlist')}
             </Text>
           </TouchableOpacity>
         )}
@@ -413,7 +422,7 @@ export default function ProductDetailScreen() {
             onPress={handleServiceRequest}
           >
             <FontAwesome name="wrench" size={20} color="#fff" />
-            <Text style={styles.serviceButtonText}>Servis Talebi</Text>
+            <Text style={styles.serviceButtonText}>{t('product.serviceRequest')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -428,7 +437,7 @@ export default function ProductDetailScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ürünü Değerlendir</Text>
+              <Text style={styles.modalTitle}>{t('product.rateProduct')}</Text>
               <TouchableOpacity onPress={() => setShowReviewModal(false)}>
                 <FontAwesome name="times" size={24} color="#666" />
               </TouchableOpacity>
@@ -437,20 +446,20 @@ export default function ProductDetailScreen() {
             <Text style={styles.modalProductName}>{product.name}</Text>
 
             <View style={styles.ratingSection}>
-              <Text style={styles.ratingLabel}>Puanınız</Text>
+              <Text style={styles.ratingLabel}>{t('product.yourRating')}</Text>
               <View style={styles.starsContainer}>
                 {renderStars(userRating, 36, true)}
               </View>
               <Text style={styles.ratingHint}>
-                {userRating === 0 ? 'Puan seçin' : `${userRating}/5`}
+                {userRating === 0 ? t('product.selectRating') : `${userRating}/5`}
               </Text>
             </View>
 
             <View style={styles.commentSection}>
-              <Text style={styles.commentLabel}>Yorumunuz (opsiyonel)</Text>
+              <Text style={styles.commentLabel}>{t('product.commentLabel')}</Text>
               <TextInput
                 style={styles.commentInput}
-                placeholder="Ürün hakkındaki düşüncelerinizi paylaşın..."
+                placeholder={t('product.commentPlaceholder')}
                 placeholderTextColor="#9CA3AF"
                 multiline
                 numberOfLines={4}
@@ -468,7 +477,7 @@ export default function ProductDetailScreen() {
               {submittingReview ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.submitButtonText}>Değerlendirmeyi Gönder</Text>
+                <Text style={styles.submitButtonText}>{t('product.submitReview')}</Text>
               )}
             </TouchableOpacity>
           </View>

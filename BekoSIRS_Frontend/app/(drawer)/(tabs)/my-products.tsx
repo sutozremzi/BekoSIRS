@@ -13,6 +13,8 @@ import {
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api, { assignmentAPI } from '../../../services';
+import { useLanguage } from '../../../context/LanguageContext';
+import { t } from '../../../i18n';
 
 // Helper: Dinamik image URL oluştur (hardcoded IP kullanmadan)
 const getImageUrl = (imagePath: string | null): string | null => {
@@ -53,6 +55,7 @@ export default function MyProductsScreen() {
   const [items, setItems] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { language } = useLanguage();
 
   const fetchData = useCallback(async () => {
     try {
@@ -110,28 +113,28 @@ export default function MyProductsScreen() {
       // Assignment Status
       const status = item.status || 'PLANNED';
       let color = '#3B82F6'; // Blue
-      let text = item.status_display || 'Hazırlanıyor';
+      let text = item.status_display || t('myProducts.preparing');
       let icon = 'clock-o';
 
       if (status === 'DELIVERED') { color = '#10B981'; icon = 'check'; }
       else if (status === 'CANCELLED') { color = '#EF4444'; icon = 'times'; }
-      else if (status === 'OUT_FOR_DELIVERY') { color = '#F59E0B'; icon = 'truck'; text = 'Dağıtımda'; }
-      else if (status === 'WAITING') { color = '#F59E0B'; text = 'Teslimat Bekleniyor'; }
-      else if (status === 'PLANNED') { color = '#6366F1'; text = 'Sipariş Alındı'; }
+      else if (status === 'OUT_FOR_DELIVERY') { color = '#F59E0B'; icon = 'truck'; text = t('myProducts.outForDelivery'); }
+      else if (status === 'WAITING') { color = '#F59E0B'; text = t('myProducts.waitingDelivery'); }
+      else if (status === 'PLANNED') { color = '#6366F1'; text = t('myProducts.orderReceived'); }
 
       return { color, text, icon, bgColor: `${color}15` };
     } else {
       // Warranty Status
       if (!item.warranty_end_date) {
-        return { color: '#9CA3AF', text: 'Garanti bilgisi yok', icon: 'question-circle', bgColor: '#F3F4F6' };
+        return { color: '#9CA3AF', text: t('myProducts.noWarrantyInfo'), icon: 'question-circle', bgColor: '#F3F4F6' };
       }
       if (!item.is_warranty_active) {
-        return { color: '#EF4444', text: 'Garanti süresi doldu', icon: 'times-circle', bgColor: '#FEF2F2' };
+        return { color: '#EF4444', text: t('myProducts.warrantyExpired'), icon: 'times-circle', bgColor: '#FEF2F2' };
       }
       if (item.days_until_warranty_expires && item.days_until_warranty_expires <= 30) {
-        return { color: '#F59E0B', text: `${item.days_until_warranty_expires} gün kaldı`, icon: 'exclamation-circle', bgColor: '#FFFBEB' };
+        return { color: '#F59E0B', text: `${item.days_until_warranty_expires} ${t('myProducts.daysLeft')}`, icon: 'exclamation-circle', bgColor: '#FFFBEB' };
       }
-      return { color: '#10B981', text: 'Garanti aktif', icon: 'check-circle', bgColor: '#ECFDF5' };
+      return { color: '#10B981', text: t('myProducts.warrantyActive'), icon: 'check-circle', bgColor: '#ECFDF5' };
     }
   };
 
@@ -181,7 +184,7 @@ export default function MyProductsScreen() {
           {/* Type Badge (Assignment vs Ownership) */}
           {item.type === 'assignment' && (
             <View style={[styles.typeBadge, { backgroundColor: status.color }]}>
-              <Text style={styles.typeBadgeText}>Sipariş / Teslimat</Text>
+              <Text style={styles.typeBadgeText}>{t('myProducts.orderDelivery')}</Text>
             </View>
           )}
 
@@ -216,8 +219,8 @@ export default function MyProductsScreen() {
             <FontAwesome name="calendar" size={12} color="#6B7280" />
             <Text style={styles.dateText}>
               {item.type === 'ownership'
-                ? `Alım: ${new Date(item.purchase_date!).toLocaleDateString('tr-TR')}`
-                : `Tarih: ${new Date(item.assigned_at!).toLocaleDateString('tr-TR')}`
+                ? `${t('myProducts.purchase')} ${new Date(item.purchase_date!).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')}`
+                : `${t('myProducts.date')} ${new Date(item.assigned_at!).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')}`
               }
             </Text>
           </View>
@@ -230,13 +233,13 @@ export default function MyProductsScreen() {
             </Text>
             {item.type === 'ownership' && item.warranty_end_date && item.is_warranty_active && (
               <Text style={styles.warrantyDate}>
-                (Bitiş: {new Date(item.warranty_end_date).toLocaleDateString('tr-TR')})
+                ({t('myProducts.ends')} {new Date(item.warranty_end_date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')})
               </Text>
             )}
             {/* Delivery Info for Assignment */}
             {item.type === 'assignment' && item.delivery_info?.scheduled_date && (
               <Text style={styles.warrantyDate}>
-                ({new Date(item.delivery_info.scheduled_date).toLocaleDateString('tr-TR')})
+                ({new Date(item.delivery_info.scheduled_date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')})
               </Text>
             )}
           </View>
@@ -250,7 +253,7 @@ export default function MyProductsScreen() {
                   onPress={() => handleServiceRequest(item)}
                 >
                   <FontAwesome name="wrench" size={14} color="#000" />
-                  <Text style={styles.actionButtonText}>Servis Talebi</Text>
+                  <Text style={styles.actionButtonText}>{t('myProducts.serviceRequest')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -258,7 +261,7 @@ export default function MyProductsScreen() {
                   onPress={() => handleProductPress(item)}
                 >
                   <FontAwesome name="info-circle" size={14} color="#fff" />
-                  <Text style={styles.detailButtonText}>Detay</Text>
+                  <Text style={styles.detailButtonText}>{t('myProducts.detail')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -281,7 +284,7 @@ export default function MyProductsScreen() {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#000" />
-        <Text style={styles.loadingText}>Ürünleriniz yükleniyor...</Text>
+        <Text style={styles.loadingText}>{t('myProducts.loadingProducts')}</Text>
       </View>
     );
   }
@@ -302,24 +305,24 @@ export default function MyProductsScreen() {
             <View style={styles.headerBadge}>
               <View style={styles.headerTop}>
                 <FontAwesome name="cube" size={24} color="#fff" />
-                <Text style={styles.badgeTitle}>Cihazlarım</Text>
+                <Text style={styles.badgeTitle}>{t('myProducts.title')}</Text>
               </View>
               <Text style={styles.badgeSubtitle}>
-                {items.length} adet kayıt (Sipariş & Sahiplik)
+                {items.length} {t('myProducts.recordCount')}
               </Text>
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
                   <Text style={styles.statNumber}>
                     {items.filter(o => o.type === 'assignment').length}
                   </Text>
-                  <Text style={styles.statLabel}>Bekleyen</Text>
+                  <Text style={styles.statLabel}>{t('myProducts.pending')}</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
                   <Text style={styles.statNumber}>
                     {items.filter(o => o.type === 'ownership').length}
                   </Text>
-                  <Text style={styles.statLabel}>Teslim Alınan</Text>
+                  <Text style={styles.statLabel}>{t('myProducts.received')}</Text>
                 </View>
               </View>
             </View>
@@ -335,15 +338,15 @@ export default function MyProductsScreen() {
           <View style={styles.emptyIconCircle}>
             <FontAwesome name="inbox" size={50} color="#D1D5DB" />
           </View>
-          <Text style={styles.emptyTitle}>Henüz Kayıt Yok</Text>
+          <Text style={styles.emptyTitle}>{t('myProducts.emptyTitle')}</Text>
           <Text style={styles.emptyDescription}>
-            Size atanmış bir ürün veya sipariş bulunamadı.
+            {t('myProducts.emptyDesc')}
           </Text>
           <TouchableOpacity
             style={styles.browseButton}
             onPress={() => router.push('/')}
           >
-            <Text style={styles.browseButtonText}>Ürünlere Göz At</Text>
+            <Text style={styles.browseButtonText}>{t('myProducts.browse')}</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
