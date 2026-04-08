@@ -7,6 +7,7 @@ from rest_framework import viewsets, status, exceptions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
 from django.utils import timezone
 from django.db.models import Avg, F
 
@@ -416,11 +417,24 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                 rec_list.append(rec)
             recommendations = rec_list
 
+        serialized_recommendations = RecommendationSerializer(recommendations, many=True).data
+
         # Fetch ml metrics from memory (no DB call)
-        ml_metrics = {}
+        ml_metrics = {
+            'diversity_score': 0.0,
+            'catalog_coverage': 0.0,
+            'avg_recommendation_score': 0.0,
+            'price_variance_in_list': 0.0,
+        }
         try:
             from products.ml_recommender import get_recommender
             recommender = get_recommender()
+            # Adaptive weights should be visible even when cached DB
+            # recommendations are returned, so we compute them per request.
+            runtime_weights = recommender.get_runtime_weight_details(user)
+            # Advanced metrics are computed from the exact list being returned so
+            # the frontend sees diagnostics for the visible recommendation slate.
+            advanced_metrics = recommender.get_advanced_metrics(serialized_recommendations)
             if hasattr(recommender, '_loaded') and recommender._loaded:
                 metrics = recommender.get_metrics()
                 ncf_metrics = metrics.get('ncf', {})
@@ -437,12 +451,20 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                     'trained_at': ncf_metrics.get('trained_at') if ncf_metrics else None,
                     'content_products': content_metrics.get('n_products') if content_metrics else 0,
                     'weights': metrics.get('weights', {}),
+                    'weights_used': runtime_weights,
+                    'user_tier': runtime_weights.get('user_tier'),
                 }
+            else:
+                ml_metrics = {
+                    'weights_used': runtime_weights,
+                    'user_tier': runtime_weights.get('user_tier'),
+                }
+            ml_metrics.update(advanced_metrics)
         except Exception:
             pass
 
         return Response({
-            'recommendations': RecommendationSerializer(recommendations, many=True).data,
+            'recommendations': serialized_recommendations,
             'ml_metrics': ml_metrics,
             'refreshing': refresh,  # Tell frontend ML is recalculating
         })
@@ -463,6 +485,11 @@ class RecommendationViewSet(viewsets.ModelViewSet):
 
     def _generate_in_background(self, user):
         """Run ML scoring in a background thread — never blocks the response."""
+        # Test ortaminda arka plan thread'leri SQLite kilitlerine neden oluyor.
+        # Settings flag'i aciksa yenileme istegini yoksayip HTTP akisini temiz tutuyoruz.
+        if getattr(settings, 'ML_DISABLE_BACKGROUND_JOBS', False):
+            return
+
         import threading
         user_id = user.id  # capture before thread starts
 
@@ -521,24 +548,52 @@ class RecommendationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='click')
     def record_click(self, request, pk=None):
-        """POST /api/recommendations/{id}/click/ - Record click."""
+        """
+        Tiklanan oneriyi pozitif geri bildirim olarak kaydeder.
+
+        Args:
+            request: Oturumdaki kullaniciyi ve endpoint baglamini tasir.
+            pk: Tiklanan recommendation kaydinin kimligi.
+
+        Bu endpoint yalnizca `clicked=True` isaretler; ekstra skor bekletmek
+        yerine basit bir boolean secildi cunku model bunu sonraki agirliklandirmada
+        zaten pozitif sinyal olarak yorumlar.
+        """
         recommendation = self.get_object()
+        # Tiklama acik bir memnuniyet sinyali oldugu icin idempotent bicimde
+        # sadece True yaziyoruz; tekrar tiklamak ek yan etki uretmez.
         recommendation.clicked = True
         recommendation.save()
         return Response({'success': True})
 
-    @action(detail=True, methods=['post'], url_path='dismiss')
+    @action(detail=True, methods=['patch', 'post'], url_path='dismiss')
     def dismiss(self, request, pk=None):
-        """POST /api/recommendations/{id}/dismiss/ - Mark as not interested."""
+        """
+        Oneriyi dismiss ederek mevcut kaydi gunceller.
+
+        Args:
+            request: Oturumdaki kullanici ve HTTP metodunu tasir.
+            pk: Dismiss edilecek recommendation kaydinin kimligi.
+
+        PATCH tercih edilir cunku var olan bir kaynagi mutate eder; yine de
+        eski mobil ve web surumleri kirilmasin diye POST destegi korunur.
+        """
         recommendation = self.get_object()
+        # Dismiss edilen kayit tekrar listeye girmesin diye hem bayragi hem de
+        # zaman damgasini sakliyoruz; zaman bilgisi denetim ve analiz icin gerekli.
         recommendation.dismissed = True
         recommendation.dismissed_at = timezone.now()
-        recommendation.save()
+        recommendation.save(update_fields=['dismissed', 'dismissed_at'])
 
-        # Trigger background refresh to generate replacement
+        # Kullanici karti aninda kapatirken arka planda yeni aday uretilir;
+        # boylece istemci ek bir tam yenileme beklemeden deneyim akici kalir.
         self._generate_in_background(request.user)
 
-        return Response({'success': True, 'message': 'Öneri reddedildi'})
+        return Response({
+            'status': 'dismissed',
+            'success': True,
+            'message': 'Öneri reddedildi',
+        })
 
 
 # ---------------------------

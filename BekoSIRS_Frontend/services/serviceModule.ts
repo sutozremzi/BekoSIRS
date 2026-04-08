@@ -59,8 +59,10 @@ export const recommendationAPI = {
     generateRecommendations: () => api.post('api/v1/recommendations/generate/'),
     recordClick: (recommendationId: number) =>
         api.post(`api/v1/recommendations/${recommendationId}/click/`),
+    // Dismiss aksiyonu mevcut bir recommendation kaydini guncelledigi icin
+    // yeni istemcide PATCH kullaniyoruz; backend tarafinda POST geriye uyum icin acik.
     dismissRecommendation: (recommendationId: number) =>
-        api.post(`api/v1/recommendations/${recommendationId}/dismiss/`),
+        api.patch(`api/v1/recommendations/${recommendationId}/dismiss/`),
 };
 
 // ─────────────────────────────────────────
