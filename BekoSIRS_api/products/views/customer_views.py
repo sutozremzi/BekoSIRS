@@ -421,6 +421,9 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         try:
             from products.ml_recommender import get_recommender
             recommender = get_recommender()
+            # Adaptive weights should be visible even when cached DB
+            # recommendations are returned, so we compute them per request.
+            runtime_weights = recommender.get_runtime_weight_details(user)
             if hasattr(recommender, '_loaded') and recommender._loaded:
                 metrics = recommender.get_metrics()
                 ncf_metrics = metrics.get('ncf', {})
@@ -437,6 +440,13 @@ class RecommendationViewSet(viewsets.ModelViewSet):
                     'trained_at': ncf_metrics.get('trained_at') if ncf_metrics else None,
                     'content_products': content_metrics.get('n_products') if content_metrics else 0,
                     'weights': metrics.get('weights', {}),
+                    'weights_used': runtime_weights,
+                    'user_tier': runtime_weights.get('user_tier'),
+                }
+            else:
+                ml_metrics = {
+                    'weights_used': runtime_weights,
+                    'user_tier': runtime_weights.get('user_tier'),
                 }
         except Exception:
             pass

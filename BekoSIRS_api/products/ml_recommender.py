@@ -874,6 +874,7 @@ class HybridRecommender:
         self.content = ContentBasedModel()
         self._loaded = False
         self._training = False
+        self._last_runtime_weights = {}
 
         # Try loading persisted models (checks local disk, then DB)
         ncf_loaded = self.ncf.load()
@@ -882,11 +883,14 @@ class HybridRecommender:
 
         if self._loaded:
             logger.info("✅ Recommender loaded saved models from disk")
-            # Pre-generate recommendations for active users in background
-            self._pregenerate_in_background()
+            if not getattr(settings, 'ML_DISABLE_BACKGROUND_JOBS', False):
+                # Pre-generate recommendations for active users in background
+                # only outside test mode where background DB writes are expected.
+                self._pregenerate_in_background()
         else:
             logger.info("ℹ️  No saved models found — starting background training...")
-            self._train_in_background()
+            if not getattr(settings, 'ML_DISABLE_BACKGROUND_JOBS', False):
+                self._train_in_background()
 
     def _pregenerate_in_background(self):
         """Pre-generate recommendations for active customers so pages load instantly."""
@@ -993,6 +997,11 @@ class HybridRecommender:
         owned_product_ids = self._get_owned_product_ids(user)
         exclude_ids.update(owned_product_ids)  # Don't recommend already purchased items
 
+        # Adaptive weights make cold-start users rely on safer popularity
+        # signals while active users get stronger personalized NCF ranking.
+        weight_details = self._build_weight_details(user_interactions)
+        self._last_runtime_weights[user.id] = weight_details
+
         final_scores = {}
         reasons = {}  # Stores (source_type, extra_info) tuples
 
@@ -1007,7 +1016,7 @@ class HybridRecommender:
                 max_ncf = max(ncf_scores.values()) or 1
                 for pid, score in ncf_scores.items():
                     if pid not in exclude_ids:
-                        normalized = (score / max_ncf) * self.WEIGHT_NCF
+                        normalized = (score / max_ncf) * weight_details['ncf']
                         final_scores[pid] = normalized
                         reasons[pid] = ('ncf', None)
 
@@ -1020,7 +1029,7 @@ class HybridRecommender:
                 max_content = max(content_scores.values()) or 1
                 for pid, score in content_scores.items():
                     if pid not in exclude_ids:
-                        normalized = (score / max_content) * self.WEIGHT_CONTENT
+                        normalized = (score / max_content) * weight_details['content']
                         final_scores[pid] = final_scores.get(pid, 0) + normalized
                         if pid not in reasons:
                             reasons[pid] = ('content', None)
@@ -1031,7 +1040,7 @@ class HybridRecommender:
             max_pop = max(popularity_scores.values()) or 1
             for pid, score in popularity_scores.items():
                 if pid not in exclude_ids:
-                    normalized = (score / max_pop) * self.WEIGHT_POPULARITY
+                    normalized = (score / max_pop) * weight_details['popularity']
                     final_scores[pid] = final_scores.get(pid, 0) + normalized
                     if pid not in reasons:
                         reasons[pid] = ('popular', None)
@@ -1057,6 +1066,71 @@ class HybridRecommender:
     # ───────────────────────────────────────────────────────────────────────
     # Helper Methods
     # ───────────────────────────────────────────────────────────────────────
+
+    def _count_meaningful_interactions(self, user_interactions):
+        """
+        Count positive interaction entries used for user-tier classification.
+
+        We intentionally ignore zero/negative entries so cold-start detection is
+        not distorted by future negative-feedback signals such as dismissals.
+        """
+        return sum(1 for score in user_interactions.values() if score > 0)
+
+    def _get_user_tier(self, user_interactions):
+        """Map interaction depth to a human-readable recommendation tier."""
+        interaction_count = self._count_meaningful_interactions(user_interactions)
+        if interaction_count == 0:
+            return 'cold_start'
+        if interaction_count < 5:
+            return 'light'
+        if interaction_count < 20:
+            return 'balanced'
+        return 'active'
+
+    def _get_adaptive_weights(self, user_interactions):
+        """
+        Choose hybrid weights dynamically from the user's interaction depth.
+
+        Cold-start users get popularity-heavy weights because collaborative
+        models are unreliable without enough history. As the user engages more,
+        we progressively increase the NCF share to favor personalization.
+        """
+        interaction_count = self._count_meaningful_interactions(user_interactions)
+
+        if interaction_count == 0:
+            return (0.0, 0.2, 0.8)
+        if interaction_count < 5:
+            return (0.2, 0.3, 0.5)
+        if interaction_count < 20:
+            return (0.4, 0.3, 0.3)
+        return (0.6, 0.3, 0.1)
+
+    def _build_weight_details(self, user_interactions):
+        """Build the response-ready adaptive weight payload for one user."""
+        ncf_weight, content_weight, popularity_weight = self._get_adaptive_weights(user_interactions)
+        return {
+            'ncf': ncf_weight,
+            'content': content_weight,
+            'popularity': popularity_weight,
+            'user_tier': self._get_user_tier(user_interactions),
+            'interaction_count': self._count_meaningful_interactions(user_interactions),
+        }
+
+    def get_runtime_weight_details(self, user, ignore_cache=False):
+        """
+        Return adaptive runtime weights for the given user.
+
+        Views can call this even when recommendations are served from cache so
+        the frontend always receives the same weight logic the scorer would use.
+        """
+        cached_details = self._last_runtime_weights.get(user.id)
+        if cached_details is not None and not ignore_cache:
+            return cached_details
+
+        user_interactions = self._get_user_interactions(user, ignore_cache=ignore_cache)
+        weight_details = self._build_weight_details(user_interactions)
+        self._last_runtime_weights[user.id] = weight_details
+        return weight_details
 
     def _get_user_interactions(self, user, ignore_cache=False):
         """Gather user interaction scores: {product_id: weight}."""

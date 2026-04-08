@@ -28,4 +28,5 @@ PASSWORD_HASHERS = [
 
 # Test runs do not need background retraining or real email delivery.
 ML_AUTO_RETRAIN = False
+ML_DISABLE_BACKGROUND_JOBS = True
 EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
