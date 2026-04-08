@@ -159,9 +159,9 @@ def _save_model_to_db(file_path):
             name=file_name,
             defaults={'data': data}
         )
-        logger.info("☁️  Synced %s to database (%.1f KB)", file_name, len(data) / 1024)
+        logger.info("Synced %s to database (%.1f KB)", file_name, len(data) / 1024)
     except Exception as e:
-        logger.warning("⚠️  Could not sync %s to database: %s", file_path, e)
+        logger.warning("Could not sync %s to database: %s", file_path, e)
 
 
 def _load_model_from_db(file_path):
@@ -174,11 +174,11 @@ def _load_model_from_db(file_path):
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, 'wb') as f:
                 f.write(bytes(record.data))
-            logger.info("📥 Downloaded %s from database (%.1f KB)", file_name, len(record.data) / 1024)
+            logger.info("Downloaded %s from database (%.1f KB)", file_name, len(record.data) / 1024)
             return True
         return False
     except Exception as e:
-        logger.warning("⚠️  Could not load %s from database: %s", file_path, e)
+        logger.warning("Could not load %s from database: %s", file_path, e)
         return False
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -388,11 +388,11 @@ class NCFModel:
         from .models import Product
 
         if verbose:
-            print("📊 Loading interaction data...")
+            print("Loading interaction data...")
 
         interactions_df = self._build_interaction_matrix()
         if interactions_df is None or len(interactions_df) < 5:
-            msg = "⚠️  Not enough interaction data to train NCF (need at least 5 interactions)"
+            msg = "Warning: not enough interaction data to train NCF (need at least 5 interactions)"
             if verbose:
                 print(msg)
             logger.warning(msg)
@@ -422,8 +422,8 @@ class NCFModel:
             X_test, y_test = X, y
 
         if verbose:
-            print(f"\n🧠 Training Neural Collaborative Filtering model...")
-            print(f"   Architecture: Input({X.shape[1]}) → 128 → 64 → 32 → 16 → 1")
+            print("\nTraining Neural Collaborative Filtering model...")
+            print(f"   Architecture: Input({X.shape[1]}) -> 128 -> 64 -> 32 -> 16 -> 1")
             print(f"   Training samples: {len(X_train)}, Test samples: {len(X_test)}")
 
         # Build and train MLP — tuned for small-to-large datasets
@@ -469,7 +469,7 @@ class NCFModel:
         }
 
         if verbose:
-            print(f"\n📈 Training Results:")
+            print("\nTraining Results:")
             print(f"   Epochs completed: {self.model.n_iter_}")
             print(f"   Final loss:       {self.training_metrics['final_loss']}")
             print(f"   Train R² score:   {train_score:.4f}")
@@ -626,7 +626,7 @@ class NCFModel:
             'metrics': self.training_metrics,
         }, ENCODERS_PATH)
         joblib.dump(self.training_metrics, METRICS_PATH)
-        logger.info("✅ NCF model saved to %s", ML_MODELS_DIR)
+        logger.info("NCF model saved to %s", ML_MODELS_DIR)
 
         # Sync to shared database
         for file_path in [path or NCF_MODEL_PATH, ENCODERS_PATH, METRICS_PATH]:
@@ -638,7 +638,7 @@ class NCFModel:
 
         # If local files are missing, try downloading from database
         if not os.path.exists(model_path) or not os.path.exists(ENCODERS_PATH):
-            logger.info("📥 Local NCF model files missing, trying database...")
+            logger.info("Local NCF model files missing, trying database...")
             for file_path in [model_path, ENCODERS_PATH, METRICS_PATH]:
                 _load_model_from_db(file_path)
 
@@ -655,10 +655,10 @@ class NCFModel:
             self.scaler = encoders['scaler']
             self.training_metrics = encoders.get('metrics', {})
             self.is_trained = True
-            logger.info("✅ NCF model loaded from %s", model_path)
+            logger.info("NCF model loaded from %s", model_path)
             return True
         except Exception as e:
-            logger.error("❌ Failed to load NCF model: %s", e)
+            logger.error("Failed to load NCF model: %s", e)
             return False
 
 
@@ -689,7 +689,7 @@ class ContentBasedModel:
         from .models import Product
 
         if verbose:
-            print("\n📝 Training Content-Based model...")
+            print("\nTraining Content-Based model...")
 
         products = Product.objects.all().values(
             'id', 'name', 'description', 'brand', 'category__name', 'price'
@@ -698,7 +698,7 @@ class ContentBasedModel:
 
         if self.products_df.empty:
             if verbose:
-                print("   ⚠️  No products found in database")
+                print("   Warning: no products found in database")
             return False
 
         # Build composite text feature — weight category more heavily
@@ -743,7 +743,7 @@ class ContentBasedModel:
         self.is_trained = True
 
         if verbose:
-            print(f"   ✅ Built similarity matrix for {len(self.products_df)} products")
+            print(f"   Built similarity matrix for {len(self.products_df)} products")
             print(f"   TF-IDF features: {self.tfidf_matrix.shape[1]}")
 
         return True
@@ -807,7 +807,7 @@ class ContentBasedModel:
 
         # If local file is missing, try downloading from database
         if not os.path.exists(model_path):
-            logger.info("📥 Local content model missing, trying database...")
+            logger.info("Local content model missing, trying database...")
             _load_model_from_db(model_path)
 
         if not os.path.exists(model_path):
@@ -820,7 +820,7 @@ class ContentBasedModel:
             self.is_trained = True
             return True
         except Exception as e:
-            logger.error("❌ Failed to load content model: %s", e)
+            logger.error("Failed to load content model: %s", e)
             return False
 
 
@@ -887,13 +887,13 @@ class HybridRecommender:
         self._loaded = ncf_loaded or content_loaded
 
         if self._loaded:
-            logger.info("✅ Recommender loaded saved models from disk")
+            logger.info("Recommender loaded saved models from disk")
             if not getattr(settings, 'ML_DISABLE_BACKGROUND_JOBS', False):
                 # Pre-generate recommendations for active users in background
                 # only outside test mode where background DB writes are expected.
                 self._pregenerate_in_background()
         else:
-            logger.info("ℹ️  No saved models found — starting background training...")
+            logger.info("No saved models found; starting background training...")
             if not getattr(settings, 'ML_DISABLE_BACKGROUND_JOBS', False):
                 self._train_in_background()
 
@@ -923,9 +923,9 @@ class HybridRecommender:
                                 logger.info("📦 Pre-generated recs for user %s", user.id)
                         except Exception as e:
                             logger.debug("Pre-gen failed for user %s: %s", user.id, e)
-                logger.info("✅ Background pre-generation complete")
+                logger.info("Background pre-generation complete")
             except Exception as e:
-                logger.warning("⚠️  Background pre-generation failed: %s", e)
+                logger.warning("Background pre-generation failed: %s", e)
         t = threading.Thread(target=_bg_pregen, daemon=True)
         t.start()
 
@@ -938,9 +938,9 @@ class HybridRecommender:
         def _bg_train():
             try:
                 self.train(epochs=300, verbose=False)
-                logger.info("✅ Background training complete")
+                logger.info("Background training complete")
             except Exception as e:
-                logger.warning("⚠️  Background auto-train failed: %s", e)
+                logger.warning("Background auto-train failed: %s", e)
             finally:
                 self._training = False
         t = threading.Thread(target=_bg_train, daemon=True)
@@ -950,7 +950,7 @@ class HybridRecommender:
         """Train all sub-models and persist them."""
         if verbose:
             print("=" * 60)
-            print("🚀 BekoSIRS ML Recommendation System — Training Pipeline")
+            print("BekoSIRS ML Recommendation System - Training Pipeline")
             print("=" * 60)
 
         start_time = time.time()
@@ -971,9 +971,9 @@ class HybridRecommender:
 
         if verbose:
             print(f"\n{'=' * 60}")
-            print(f"✅ Training complete in {elapsed:.1f}s")
-            print(f"   NCF model:     {'✅ trained' if ncf_ok else '⚠️  skipped (not enough data)'}")
-            print(f"   Content model: {'✅ trained' if content_ok else '⚠️  skipped (no products)'}")
+            print(f"Training complete in {elapsed:.1f}s")
+            print(f"   NCF model:     {'trained' if ncf_ok else 'skipped (not enough data)'}")
+            print(f"   Content model: {'trained' if content_ok else 'skipped (no products)'}")
             print(f"   Models saved:  {ML_MODELS_DIR}")
             print(f"{'=' * 60}")
 
@@ -1633,10 +1633,19 @@ class HybridRecommender:
                     continue
 
         # ── Format and return ──
-        logger.info(f"📊 Recommending for user {user.id if user else 'Guest'}: {len(filtered)} candidates -> Filtered to {len(diverse_items)}")
+        logger.info(
+            "Recommending for user %s: %s candidates -> Filtered to %s",
+            user.id if user else 'Guest',
+            len(filtered),
+            len(diverse_items),
+        )
         
         if not diverse_items and sorted_items:
-             logger.warning(f"⚠️  All {len(sorted_items)} candidates were filtered out for user {user.id if user else 'Guest'}")
+             logger.warning(
+                 "All %s candidates were filtered out for user %s",
+                 len(sorted_items),
+                 user.id if user else 'Guest',
+             )
              # Check one for debug
              pid, score = sorted_items[0]
              try:
@@ -1693,27 +1702,27 @@ class HybridRecommender:
 
         if age_hours is not None and age_hours < retrain_interval:
             logger.info(
-                "⏰ ML model is %.1f hours old (threshold: %d hours) — skipping retrain",
+                "ML model is %.1f hours old (threshold: %d hours) - skipping retrain",
                 age_hours, retrain_interval
             )
             return False
 
         logger.info(
-            "🔄 ML model is %s — starting retraining...",
+            "ML model is %s - starting retraining...",
             f"{age_hours:.1f} hours old" if age_hours is not None else "not found"
         )
 
         try:
             success = self.train(epochs=300, verbose=False)
             if success:
-                logger.info("✅ Periodic retraining complete")
+                logger.info("Periodic retraining complete")
                 # Invalidate caches so new recommendations use fresh model
                 self.invalidate_cache()
             else:
-                logger.warning("⚠️  Periodic retraining did not produce a model (insufficient data?)")
+                logger.warning("Periodic retraining did not produce a model (insufficient data?)")
             return success
         except Exception as e:
-            logger.error("❌ Periodic retraining failed: %s", e)
+            logger.error("Periodic retraining failed: %s", e)
             return False
 
 
