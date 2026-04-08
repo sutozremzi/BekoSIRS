@@ -537,18 +537,28 @@ class RecommendationViewSet(viewsets.ModelViewSet):
         recommendation.save()
         return Response({'success': True})
 
-    @action(detail=True, methods=['post'], url_path='dismiss')
+    @action(detail=True, methods=['patch', 'post'], url_path='dismiss')
     def dismiss(self, request, pk=None):
-        """POST /api/recommendations/{id}/dismiss/ - Mark as not interested."""
+        """
+        Mark a recommendation as dismissed via PATCH or legacy POST.
+
+        PATCH is the preferred verb because dismiss mutates an existing
+        recommendation resource, but POST remains enabled for backward
+        compatibility with older mobile/web builds.
+        """
         recommendation = self.get_object()
         recommendation.dismissed = True
         recommendation.dismissed_at = timezone.now()
-        recommendation.save()
+        recommendation.save(update_fields=['dismissed', 'dismissed_at'])
 
         # Trigger background refresh to generate replacement
         self._generate_in_background(request.user)
 
-        return Response({'success': True, 'message': 'Öneri reddedildi'})
+        return Response({
+            'status': 'dismissed',
+            'success': True,
+            'message': 'Öneri reddedildi',
+        })
 
 
 # ---------------------------

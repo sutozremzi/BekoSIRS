@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { recommendationAPI, wishlistAPI, viewHistoryAPI, getImageUrl } from '../../services';
@@ -44,6 +45,14 @@ interface MLMetrics {
   trained_at?: string | null;
   content_products?: number;
   weights?: { ncf?: number; content?: number; popularity?: number };
+  weights_used?: {
+    ncf?: number;
+    content?: number;
+    popularity?: number;
+    user_tier?: string;
+    interaction_count?: number;
+  };
+  user_tier?: string;
   error?: string;
 }
 
@@ -55,7 +64,17 @@ const RecommendationsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [wishlistIds, setWishlistIds] = useState<number[]>([]);
   const [showMetrics, setShowMetrics] = useState(true);
+  const [selectedCat, setSelectedCat] = useState('Tümü');
 
+  const getRecommendationCategory = (item: Recommendation) => item.product.category_name || 'Diğer';
+  const activeWeights = mlMetrics.weights_used || mlMetrics.weights || {};
+  const categories = ['Tümü', ...Array.from(new Set(recommendations.map(getRecommendationCategory)))];
+  const filteredRecommendations = selectedCat === 'Tümü'
+    ? recommendations
+    : recommendations.filter(item => getRecommendationCategory(item) === selectedCat);
+
+  // Derived kategori listesi ve agirliklar ekranin render akisini basit tutar;
+  // filtreleme ve skor kirilimini ek API cagrisi olmadan hesapliyoruz.
   const fetchWishlistIds = useCallback(async () => {
     try {
       const response = await wishlistAPI.getWishlist();
@@ -97,6 +116,15 @@ const RecommendationsScreen = () => {
     fetchWishlistIds();
   }, [fetchRecommendations, fetchWishlistIds]);
 
+  useEffect(() => {
+    const availableCategories = new Set(recommendations.map(getRecommendationCategory));
+    // Dismiss sonrasi secili kategori bos kalirsa kullaniciyi otomatik olarak
+    // tum sonuclara geri tasiyoruz; boylece ekran bos sanilmaz.
+    if (selectedCat !== 'Tümü' && !availableCategories.has(selectedCat)) {
+      setSelectedCat('Tümü');
+    }
+  }, [recommendations, selectedCat]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchRecommendations(true); // Trigger ML re-scoring on backend
@@ -121,13 +149,28 @@ const RecommendationsScreen = () => {
     router.push(`/product/${item.product.id}`);
   };
 
-  const handleDismiss = async (item: Recommendation) => {
+  const handleFeedback = async (item: Recommendation, feedbackType: 'like' | 'dismiss') => {
     if (!item.id) return;
     try {
+      if (feedbackType === 'like') {
+        await recommendationAPI.recordClick(item.id);
+        // We update local state immediately so the UI reflects the user's
+        // feedback without waiting for a full recommendation refresh cycle.
+        setRecommendations(prev => prev.map(rec => (
+          rec.id === item.id ? { ...rec, clicked: true } : rec
+        )));
+        return;
+      }
+
+      // Dismiss edilen karti listeden hemen cikararak kullaniciya anlik geri
+      // bildirim veriyoruz; backend yeni oneriyi arka planda uretebilir.
       await recommendationAPI.dismissRecommendation(item.id);
       setRecommendations(prev => prev.filter(r => r.id !== item.id));
     } catch (error) {
-      Alert.alert('Hata', 'İşlem başarısız');
+      Alert.alert(
+        'Hata',
+        feedbackType === 'like' ? 'Geri bildirim kaydedilemedi' : 'İşlem başarısız',
+      );
     }
   };
 
@@ -228,15 +271,21 @@ const RecommendationsScreen = () => {
           </View>
 
           {/* Weights */}
-          {mlMetrics.weights && (
+          {(mlMetrics.weights_used || mlMetrics.weights) && (
             <View style={styles.weightsRow}>
               <Text style={styles.weightsLabel}>Ağırlıklar:</Text>
               <Text style={styles.weightsText}>
-                NCF: {((mlMetrics.weights.ncf ?? 0) * 100).toFixed(0)}% | 
-                İçerik: {((mlMetrics.weights.content ?? 0) * 100).toFixed(0)}% | 
-                Popülerlik: {((mlMetrics.weights.popularity ?? 0) * 100).toFixed(0)}%
+                NCF: {((activeWeights.ncf ?? 0) * 100).toFixed(0)}% | 
+                İçerik: {((activeWeights.content ?? 0) * 100).toFixed(0)}% | 
+                Popülerlik: {((activeWeights.popularity ?? 0) * 100).toFixed(0)}%
               </Text>
             </View>
+          )}
+
+          {mlMetrics.user_tier && (
+            <Text style={styles.weightTier}>
+              Kullanıcı seviyesi: {mlMetrics.user_tier}
+            </Text>
           )}
 
           {trainedAt && (
@@ -310,6 +359,20 @@ const RecommendationsScreen = () => {
                 <Text style={styles.reasonText}>{item.reason}</Text>
               </View>
 
+              {/* Skor dökümü aynı hybrid weight setini gösterir; bu sayede
+                  kullanıcı hangi model karışımının öneriyi taşıdığını görebilir. */}
+              <View style={styles.scoreBreakdown}>
+                <Text style={styles.scoreBreakdownItem}>
+                  NCF: {(item.score * (activeWeights.ncf ?? 0)).toFixed(2)}
+                </Text>
+                <Text style={styles.scoreBreakdownItem}>
+                  İçerik: {(item.score * (activeWeights.content ?? 0)).toFixed(2)}
+                </Text>
+                <Text style={styles.scoreBreakdownItem}>
+                  Popülerlik: {(item.score * (activeWeights.popularity ?? 0)).toFixed(2)}
+                </Text>
+              </View>
+
               <View style={styles.priceRow}>
                 <Text style={styles.price}>
                   {parseFloat(product.price).toLocaleString('tr-TR', {
@@ -350,11 +413,23 @@ const RecommendationsScreen = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.dismissButton}
-            onPress={() => handleDismiss(item)}
+            style={styles.feedbackButton}
+            onPress={() => handleFeedback(item, 'like')}
+            accessibilityLabel="Bu öneriyi beğendim"
+            testID={`like-feedback-${item.id ?? product.id}`}
           >
-            <FontAwesome name="ban" size={14} color="#9E9E9E" />
-            <Text style={styles.dismissButtonText}>İlgilenmiyorum</Text>
+            <FontAwesome name="thumbs-up" size={14} color="#4CAF50" />
+            <Text style={styles.likeButtonText}>Beğendim</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.feedbackButton}
+            onPress={() => handleFeedback(item, 'dismiss')}
+            accessibilityLabel="Bu öneriyi gösterme"
+            testID={`dismiss-feedback-${item.id ?? product.id}`}
+          >
+            <FontAwesome name="thumbs-down" size={14} color="#F44336" />
+            <Text style={styles.dismissButtonText}>Gösterme</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -373,7 +448,7 @@ const RecommendationsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={recommendations}
+        data={filteredRecommendations}
         renderItem={renderItem}
         keyExtractor={(item, index) => item.id?.toString() || `rec-${item.product.id}-${index}`}
         contentContainerStyle={styles.list}
@@ -403,11 +478,39 @@ const RecommendationsScreen = () => {
             {/* ML Metrics Card */}
             {renderMLMetricsCard()}
 
+            <View style={styles.categoryFilterSection}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryFilterContent}
+              >
+                {categories.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.catChip,
+                      selectedCat === cat && styles.catChipActive,
+                    ]}
+                    onPress={() => setSelectedCat(cat)}
+                  >
+                    <Text
+                      style={[
+                        styles.catChipText,
+                        selectedCat === cat && styles.catChipTextActive,
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
             {/* Recommendation count */}
-            {recommendations.length > 0 && (
+            {filteredRecommendations.length > 0 && (
               <View style={styles.countRow}>
                 <Text style={styles.countText}>
-                  {recommendations.length} ürün önerildi
+                  {filteredRecommendations.length} ürün önerildi
                 </Text>
                 <Text style={styles.countSubtext}>
                   Aşağı çekerek yenileyin
@@ -419,9 +522,13 @@ const RecommendationsScreen = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <FontAwesome name="lightbulb-o" size={80} color="#ccc" />
-            <Text style={styles.emptyTitle}>Henüz Öneri Yok</Text>
+            <Text style={styles.emptyTitle}>
+              {selectedCat === 'Tümü' ? 'Henüz Öneri Yok' : 'Bu Kategoride Öneri Yok'}
+            </Text>
             <Text style={styles.emptyText}>
-              Ürünleri görüntüledikçe ML modeli size özel öneriler oluşturacak
+              {selectedCat === 'Tümü'
+                ? 'Ürünleri görüntüledikçe ML modeli size özel öneriler oluşturacak'
+                : `${selectedCat} kategorisinde şu an öneri bulunmuyor`}
             </Text>
           </View>
         }
@@ -575,6 +682,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'right',
   },
+  weightTier: {
+    fontSize: 11,
+    color: '#7B1FA2',
+    fontWeight: '600',
+    marginTop: 8,
+  },
   hideMetricsBtn: {
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
@@ -602,6 +715,34 @@ const styles = StyleSheet.create({
   countSubtext: {
     fontSize: 11,
     color: '#bbb',
+  },
+  categoryFilterSection: {
+    marginBottom: 12,
+  },
+  categoryFilterContent: {
+    paddingVertical: 4,
+    gap: 8,
+  },
+  catChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e7e7e7',
+    marginRight: 8,
+  },
+  catChipActive: {
+    backgroundColor: '#7B1FA2',
+    borderColor: '#7B1FA2',
+  },
+  catChipText: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  catChipTextActive: {
+    color: '#fff',
   },
 
   // ── Product Card ──
@@ -714,6 +855,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  scoreBreakdown: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  scoreBreakdownItem: {
+    fontSize: 11,
+    color: '#5b5b5b',
+    backgroundColor: '#f6f6f6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -760,7 +915,7 @@ const styles = StyleSheet.create({
     opacity: 1,
     backgroundColor: '#f5f5f5',
   },
-  dismissButton: {
+  feedbackButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -768,9 +923,16 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: '#fafafa',
     flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: '#f0f0f0',
+  },
+  likeButtonText: {
+    color: '#4CAF50',
+    fontWeight: '600',
+    fontSize: 12,
   },
   dismissButtonText: {
-    color: '#9E9E9E',
+    color: '#F44336',
     fontWeight: '600',
     fontSize: 12,
   },
