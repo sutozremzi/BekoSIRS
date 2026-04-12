@@ -167,7 +167,8 @@ def biometric_enable(request):
         return Response({'success': False, 'error': f'Yüz bulunamadı veya fotoğraf geçersiz: {str(ve)}'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         import traceback
-        return Response({'success': False, 'error': str(e), 'trace': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error("Biyometrik etkinlestirme hatasi: %s", traceback.format_exc())
+        return Response({'success': False, 'error': 'Sunucu hatasi olustu.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
