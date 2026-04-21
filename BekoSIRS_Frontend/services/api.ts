@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 
 // 🔹 Get your computer's local IP address
 // Replace this with YOUR actual IP address from ipconfig/ifconfig
-const COMPUTER_IP = '192.168.0.106';
+const COMPUTER_IP = '192.168.8.205';
 
 // 🔹 Read from .env if available, otherwise fallback to local IP
 export const API_BASE_URL = __DEV__
