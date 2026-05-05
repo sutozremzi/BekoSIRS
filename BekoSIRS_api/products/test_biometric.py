@@ -306,3 +306,155 @@ class BiometricAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
         self.assertIn('tokens', response.data)
+
+    # ---------------------------------------------------------------
+    # Login-With-Liveness (Unified Endpoint) Tests
+    # ---------------------------------------------------------------
+
+    def test_login_with_liveness_missing_username(self):
+        """login-with-liveness should require username."""
+        url = reverse('biometric_login_with_liveness')
+        response = self.client.post(url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data['success'])
+
+    def test_login_with_liveness_insufficient_frames(self):
+        """login-with-liveness should reject fewer than 3 frames."""
+        url = reverse('biometric_login_with_liveness')
+        img = self._make_test_image("frame_0.jpg")
+        response = self.client.post(url, {
+            'username': self.customer_user.username,
+            'frame_0': img,
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Yetersiz frame', response.data.get('error', ''))
+
+    @patch('products.views.biometric_views.run_liveness_check_multiframe')
+    def test_login_with_liveness_fails_when_not_live(self, mock_liveness):
+        """login-with-liveness should return 403 when liveness check fails."""
+        from products.liveness_detection import LivenessResult
+        mock_liveness.return_value = LivenessResult(
+            is_live=False,
+            score=0.15,
+            reason="Hareket algılanamadı (sabit görüntü).",
+        )
+
+        from products.encryption import encrypt_face_encoding
+        self.customer_user.biometric_enabled = True
+        self.customer_user.face_encoding = encrypt_face_encoding(self.test_encoding)
+        self.customer_user.save()
+
+        url = reverse('biometric_login_with_liveness')
+        data = {'username': self.customer_user.username}
+        for i in range(4):
+            data[f'frame_{i}'] = self._make_test_image(f"frame_{i}.jpg")
+
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(response.data['success'])
+
+    @patch('products.views.biometric_views.cv2.imdecode')
+    @patch('deepface.DeepFace.represent')
+    @patch('deepface.modules.verification.find_distance')
+    @patch('deepface.modules.verification.find_threshold')
+    @patch('products.views.biometric_views.run_liveness_check_multiframe')
+    def test_login_with_liveness_face_mismatch(
+        self, mock_liveness, mock_threshold, mock_distance, mock_represent, mock_imdecode
+    ):
+        """login-with-liveness: liveness passes but face doesn't match → 401."""
+        from products.liveness_detection import LivenessResult
+        mock_liveness.return_value = LivenessResult(is_live=True, score=0.85, reason="OK")
+
+        mock_represent.return_value = [{"embedding": [0.9] * 128}]
+        mock_distance.return_value = 0.8  # High distance → mismatch
+        mock_threshold.return_value = 0.4
+        mock_imdecode.return_value = MagicMock()
+
+        from products.encryption import encrypt_face_encoding
+        self.customer_user.biometric_enabled = True
+        self.customer_user.face_encoding = encrypt_face_encoding(self.test_encoding)
+        self.customer_user.save()
+
+        url = reverse('biometric_login_with_liveness')
+        data = {'username': self.customer_user.username}
+        for i in range(4):
+            data[f'frame_{i}'] = self._make_test_image(f"frame_{i}.jpg")
+
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(response.data['success'])
+        self.assertIn('eşleşmedi', response.data.get('error', ''))
+
+    @patch('products.views.biometric_views.cv2.imdecode')
+    @patch('deepface.DeepFace.represent')
+    @patch('deepface.modules.verification.find_distance')
+    @patch('deepface.modules.verification.find_threshold')
+    @patch('products.views.biometric_views.run_liveness_check_multiframe')
+    def test_login_with_liveness_full_success(
+        self, mock_liveness, mock_threshold, mock_distance, mock_represent, mock_imdecode
+    ):
+        """login-with-liveness: liveness + face match → tokens returned."""
+        from products.liveness_detection import LivenessResult
+        mock_liveness.return_value = LivenessResult(is_live=True, score=0.92, reason="OK")
+
+        mock_represent.return_value = [{"embedding": self.test_encoding}]
+        mock_distance.return_value = 0.1
+        mock_threshold.return_value = 0.4
+        mock_imdecode.return_value = MagicMock()
+
+        from products.encryption import encrypt_face_encoding
+        self.customer_user.biometric_enabled = True
+        self.customer_user.face_encoding = encrypt_face_encoding(self.test_encoding)
+        self.customer_user.save()
+
+        url = reverse('biometric_login_with_liveness')
+        data = {'username': self.customer_user.username}
+        for i in range(5):
+            data[f'frame_{i}'] = self._make_test_image(f"frame_{i}.jpg")
+
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('tokens', response.data)
+        self.assertIn('liveness_score', response.data)
+
+    def test_login_with_liveness_user_not_found(self):
+        """login-with-liveness with a nonexistent username → 404."""
+        url = reverse('biometric_login_with_liveness')
+        data = {'username': 'nonexistent_user_xyz'}
+        for i in range(4):
+            data[f'frame_{i}'] = self._make_test_image(f"frame_{i}.jpg")
+
+        with patch('products.views.biometric_views.run_liveness_check_multiframe') as mock_lv:
+            from products.liveness_detection import LivenessResult
+            mock_lv.return_value = LivenessResult(is_live=True, score=0.9, reason="OK")
+            response = self.client.post(url, data, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    # ---------------------------------------------------------------
+    # Liveness Check Multi (Standalone) Tests
+    # ---------------------------------------------------------------
+
+    @patch('products.views.biometric_views.run_liveness_check_multiframe')
+    def test_liveness_check_multi_success(self, mock_liveness):
+        """liveness-check-multi should return liveness result on valid frames."""
+        from products.liveness_detection import LivenessResult
+        mock_liveness.return_value = LivenessResult(
+            is_live=True, score=0.88, reason="Canlı algılandı."
+        )
+
+        url = reverse('biometric_liveness_check_multi')
+        data = {}
+        for i in range(4):
+            data[f'frame_{i}'] = self._make_test_image(f"frame_{i}.jpg")
+
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_live'])
+
+    def test_liveness_check_multi_no_frames(self):
+        """liveness-check-multi with no frames should fail."""
+        url = reverse('biometric_liveness_check_multi')
+        response = self.client.post(url, {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
