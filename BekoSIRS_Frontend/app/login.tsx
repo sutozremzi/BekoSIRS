@@ -11,7 +11,8 @@ import {
     ScrollView,
     StatusBar,
     Alert,
-    Modal
+    Modal,
+    Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,24 +24,33 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLanguage } from '../context/LanguageContext';
 import { t } from '../i18n';
 
+const { width: SCREEN_W } = Dimensions.get('window');
+const RECORD_SECONDS = 5; // Kayıt süresi (saniye)
+
 const LoginScreen = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    
-    // Camera state
+
+    // Camera & liveness state
     const [showCamera, setShowCamera] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<any>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [countdown, setCountdown] = useState(RECORD_SECONDS);
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const capturedFramesRef = useRef<string[]>([]);
+    const frameIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const { login, loading: authLoading } = useAuth();
-    const { loginWithFace, loading: bioLoading } = useBiometric();
-    const { language } = useLanguage(); // triggers re-render on language change
+    const { loginWithLivenessUnified, loading: bioLoading } = useBiometric();
+    const { language } = useLanguage();
 
     const handleLogin = async () => {
         await login(username, password);
     };
 
+    /** Face ID butonu: izin al, kamerayı aç. */
     const handleBiometricPress = async () => {
         let currentUsername = username;
         if (!currentUsername) {
@@ -48,7 +58,7 @@ const LoginScreen = () => {
             const savedUsername = await SecureStore.getItemAsync('lastLoginUsername');
             if (savedUsername) {
                 currentUsername = savedUsername;
-                setUsername(currentUsername); // State'i güncelle ki kamera modalı bilsin
+                setUsername(currentUsername);
             } else {
                 Alert.alert(t('common.error'), t('login.faceIdInfo'));
                 return;
@@ -62,30 +72,80 @@ const LoginScreen = () => {
                 return;
             }
         }
+
+        setCountdown(RECORD_SECONDS);
+        setIsRecording(false);
         setShowCamera(true);
     };
 
-    const takePhotoAndLogin = async () => {
-        if (cameraRef.current) {
-            try {
-                const photo = await cameraRef.current.takePictureAsync({ base64: false });
-                setShowCamera(false);
-                
-                const result = await loginWithFace(username, photo.uri);
+    /**
+     * Tek adımlı akış: frame çek → hepsini username ile gönder
+     * Backend aynı frame'lerden hem liveness hem yüz eşleştirme yapar.
+     * Zafiyet giderildi: Ayrı selfie adımı yok.
+     */
+    const startRecording = async () => {
+        if (!cameraRef.current || isRecording) return;
+        setIsRecording(true);
+        setCountdown(RECORD_SECONDS);
+        capturedFramesRef.current = [];
 
-                if (result.success && result.accessToken && result.refreshToken) {
-                    await saveTokens(result.accessToken, result.refreshToken);
-                    await AsyncStorage.setItem('userRole', 'customer');
-                    router.replace('/(drawer)' as any);
-                } else {
-                    Alert.alert(t('login.loginFailed'), result.error || t('login.faceVerifyFailed'));
-                }
-            } catch (error) {
-                setShowCamera(false);
-                Alert.alert(t('common.error'), t('login.photoError'));
-            }
+        // Countdown timer
+        let remaining = RECORD_SECONDS;
+        countdownRef.current = setInterval(() => {
+            remaining -= 1;
+            setCountdown(remaining);
+            if (remaining <= 0) clearInterval(countdownRef.current!);
+        }, 1000);
+
+        // Her 600ms'de bir frame çek
+        const INTERVAL_MS   = 600;
+        const totalDuration = RECORD_SECONDS * 1000;
+
+        frameIntervalRef.current = setInterval(async () => {
+            if (!cameraRef.current) return;
+            try {
+                const photo = await cameraRef.current.takePictureAsync({
+                    base64: false,
+                    quality: 0.75,
+                    skipProcessing: true,
+                });
+                capturedFramesRef.current.push(photo.uri);
+            } catch { /* tek frame hatasını yoksay */ }
+        }, INTERVAL_MS);
+
+        // 5sn sonra durdur ve hepsini birden gönder
+        await new Promise(r => setTimeout(r, totalDuration));
+        clearInterval(frameIntervalRef.current!);
+        clearInterval(countdownRef.current!);
+        setIsRecording(false);
+        setShowCamera(false);
+
+        const frames = capturedFramesRef.current;
+
+        if (frames.length < 3) {
+            Alert.alert('Hata', 'Yeterli frame yakalanamadı. Lütfen tekrar deneyin.');
+            return;
+        }
+
+        // Tek istekte hem liveness hem yüz doğrulama
+        const result = await loginWithLivenessUnified(username, frames);
+        if (result.success && result.accessToken && result.refreshToken) {
+            await saveTokens(result.accessToken, result.refreshToken);
+            await AsyncStorage.setItem('userRole', 'customer');
+            router.replace('/(drawer)' as any);
+        } else {
+            Alert.alert(t('login.loginFailed'), result.error || 'Giriş başarısız.');
         }
     };
+
+    /** Kamerayı kapat ve sıfırla. */
+    const closeCameraModal = () => {
+        clearInterval(frameIntervalRef.current!);
+        clearInterval(countdownRef.current!);
+        setIsRecording(false);
+        setShowCamera(false);
+    };
+
 
     const isLoading = authLoading || bioLoading;
 
@@ -220,37 +280,68 @@ const LoginScreen = () => {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            {/* Camera Modal for Face ID */}
+            {/* Kamera Modali — TEK ADIMLI (Liveness + Doğrulama aynı anda) */}
             {showCamera && (
                 <Modal animationType="slide" transparent={false} visible={showCamera}>
                     <View style={styles.cameraContainer}>
-                        <CameraView 
-                            style={styles.camera} 
-                            facing="front" 
+                        <CameraView
+                            style={styles.camera}
+                            facing="front"
                             ref={cameraRef}
                         >
+                            {/* Kapat butonu — kayıt sırasında gizle */}
+                            {!isRecording && (
+                                <TouchableOpacity
+                                    style={styles.closeCameraTopBtn}
+                                    onPress={closeCameraModal}
+                                >
+                                    <Text style={styles.closeCameraTopText}>✕</Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {/* ── Liveness + Doğrulama (Tek Adım) ── */}
                             <View style={styles.cameraOverlay}>
-                                <View style={styles.faceOutline} />
-                                <Text style={styles.cameraText}>{t('login.cameraGuide')}</Text>
+                                <View style={[
+                                    styles.faceOutline,
+                                    { borderColor: isRecording ? '#EF4444' : '#10B981' }
+                                ]} />
+                                {isRecording ? (
+                                    <View style={styles.countdownContainer}>
+                                        <Text style={styles.countdownNumber}>{countdown}</Text>
+                                        <Text style={styles.countdownLabel}>● KAYIT</Text>
+                                        <Text style={styles.cameraSubText}>
+                                            Başınızı yavaşça sola-sağa çevirin
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <Text style={styles.cameraText}>
+                                        Butona basın ve başınızı{'\n'}yavaşça sola-sağa çevirin
+                                    </Text>
+                                )}
                             </View>
-                            <View style={styles.cameraControls}>
-                                <TouchableOpacity 
-                                    style={styles.closeCameraButton} 
-                                    onPress={() => setShowCamera(false)}
-                                >
-                                    <Text style={styles.cameraButtonText}>{t('common.cancel')}</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={styles.captureButton} 
-                                    onPress={takePhotoAndLogin}
-                                >
-                                    <View style={styles.captureButtonInner} />
-                                </TouchableOpacity>
-                                
-                                <View style={{ width: 60 }} />
-                            </View>
+                            {!isRecording && (
+                                <View style={styles.cameraControls}>
+                                    <View style={{ width: 60 }} />
+                                    <TouchableOpacity
+                                        style={styles.captureButton}
+                                        onPress={startRecording}
+                                    >
+                                        <View style={[styles.captureButtonInner, { backgroundColor: '#EF4444' }]} />
+                                    </TouchableOpacity>
+                                    <View style={{ width: 60 }} />
+                                </View>
+                            )}
                         </CameraView>
+
+                        {/* Analiz yükleniyor */}
+                        {bioLoading && (
+                            <View style={styles.loadingOverlay}>
+                                <ActivityIndicator size="large" color="#fff" />
+                                <Text style={styles.loadingText}>
+                                    Canlılık ve kimlik doğrulanıyor...
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 </Modal>
             )}
@@ -261,59 +352,114 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
     cameraContainer: { flex: 1, backgroundColor: 'black' },
     camera: { flex: 1 },
+
+    // Kapat butonu (sol üst)
+    closeCameraTopBtn: {
+        position: 'absolute',
+        top: 50,
+        left: 20,
+        zIndex: 10,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+    },
+    closeCameraTopText: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+
+
     cameraOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         justifyContent: 'center',
         alignItems: 'center',
+        paddingTop: 80,
     },
     faceOutline: {
-        width: 250,
-        height: 350,
-        borderWidth: 2,
-        borderColor: '#00FF00',
-        borderRadius: 150,
+        width: 220,
+        height: 300,
+        borderWidth: 3,
+        borderRadius: 130,
         borderStyle: 'dashed',
     },
     cameraText: {
         color: 'white',
-        fontSize: 16,
-        marginTop: 20,
+        fontSize: 18,
+        marginTop: 24,
         fontWeight: 'bold',
         textAlign: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: 30,
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
+    },
+    cameraSubText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 13,
+        marginTop: 8,
+        fontWeight: '500',
+    },
+    countdownContainer: {
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    countdownNumber: {
+        color: '#EF4444',
+        fontSize: 72,
+        fontWeight: 'bold',
+        lineHeight: 80,
+    },
+    countdownLabel: {
+        color: '#EF4444',
+        fontSize: 14,
+        fontWeight: '700',
+        letterSpacing: 3,
+        marginTop: 4,
     },
     cameraControls: {
-        height: 120,
-        backgroundColor: 'black',
+        height: 130,
+        backgroundColor: 'rgba(0,0,0,0.85)',
         flexDirection: 'row',
         justifyContent: 'space-around',
         alignItems: 'center',
-        paddingBottom: 20,
+        paddingBottom: 24,
     },
     captureButton: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        width: 76,
+        height: 76,
+        borderRadius: 38,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        borderWidth: 3,
+        borderColor: 'white',
         justifyContent: 'center',
         alignItems: 'center',
     },
     captureButtonInner: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 62,
+        height: 62,
+        borderRadius: 31,
         backgroundColor: 'white',
     },
-    closeCameraButton: {
-        padding: 15,
+
+    // Liveness yükleniyor katmanı
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
     },
-    cameraButtonText: {
+    loadingText: {
         color: 'white',
         fontSize: 16,
-        fontWeight: 'bold',
+        fontWeight: '600',
+        marginTop: 12,
     },
-    // ... Existing Styles ...
+
+
     container: {
         flex: 1,
         backgroundColor: '#FFFFFF',

@@ -55,6 +55,10 @@ from .biometric_views import (
     biometric_disable,
     biometric_status,
     biometric_login,
+    biometric_login_with_liveness,
+    liveness_check,
+    liveness_check_video,
+    liveness_check_multi,
 )
 
 # Delivery and route optimization views
@@ -113,6 +117,10 @@ __all__ = [
     'biometric_disable',
     'biometric_status',
     'biometric_login',
+    'biometric_login_with_liveness',
+    'liveness_check',
+    'liveness_check_video',
+    'liveness_check_multi',
     # Delivery
     'DeliveryViewSet',
     'DeliveryRouteViewSet',

@@ -35,6 +35,10 @@ from products.views import (
     biometric_disable,
     biometric_status,
     biometric_login,
+    biometric_login_with_liveness,
+    liveness_check,
+    liveness_check_video,
+    liveness_check_multi,
     # Delivery
     DeliveryViewSet,
     DeliveryRouteViewSet,
@@ -125,23 +129,27 @@ urlpatterns = [
     path("users/push-token/", save_push_token_view, name="save-push-token"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
 
-    # 🔹 GİRİŞ (Login) - Müşteri kısıtlaması bu view içinde yapılıyor
+    # Login
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # Mobil kayıt veya özel kayıt işlemleri için
     path('register/', UserManagementViewSet.as_view({'post': 'create'}), name='auth_register'),
     
-    # 🔹 ŞİFRE SIFIRLAMA
+    # Password Reset
     path('password-reset/', password_reset_request, name='password_reset_request'),
     path('password-reset/confirm/', password_reset_confirm, name='password_reset_confirm'),
     
-    # 🔹 BİYOMETRİK KİMLİK DOĞRULAMA (Face ID / Face Unlock)
-    path('biometric/enable/', biometric_enable, name='biometric_enable'),
-    path('biometric/disable/', biometric_disable, name='biometric_disable'),
-    path('biometric/status/', biometric_status, name='biometric_status'),
-    path('biometric/login/', biometric_login, name='biometric_login'),
+    # Biometric Authentication (Face ID / Liveness Detection)
+    path('biometric/enable/',                biometric_enable,       name='biometric_enable'),
+    path('biometric/disable/',               biometric_disable,      name='biometric_disable'),
+    path('biometric/status/',                biometric_status,       name='biometric_status'),
+    path('biometric/login/',                 biometric_login,        name='biometric_login'),
+    path('biometric/login-with-liveness/',   biometric_login_with_liveness, name='biometric_login_with_liveness'),
+    path('biometric/liveness-check/',        liveness_check,         name='biometric_liveness_check'),
+    path('biometric/liveness-check-video/',  liveness_check_video,   name='biometric_liveness_check_video'),
+    path('biometric/liveness-check-multi/',  liveness_check_multi,   name='biometric_liveness_check_multi'),
     
-    # 🔹 EXCEL EXPORT
+    # Excel Export
     path('products/export/excel/', export_products_excel, name='export_products_excel'),
 ]
