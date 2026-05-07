@@ -472,18 +472,18 @@ const RecommendationsScreen = () => {
                   {t('recs.subtitle')}
                 </Text>
               </View>
-              {!showMetrics && (
+              {/* {!showMetrics && (
                 <TouchableOpacity
                   style={styles.showMetricsBtn}
                   onPress={() => setShowMetrics(true)}
                 >
                   <FontAwesome name="bar-chart" size={14} color="#7B1FA2" />
                 </TouchableOpacity>
-              )}
+              )} */}
             </View>
 
             {/* ML metrik karti gelistirme amacli tanisal bilgileri gosterir. */}
-            {renderMLMetricsCard()}
+            {/* {renderMLMetricsCard()} */}
 
             {/* Kategori ciplari mevcut sonuc listesinden uretilir; bu sayede
                 filtreler backend'den ayri metadata beklemeden her zaman guncel kalir. */}
