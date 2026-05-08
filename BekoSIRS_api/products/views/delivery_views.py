@@ -2,7 +2,9 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
+from django.db import transaction
+from datetime import date as date_type, timedelta
 import math
 from ..models import Delivery, DeliveryRoute, DeliveryRouteStop, ProductAssignment, ProductOwnership, CustomUser, DepotLocation, Notification
 from ..serializers import (
@@ -11,6 +13,59 @@ from ..serializers import (
     ProductAssignmentSerializer
 )
 from ..permissions import IsAdminOrReadOnly, IsDeliveryPerson, IsAdmin
+
+
+def _assignment_status_filter(status_value):
+    """Return a tolerant status filter while old data is being normalized."""
+    if status_value == 'PLANNED':
+        return Q(status='PLANNED') | Q(status='PENDING')
+    if status_value == 'DELIVERED':
+        return Q(status='DELIVERED') | Q(status='delivered')
+    return Q(status=status_value)
+
+
+def sync_delivery_business_state(delivery, new_status=None):
+    """Keep Delivery, ProductAssignment, ownership and notifications in sync."""
+    status_value = new_status or delivery.status
+    assignment = delivery.assignment
+    if not assignment:
+        return
+
+    if status_value == 'DELIVERED':
+        delivery.delivered_at = delivery.delivered_at or timezone.now()
+        assignment.status = 'DELIVERED'
+        assignment.save(update_fields=['status'])
+        ProductOwnership.objects.get_or_create(
+            customer=assignment.customer,
+            product=assignment.product,
+            defaults={'purchase_date': timezone.now().date()}
+        )
+        Notification.objects.get_or_create(
+            user=assignment.customer,
+            notification_type='general',
+            title='Ürününüz Teslim Edildi',
+            related_product=assignment.product,
+            defaults={
+                'message': (
+                    f"{assignment.product.name} ürününüz başarıyla teslim edildi. "
+                    f"Artık ürününüzü 'Ürünlerim' bölümünden görebilirsiniz."
+                )
+            }
+        )
+    elif status_value == 'OUT_FOR_DELIVERY':
+        assignment.status = 'OUT_FOR_DELIVERY'
+        assignment.save(update_fields=['status'])
+    elif status_value in ['WAITING', 'FAILED']:
+        assignment.status = 'SCHEDULED'
+        assignment.save(update_fields=['status'])
+
+
+class IsAdminOrSellerOrReadOnly(IsAdminOrReadOnly):
+    """Allow delivery operations to admins and sellers; keep reads open as before."""
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return request.user.is_authenticated and request.user.role in ['admin', 'seller']
 
 
 # ============================================
@@ -63,7 +118,7 @@ def nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords):
 class ProductAssignmentViewSet(viewsets.ModelViewSet):
     queryset = ProductAssignment.objects.select_related('customer', 'product').all()
     serializer_class = ProductAssignmentSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSellerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['customer__username', 'customer__first_name', 'customer__last_name', 'product__name', 'product__model_code']
     ordering_fields = ['assigned_at', 'status']
@@ -78,10 +133,13 @@ class ProductAssignmentViewSet(viewsets.ModelViewSet):
         customer_id = self.request.query_params.get('customer')
         if customer_id:
             qs = qs.filter(customer_id=customer_id)
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(_assignment_status_filter(status_param))
         return qs
 
     def perform_create(self, serializer):
-        assignment = serializer.save()
+        assignment = serializer.save(assigned_by=self.request.user if self.request.user.is_authenticated else None)
         # Notify customer that a product has been assigned to them
         Notification.objects.create(
             user=assignment.customer,
@@ -98,10 +156,10 @@ class ProductAssignmentViewSet(viewsets.ModelViewSet):
     def stats(self, request):
         """Her durum için atama sayısını döndürür."""
         qs = ProductAssignment.objects.aggregate(
-            planned=Count('id', filter=Q(status='PLANNED')),
-            scheduled=Count('id', filter=Q(status='SCHEDULED')),
-            out_for_delivery=Count('id', filter=Q(status='OUT_FOR_DELIVERY')),
-            delivered=Count('id', filter=Q(status='DELIVERED')),
+            planned=Count('id', filter=_assignment_status_filter('PLANNED')),
+            scheduled=Count('id', filter=_assignment_status_filter('SCHEDULED')),
+            out_for_delivery=Count('id', filter=_assignment_status_filter('OUT_FOR_DELIVERY')),
+            delivered=Count('id', filter=_assignment_status_filter('DELIVERED')),
         )
         return Response(qs)
 
@@ -178,6 +236,73 @@ class ProductAssignmentViewSet(viewsets.ModelViewSet):
             "scheduled_count": scheduled_count
         })
 
+    @action(detail=False, methods=['post'])
+    def auto_plan(self, request):
+        """
+        Otomatik teslimat planı oluştur (Preview — DB'ye yazmaz).
+        Body: { "start_date": "2026-05-06" }  (optional, default=today)
+        """
+        from ..services.auto_planner import generate_auto_plan
+        from datetime import date as date_type
+
+        start_date_str = request.data.get('start_date')
+        start_date = None
+        if start_date_str:
+            try:
+                start_date = date_type.fromisoformat(start_date_str)
+            except ValueError:
+                return Response(
+                    {"error": "Geçersiz tarih formatı. YYYY-MM-DD kullanın."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        plan = generate_auto_plan(
+            start_date,
+            allowed_weekdays=request.data.get('allowed_weekdays') or None,
+            max_hours_per_day=request.data.get('max_hours_per_day') or None,
+            depot_id=request.data.get('depot_id') or None,
+            assignment_ids=request.data.get('assignment_ids') or None,
+        )
+
+        if not plan.get('days'):
+            return Response(
+                {"error": "Planlanacak teslimat bulunamadı. Tüm atamalar zaten planlanmış olabilir."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response(plan)
+
+    @action(detail=False, methods=['post'])
+    def approve_plan(self, request):
+        """
+        Otomatik planı onayla ve Delivery + Route kayıtlarını oluştur.
+        Body: { "days": [...] }  (auto_plan'dan dönen days verisi)
+        """
+        from ..services.auto_planner import approve_plan
+
+        days = request.data.get('days')
+        if not days:
+            return Response(
+                {"error": "Plan verisi (days) gerekli."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = approve_plan({
+                'days': days,
+                'depot_id': request.data.get('depot_id') or request.data.get('summary', {}).get('depot_id'),
+            })
+        except Exception as e:
+            return Response(
+                {"error": f"Plan onaylanırken hata oluştu: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response({
+            "message": f"{result['total_routes']} günlük teslimat planı oluşturuldu.",
+            **result
+        })
+
 
 # ============================================
 # Delivery ViewSet
@@ -187,7 +312,7 @@ class DeliveryViewSet(viewsets.ModelViewSet):
         'assignment', 'assignment__customer', 'assignment__product'
     ).all()
     serializer_class = DeliverySerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSellerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['status', 'assignment__customer__username', 'assignment__customer__first_name', 'assignment__customer__last_name']
     ordering_fields = ['scheduled_date', 'delivery_order', 'status']
@@ -213,7 +338,28 @@ class DeliveryViewSet(viewsets.ModelViewSet):
             delivered=Count('id', filter=Q(status='DELIVERED')),
             failed=Count('id', filter=Q(status='FAILED')),
         )
+        selected_date = request.query_params.get('date')
+        scheduled_qs = Delivery.objects.all()
+        if selected_date:
+            scheduled_qs = scheduled_qs.filter(scheduled_date=selected_date)
+        qs.update({
+            'waiting_count': qs['waiting'],
+            'out_for_delivery_count': qs['out_for_delivery'],
+            'delivered_count': qs['delivered'],
+            'failed_count': qs['failed'],
+            'scheduled_for_selected_date_count': scheduled_qs.count(),
+            'delivered_last_10_days_count': Delivery.objects.filter(
+                status='DELIVERED',
+                delivered_at__gte=timezone.now() - timedelta(days=10)
+            ).count(),
+        })
         return Response(qs)
+
+    def perform_update(self, serializer):
+        delivery = serializer.save()
+        sync_delivery_business_state(delivery)
+        if delivery.status == 'DELIVERED' and delivery.delivered_at:
+            delivery.save(update_fields=['delivered_at'])
 
     @action(detail=False, methods=['get'])
     def by_date(self, request):
@@ -269,9 +415,23 @@ class DeliveryViewSet(viewsets.ModelViewSet):
 # DeliveryRoute ViewSet (Rota Optimizasyonu)
 # ============================================
 class DeliveryRouteViewSet(viewsets.ModelViewSet):
-    queryset = DeliveryRoute.objects.prefetch_related('stops', 'stops__delivery').all()
+    queryset = DeliveryRoute.objects.select_related('assigned_driver').prefetch_related(
+        Prefetch(
+            'stops',
+            queryset=DeliveryRouteStop.objects.select_related(
+                'delivery',
+                'delivery__assignment',
+                'delivery__assignment__customer',
+                'delivery__assignment__customer__customer_address',
+                'delivery__assignment__customer__customer_address__area',
+                'delivery__assignment__customer__customer_address__district',
+                'delivery__assignment__product',
+                'delivery__delivered_by',
+            ).order_by('stop_order', 'id')
+        )
+    ).all()
     serializer_class = DeliveryRouteSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSellerOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -279,6 +439,104 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         if date:
             qs = qs.filter(date=date)
         return qs
+
+    @action(detail=False, methods=['post'])
+    def rebalance_week(self, request):
+        """
+        Rebuild open delivery plans for a rolling week.
+        Only WAITING deliveries and unscheduled PLANNED assignments are touched;
+        out-for-delivery/completed items stay as-is.
+        """
+        from ..services.auto_planner import generate_auto_plan, approve_plan
+
+        week_start_raw = request.data.get('week_start') or date_type.today().isoformat()
+        try:
+            week_start = date_type.fromisoformat(week_start_raw)
+        except ValueError:
+            return Response({"error": "Geçersiz week_start. YYYY-MM-DD kullanın."}, status=status.HTTP_400_BAD_REQUEST)
+
+        allowed_weekdays = request.data.get('allowed_weekdays') or []
+        if not allowed_weekdays:
+            return Response({"error": "En az bir aktif teslimat günü seçilmeli."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            allowed_weekday_set = {int(day) for day in allowed_weekdays}
+        except (TypeError, ValueError):
+            return Response({"error": "allowed_weekdays sayÄ±sal deÄŸerler iÃ§ermeli."}, status=status.HTTP_400_BAD_REQUEST)
+
+        allowed_weekday_set = {day for day in allowed_weekday_set if 0 <= day <= 6}
+        if not allowed_weekday_set:
+            return Response({"error": "En az bir geÃ§erli aktif teslimat gÃ¼nÃ¼ seÃ§ilmeli."}, status=status.HTTP_400_BAD_REQUEST)
+
+        week_end = week_start + timedelta(days=13)
+
+        with transaction.atomic():
+            open_deliveries = list(Delivery.objects.filter(
+                scheduled_date__gte=week_start,
+                scheduled_date__lte=week_end,
+                status='WAITING',
+            ).select_related('assignment'))
+            deliveries_to_move = [
+                delivery for delivery in open_deliveries
+                if delivery.scheduled_date and delivery.scheduled_date.weekday() not in allowed_weekday_set
+            ]
+            movable_delivery_ids = [delivery.id for delivery in deliveries_to_move]
+            movable_assignment_ids = [
+                delivery.assignment_id for delivery in deliveries_to_move
+                if delivery.assignment_id
+            ]
+
+            if movable_assignment_ids:
+                ProductAssignment.objects.filter(id__in=movable_assignment_ids).update(status='PLANNED')
+
+            if movable_delivery_ids:
+                DeliveryRouteStop.objects.filter(delivery_id__in=movable_delivery_ids).delete()
+                Delivery.objects.filter(id__in=movable_delivery_ids).delete()
+
+            DeliveryRoute.objects.filter(
+                date__gte=week_start,
+                date__lte=week_end,
+                status='PLANNED',
+                stops__isnull=True,
+            ).delete()
+
+            unscheduled_assignment_ids = list(ProductAssignment.objects.filter(
+                status__in=['PLANNED', 'PENDING'],
+                delivery__isnull=True,
+            ).values_list('id', flat=True))
+
+            assignment_ids = sorted(set(movable_assignment_ids + unscheduled_assignment_ids))
+            if not assignment_ids:
+                return Response({
+                    "message": "Yeniden planlanacak açık teslimat bulunamadı.",
+                    "created_routes": [],
+                    "total_routes": 0,
+                    "moved_deliveries": 0,
+                })
+
+            plan = generate_auto_plan(
+                week_start - timedelta(days=1),
+                allowed_weekdays=sorted(allowed_weekday_set),
+                max_hours_per_day=request.data.get('max_hours_per_day') or None,
+                depot_id=request.data.get('depot_id') or None,
+                assignment_ids=assignment_ids,
+            )
+
+            if not plan.get('days'):
+                return Response({"error": "Plan oluşturulamadı."}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = approve_plan({
+                'days': plan['days'],
+                'depot_id': request.data.get('depot_id') or plan.get('summary', {}).get('depot_id'),
+            })
+
+        return Response({
+            "message": "Haftalık teslimat takvimi yeniden dağıtıldı.",
+            "plan": plan,
+            "moved_deliveries": len(movable_delivery_ids),
+            "planned_assignments": len(assignment_ids),
+            **result,
+        })
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -509,10 +767,16 @@ class DeliveryPersonViewSet(viewsets.GenericViewSet):
             return Response({"error": "Teslimat bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
 
         new_status = request.data.get('status')
+        if new_status == 'ISSUE':
+            new_status = 'FAILED'
         if new_status not in dict(Delivery.STATUS_CHOICES):
             return Response({"error": "Geçersiz durum."}, status=status.HTTP_400_BAD_REQUEST)
 
         delivery.status = new_status
+        sync_delivery_business_state(delivery, new_status)
+        delivery.save()
+        return Response(DeliverySerializer(delivery).data)
+
         if new_status == 'DELIVERED':
             delivery.delivered_at = timezone.now()
             if delivery.assignment:

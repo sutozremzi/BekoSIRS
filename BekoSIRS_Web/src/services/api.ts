@@ -89,6 +89,10 @@ export const productAPI = {
     list: (params?: any) => api.get('products/', { params }),
 };
 
+export const categoryAPI = {
+    list: (params?: any) => api.get('categories/', { params }),
+};
+
 // ----------------------------------------
 // 🔹 CUSTOMER API
 // ----------------------------------------
@@ -254,6 +258,20 @@ export const assignmentAPI = {
     // Batch schedule multiple assignments
     batchSchedule: (assignmentIds: number[], scheduledDate: string) =>
         api.post('/assignments/batch_schedule/', { assignment_ids: assignmentIds, scheduled_date: scheduledDate }),
+
+    // Auto-plan: generate a preview of optimal multi-day delivery plan
+    autoPlan: (config?: {
+        start_date?: string;
+        allowed_weekdays?: number[];
+        max_hours_per_day?: number;
+        depot_id?: number | "";
+        assignment_ids?: number[];
+    }) =>
+        api.post('/assignments/auto_plan/', config || {}),
+
+    // Approve auto-plan: commit the plan to DB
+    approvePlan: (days: any[], summary?: any) =>
+        api.post('/assignments/approve_plan/', { days, summary, depot_id: summary?.depot_id }),
 };
 
 // ===========================================
@@ -272,4 +290,15 @@ export const deliveryRouteAPI = {
 
     // Get route details
     get: (id: number) => api.get(`/delivery-routes/${id}/`),
+
+    // Delete route and return its deliveries to waiting state
+    delete: (id: number) => api.delete(`/delivery-routes/${id}/`),
+
+    // Rebuild rolling weekly plan using active weekdays
+    rebalanceWeek: (data: {
+        week_start: string;
+        allowed_weekdays: number[];
+        max_hours_per_day?: number;
+        depot_id?: number | "";
+    }) => api.post('/delivery-routes/rebalance_week/', data),
 };

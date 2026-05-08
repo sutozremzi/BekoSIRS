@@ -18,13 +18,16 @@ import {
 import Sidebar from "../components/Sidebar";
 import ConfirmDialog from "../components/ConfirmDialog";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("Tümü");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUser, setNewUser] = useState({
     username: "",
@@ -40,10 +43,10 @@ export default function UsersPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await api.get("/users/");
+        const res = await api.get("/users/", { params: { page_size: 1000 } });
         setUsers(Array.isArray(res.data) ? res.data : res.data.results || []);
       } catch (err: any) {
-        setError(err.message || "Kullanıcı listesi alınamadı.");
+        setError(err.message || t('users.errFetch'));
       } finally {
         setLoading(false);
       }
@@ -53,14 +56,14 @@ export default function UsersPage() {
   }, []);
 
   const handleRoleChange = async (id: number, newRole: string) => {
-    if (window.confirm(`Bu kullanıcının rolünü ${getRoleDisplayName(newRole)} olarak değiştirmek istediğinizden emin misiniz?`)) {
+    if (window.confirm(t('users.confirmRoleChange', { role: getRoleDisplayName(newRole) }))) {
       try {
         await api.post(`/users/${id}/set_role/`, { role: newRole });
         setUsers((prev) =>
           prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
         );
       } catch (err: any) {
-        setError(err.message || "Rol güncellenemedi.");
+        setError(err.message || t('users.errRoleUpdate'));
       }
     }
   };
@@ -72,9 +75,9 @@ export default function UsersPage() {
       setUsers((prev) => [...prev, res.data]);
       setNewUser({ username: "", email: "", password: "", role: "customer" });
       setShowAddModal(false);
-      alert("✅ Kullanıcı başarıyla eklendi!");
+      alert(t('users.successAdd'));
     } catch (err: any) {
-      setError(err.message || "Kullanıcı eklenemedi.");
+      setError(err.message || t('users.errAdd'));
     }
   };
 
@@ -91,18 +94,35 @@ export default function UsersPage() {
       setShowDeleteModal(false);
       setUserToDelete(null);
     } catch (err: any) {
-      alert("Kullanıcı silinirken bir hata oluştu. İlişkili verileri olabilir.");
+      alert(t('users.errDelete'));
       console.error(err);
     }
   };
 
   const filteredUsers = users.filter((user) => {
+    const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
     const matchesSearch =
       (user.username || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.email || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === "Tümü" || user.role === roleFilter;
+      (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fullName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedUsers = filteredUsers.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, roleFilter]);
+
+  const roleCardClass = (targetRole: string) =>
+    `bg-white rounded-2xl shadow-sm border p-6 text-left transition-all ${
+      roleFilter === targetRole
+        ? "border-black ring-2 ring-black/10"
+        : "border-gray-200 hover:border-gray-400"
+    }`;
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -121,10 +141,10 @@ export default function UsersPage() {
 
   const getRoleDisplayName = (role: string) => {
     switch (role) {
-      case "admin": return "Admin";
-      case "seller": return "Satıcı";
-      case "customer": return "Müşteri";
-      case "delivery": return "Teslimatçı";
+      case "admin": return t('users.roleAdmin');
+      case "seller": return t('users.roleSeller');
+      case "customer": return t('users.roleCustomer');
+      case "delivery": return t('users.roleDelivery');
       default: return role;
     }
   };
@@ -145,7 +165,7 @@ export default function UsersPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black mx-auto"></div>
-            <p className="text-gray-600 mt-4 text-lg">Kullanıcılar yükleniyor...</p>
+            <p className="text-gray-600 mt-4 text-lg">{t('users.loading')}</p>
           </div>
         </div>
       </div>
@@ -165,14 +185,14 @@ export default function UsersPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <Users size={28} className="text-blue-500" />
-                <h1 className="text-2xl font-bold text-gray-900">Kullanıcı Yönetimi</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('users.title')}</h1>
               </div>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="bg-black text-white px-6 py-2.5 rounded-full hover:bg-gray-800 transition-all font-medium flex items-center space-x-2"
               >
                 <UserPlus size={20} />
-                <span>Yeni Kullanıcı</span>
+                <span>{t('users.btnAdd')}</span>
               </button>
             </div>
           </div>
@@ -181,56 +201,56 @@ export default function UsersPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
           <div className="max-w-7xl mx-auto px-6 py-12">
-            <p className="text-gray-400 text-sm font-medium mb-2">YÖNETİM PANELİ</p>
-            <h2 className="text-3xl font-bold mb-2">Kullanıcıları Yönetin</h2>
-            <p className="text-gray-300">Kullanıcı ekleyin, rollerini düzenleyin ve hesapları yönetin</p>
+            <p className="text-gray-400 text-sm font-medium mb-2">{t('users.heroTag')}</p>
+            <h2 className="text-3xl font-bold mb-2">{t('users.heroTitle')}</h2>
+            <p className="text-gray-300">{t('users.heroDesc')}</p>
           </div>
         </div>
 
         <main className="max-w-7xl mx-auto w-full px-6 py-8 overflow-y-auto">
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <button type="button" onClick={() => setRoleFilter("all")} className={roleCardClass("all")}>
               <div className="flex items-center justify-between mb-2">
                 <Users size={24} className="text-gray-600" />
                 <span className="text-2xl font-bold text-gray-900">{roleStats.total}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Toplam</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <p className="text-gray-600 text-sm font-medium">{t('users.statTotal')}</p>
+            </button>
+            <button type="button" onClick={() => setRoleFilter("admin")} className={roleCardClass("admin")}>
               <div className="flex items-center justify-between mb-2">
                 <Crown size={24} className="text-yellow-500" />
                 <span className="text-2xl font-bold text-yellow-600">{roleStats.admin}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Admin</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <p className="text-gray-600 text-sm font-medium">{t('users.roleAdmin')}</p>
+            </button>
+            <button type="button" onClick={() => setRoleFilter("seller")} className={roleCardClass("seller")}>
               <div className="flex items-center justify-between mb-2">
                 <Store size={24} className="text-green-500" />
                 <span className="text-2xl font-bold text-green-600">{roleStats.seller}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Satıcı</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <p className="text-gray-600 text-sm font-medium">{t('users.roleSeller')}</p>
+            </button>
+            <button type="button" onClick={() => setRoleFilter("customer")} className={roleCardClass("customer")}>
               <div className="flex items-center justify-between mb-2">
                 <UserCircle size={24} className="text-blue-500" />
                 <span className="text-2xl font-bold text-blue-600">{roleStats.customer}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Müşteri</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <p className="text-gray-600 text-sm font-medium">{t('users.roleCustomer')}</p>
+            </button>
+            <button type="button" onClick={() => setRoleFilter("delivery")} className={roleCardClass("delivery")}>
               <div className="flex items-center justify-between mb-2">
                 <Truck size={24} className="text-orange-500" />
                 <span className="text-2xl font-bold text-orange-600">{roleStats.delivery}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Teslimatçı</p>
-            </div>
+              <p className="text-gray-600 text-sm font-medium">{t('users.roleDelivery')}</p>
+            </button>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-2">
                 <CheckCircle size={24} className="text-emerald-500" />
                 <span className="text-2xl font-bold text-emerald-600">{roleStats.active}</span>
               </div>
-              <p className="text-gray-600 text-sm font-medium">Aktif</p>
+              <p className="text-gray-600 text-sm font-medium">{t('users.statActive')}</p>
             </div>
           </div>
 
@@ -241,7 +261,7 @@ export default function UsersPage() {
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="Kullanıcı ara..."
+                  placeholder={t('users.searchPlaceholder')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
@@ -255,11 +275,11 @@ export default function UsersPage() {
                   onChange={(e) => setRoleFilter(e.target.value)}
                   className="px-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-black cursor-pointer bg-white"
                 >
-                  <option value="Tümü">Tüm Roller</option>
-                  <option value="admin">Admin</option>
-                  <option value="seller">Satıcı</option>
-                  <option value="customer">Müşteri</option>
-                  <option value="delivery">Teslimatçı</option>
+                  <option value="all">{t('users.filterAllRoles')}</option>
+                  <option value="admin">{t('users.roleAdmin')}</option>
+                  <option value="seller">{t('users.roleSeller')}</option>
+                  <option value="customer">{t('users.roleCustomer')}</option>
+                  <option value="delivery">{t('users.roleDelivery')}</option>
                 </select>
               </div>
             </div>
@@ -271,17 +291,17 @@ export default function UsersPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Kullanıcı</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">E-posta</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rol</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Durum</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksiyonlar</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colId')}</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colUser')}</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colEmail')}</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colRole')}</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colStatus')}</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('users.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredUsers.length > 0 ? (
-                    filteredUsers.map((u) => (
+                  {pagedUsers.length > 0 ? (
+                    pagedUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 text-sm font-medium text-gray-900">#{u.id}</td>
                         <td className="px-6 py-4">
@@ -291,7 +311,12 @@ export default function UsersPage() {
                                 {u.username.charAt(0).toUpperCase()}
                               </span>
                             </div>
-                            <span className="font-medium text-gray-900">{u.username}</span>
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                {`${u.first_name || ""} ${u.last_name || ""}`.trim() || u.username}
+                              </div>
+                              <div className="text-xs text-gray-500">{u.username}</div>
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">{u.email}</td>
@@ -301,18 +326,18 @@ export default function UsersPage() {
                             onChange={(e) => handleRoleChange(u.id, e.target.value)}
                             className={`px-3 py-1.5 rounded-lg text-sm font-semibold border cursor-pointer transition-all ${getRoleBadgeColor(u.role)}`}
                           >
-                            <option value="admin">⚙️ Admin</option>
-                            <option value="seller">🏪 Satıcı</option>
-                            <option value="customer">👤 Müşteri</option>
-                            <option value="delivery">🚚 Teslimatçı</option>
+                            <option value="admin">⚙️ {t('users.roleAdmin')}</option>
+                            <option value="seller">🏪 {t('users.roleSeller')}</option>
+                            <option value="customer">👤 {t('users.roleCustomer')}</option>
+                            <option value="delivery">🚚 {t('users.roleDelivery')}</option>
                           </select>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center space-x-2">
                             {u.is_active ? (
-                              <><CheckCircle size={18} className="text-green-600" /><span className="text-sm font-semibold text-green-700">Aktif</span></>
+                              <><CheckCircle size={18} className="text-green-600" /><span className="text-sm font-semibold text-green-700">{t('users.statusActive')}</span></>
                             ) : (
-                              <><XCircle size={18} className="text-red-600" /><span className="text-sm font-semibold text-red-700">Pasif</span></>
+                              <><XCircle size={18} className="text-red-600" /><span className="text-sm font-semibold text-red-700">{t('users.statusPassive')}</span></>
                             )}
                           </div>
                         </td>
@@ -331,7 +356,7 @@ export default function UsersPage() {
                     <tr>
                       <td colSpan={6} className="px-6 py-16 text-center">
                         <Users size={48} className="mx-auto text-gray-300 mb-3" />
-                        <p className="text-gray-600 font-medium">Kullanıcı bulunamadı</p>
+                        <p className="text-gray-600 font-medium">{t('users.noUsers')}</p>
                       </td>
                     </tr>
                   )}
@@ -339,6 +364,52 @@ export default function UsersPage() {
               </table>
             </div>
           </div>
+
+          {filteredUsers.length > 0 && (
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-gray-600">
+                {filteredUsers.length} kullanicidan {(safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, filteredUsers.length)} arasi gosteriliyor
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Onceki
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => index + 1)
+                  .filter((page) => page === 1 || page === totalPages || Math.abs(page - safeCurrentPage) <= 2)
+                  .map((page, index, pages) => (
+                    <React.Fragment key={page}>
+                      {index > 0 && page - pages[index - 1] > 1 && (
+                        <span className="px-2 text-gray-400">...</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`min-w-10 px-3 py-2 rounded-lg text-sm font-semibold border ${
+                          safeCurrentPage === page
+                            ? "bg-black text-white border-black"
+                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </React.Fragment>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Sonraki
+                </button>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -349,20 +420,20 @@ export default function UsersPage() {
             <div className="border-b border-gray-200 px-6 py-4">
               <h2 className="text-2xl font-bold flex items-center space-x-2">
                 <UserPlus size={24} />
-                <span>Yeni Kullanıcı Ekle</span>
+                <span>{t('users.modalAddTitle')}</span>
               </h2>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Kullanıcı Adı *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('users.lblUsername')}</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input type="text" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none" placeholder="kullaniciadi" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">E-posta *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('users.lblEmail')}</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none" placeholder="ornek@email.com" />
@@ -371,28 +442,28 @@ export default function UsersPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Şifre *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('users.lblPassword')}</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none" placeholder="••••••••" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Rol *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('users.lblRole')}</label>
                   <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-black">
-                    <option value="admin">Admin</option>
-                    <option value="seller">Satıcı</option>
-                    <option value="customer">Müşteri</option>
-                    <option value="delivery">Teslimatçı</option>
+                    <option value="admin">{t('users.roleAdmin')}</option>
+                    <option value="seller">{t('users.roleSeller')}</option>
+                    <option value="customer">{t('users.roleCustomer')}</option>
+                    <option value="delivery">{t('users.roleDelivery')}</option>
                   </select>
                 </div>
               </div>
             </div>
             <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between rounded-b-2xl">
-              <button onClick={() => setShowAddModal(false)} className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-100 font-medium">İptal</button>
+              <button onClick={() => setShowAddModal(false)} className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-100 font-medium">{t('users.btnCancel')}</button>
               <button onClick={handleAddUser} className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 font-semibold flex items-center space-x-2">
                 <UserPlus size={20} />
-                <span>Kullanıcı Ekle</span>
+                <span>{t('users.btnAddSubmit')}</span>
               </button>
             </div>
           </div>
@@ -407,10 +478,10 @@ export default function UsersPage() {
           setUserToDelete(null);
         }}
         onConfirm={handleConfirmDelete}
-        title="Kullanıcıyı Sil"
-        message={`${userToDelete?.username} kullanıcısını tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
-        confirmText="Evet, Sil"
-        cancelText="İptal"
+        title={t('users.modalDeleteTitle')}
+        message={t('users.modalDeleteDesc', { user: userToDelete?.username })}
+        confirmText={t('users.btnYesDelete')}
+        cancelText={t('users.btnCancel')}
         variant="danger"
       />
     </div>

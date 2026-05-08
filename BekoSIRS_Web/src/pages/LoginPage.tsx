@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import Dashboard from "./Dashboard";
 import { Lock, User, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 export default function LoginPage() {
+  const { t, i18n } = useTranslation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -56,7 +58,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50 relative">
+      {/* Language Switcher */}
+      <div className="absolute top-4 right-4 z-50 flex gap-2">
+        <button
+          onClick={() => i18n.changeLanguage('tr')}
+          className={`px-3 py-1 rounded text-sm font-semibold transition ${i18n.language === 'tr' ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 shadow-sm'}`}
+        >
+          TR
+        </button>
+        <button
+          onClick={() => i18n.changeLanguage('en')}
+          className={`px-3 py-1 rounded text-sm font-semibold transition ${i18n.language === 'en' ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 shadow-sm'}`}
+        >
+          EN
+        </button>
+      </div>
+
       {/* Sol Taraf - Görsel Alan */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-800 to-black relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
@@ -71,27 +89,24 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <h1 className="text-5xl font-bold mb-6 leading-tight">
-            Ürün Yönetim<br />Sistemi
+          <h1 className="text-5xl font-bold mb-6 leading-tight" dangerouslySetInnerHTML={{ __html: t('auth.heroTitle') }}>
           </h1>
 
-          <p className="text-xl text-gray-300 mb-12 leading-relaxed">
-            Modern ve güçlü admin paneline hoş geldiniz.<br />
-            Tüm ürünlerinizi tek bir yerden yönetin.
+          <p className="text-xl text-gray-300 mb-12 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('auth.heroDesc') }}>
           </p>
 
           <div className="space-y-4">
             <div className="flex items-center space-x-3">
               <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-              <span className="text-gray-300">Kolay ürün yönetimi</span>
+              <span className="text-gray-300">{t('auth.feature1')}</span>
             </div>
             <div className="flex items-center space-x-3">
               <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-              <span className="text-gray-300">Gerçek zamanlı güncelleme</span>
+              <span className="text-gray-300">{t('auth.feature2')}</span>
             </div>
             <div className="flex items-center space-x-3">
               <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-              <span className="text-gray-300">Güvenli ve hızlı</span>
+              <span className="text-gray-300">{t('auth.feature3')}</span>
             </div>
           </div>
         </div>
@@ -106,10 +121,10 @@ export default function LoginPage() {
                 <Lock size={32} className="text-white" />
               </div>
               <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                Yönetici Girişi
+                {t('auth.loginTitle')}
               </h2>
               <p className="text-gray-600">
-                Lütfen kimlik bilgilerinizi doğrulayın
+                {t('auth.loginSubtitle')}
               </p>
             </div>
 
@@ -126,7 +141,7 @@ export default function LoginPage() {
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Kullanıcı Adı
+                  {t('auth.lblUsername')}
                 </label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -136,14 +151,14 @@ export default function LoginPage() {
                     onChange={(e) => setUsername(e.target.value)}
                     onKeyPress={handleKeyPress}
                     className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition-all"
-                    placeholder="Kullanıcı adınız"
+                    placeholder={t('auth.plcUsername')}
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Şifre
+                  {t('auth.lblPassword')}
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -175,7 +190,7 @@ export default function LoginPage() {
                 ) : (
                   <>
                     <LogIn size={20} />
-                    <span>Sisteme Giriş Yap</span>
+                    <span>{t('auth.btnLogin')}</span>
                   </>
                 )}
               </button>

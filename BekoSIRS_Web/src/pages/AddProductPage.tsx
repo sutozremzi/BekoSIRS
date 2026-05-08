@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import { Package, Upload, X, ArrowLeft, Save } from "lucide-react";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 export default function AddProductPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // 1. State'e 'stock' alanını ekledik
   const [formData, setFormData] = useState({
@@ -32,7 +34,7 @@ export default function AddProductPage() {
         const response = await api.get("/categories/");
         setCategories(Array.isArray(response.data) ? response.data : response.data.results || []);
       } catch (error) {
-        console.error("Kategoriler çekilemedi:", error);
+        console.error(t('categories.errFetch'), error);
       } finally {
         setFetchLoading(false);
       }
@@ -78,10 +80,10 @@ export default function AddProductPage() {
       await api.post("/products/", form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      alert("✅ Ürün başarıyla eklendi!");
+      alert(t('products.saveSuccessAdd'));
       navigate("/dashboard/products");
     } catch (error) {
-      alert("❌ Ürün eklenirken bir hata oluştu.");
+      alert(t('products.saveError', { msg: '' }));
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ export default function AddProductPage() {
               </button>
               <div className="flex items-center space-x-3">
                 <Package size={28} className="text-blue-500" />
-                <h1 className="text-2xl font-bold text-gray-900">Yeni Ürün Ekle</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('products.addTitle')}</h1>
               </div>
             </div>
           </div>
@@ -114,9 +116,9 @@ export default function AddProductPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
           <div className="max-w-4xl mx-auto px-6 py-12">
-            <p className="text-gray-400 text-sm font-medium mb-2 tracking-widest uppercase">Ürün Yönetimi</p>
-            <h2 className="text-3xl font-bold mb-2">Yeni Beko Ürünü Ekleyin</h2>
-            <p className="text-gray-300">Veritabanındaki kategorilerle uyumlu ürün kaydı yapın</p>
+            <p className="text-gray-400 text-sm font-medium mb-2 tracking-widest uppercase">{t('products.title')}</p>
+            <h2 className="text-3xl font-bold mb-2">{t('products.addNewSubtitle')}</h2>
+            <p className="text-gray-300">{t('products.addNewDesc')}</p>
           </div>
         </div>
 
@@ -126,14 +128,14 @@ export default function AddProductPage() {
               <div className="p-8 space-y-8">
                 {/* Ürün Adı */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Ürün Adı *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formName')}</label>
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
                     required
-                    placeholder="Örn: Beko No-Frost Buzdolabı"
+                    placeholder={t('products.plcName')}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
                   />
                 </div>
@@ -141,21 +143,21 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Marka */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Marka *</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formBrand')}</label>
                     <input
                       type="text"
                       name="brand"
                       value={formData.brand}
                       onChange={handleChange}
                       required
-                      placeholder="Beko"
+                      placeholder={t('products.plcBrand')}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none"
                     />
                   </div>
 
                   {/* Kategori Seçimi */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Kategori *</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formCategory')}</label>
                     <select
                       name="category"
                       value={formData.category}
@@ -163,9 +165,9 @@ export default function AddProductPage() {
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none bg-white cursor-pointer"
                     >
-                      <option value="">Kategori Seçin</option>
+                      <option value="">{t('products.formSelectCategory')}</option>
                       {fetchLoading ? (
-                        <option disabled>Yükleniyor...</option>
+                        <option disabled>{t('products.loadingCategories')}</option>
                       ) : (
                         categories.map((cat) => (
                           <option key={cat.id} value={cat.id}>
@@ -181,7 +183,7 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Fiyat */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Fiyat (₺) *</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formPrice')}</label>
                     <input
                       type="number"
                       name="price"
@@ -197,7 +199,7 @@ export default function AddProductPage() {
 
                   {/* YENİ ALAN: Stok Adedi */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Stok Adedi *</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formStock')}</label>
                     <input
                       type="number"
                       name="stock"
@@ -212,7 +214,7 @@ export default function AddProductPage() {
 
                   {/* Garanti */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Garanti Süresi (Ay)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formWarranty')}</label>
                     <input
                       type="number"
                       name="warranty_duration_months"
@@ -227,20 +229,20 @@ export default function AddProductPage() {
 
                 {/* Açıklama */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Açıklama</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formDesc')}</label>
                   <textarea
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
                     rows={4}
-                    placeholder="Ürün teknik özelliklerini buraya yazın..."
+                    placeholder={t('products.plcDesc')}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black outline-none resize-none"
                   />
                 </div>
 
                 {/* Görsel Yükleme */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Ürün Görseli</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">{t('products.formImage')}</label>
                   {imagePreview ? (
                     <div className="relative w-full h-64 bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
                       <img src={imagePreview} alt="Preview" className="w-full h-full object-contain" />
@@ -263,8 +265,8 @@ export default function AddProductPage() {
                       />
                       <label htmlFor="image-upload" className="cursor-pointer">
                         <Upload size={48} className="mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-700 font-medium">Görsel yüklemek için tıklayın</p>
-                        <p className="text-xs text-gray-500 mt-1">PNG, JPG veya JPEG</p>
+                        <p className="text-gray-700 font-medium">{t('products.uploadClick')}</p>
+                        <p className="text-xs text-gray-500 mt-1">{t('products.uploadFormat')}</p>
                       </label>
                     </div>
                   )}
@@ -278,7 +280,7 @@ export default function AddProductPage() {
                   onClick={() => navigate("/dashboard")}
                   className="px-6 py-3 text-gray-600 font-bold hover:text-black transition-all"
                 >
-                  İptal
+                  {t('products.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -290,7 +292,7 @@ export default function AddProductPage() {
                   ) : (
                     <>
                       <Save size={20} />
-                      <span>Ürünü Kaydet</span>
+                      <span>{t('products.saveProduct')}</span>
                     </>
                   )}
                 </button>

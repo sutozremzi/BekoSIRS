@@ -169,9 +169,12 @@ const RecommendationsScreen = () => {
 
       // Dismiss edilen karti listeden hemen cikararak kullaniciya anlik geri
       // bildirim veriyoruz; backend yeni oneriyi arka planda uretebilir.
-      await recommendationAPI.dismissRecommendation(item.id);
       setRecommendations(prev => prev.filter(r => r.id !== item.id));
+      await recommendationAPI.dismissRecommendation(item.id);
     } catch (error) {
+      if (feedbackType === 'dismiss') {
+        setRecommendations(prev => (prev.some(rec => rec.id === item.id) ? prev : [item, ...prev]));
+      }
       Alert.alert(
         'Hata',
         feedbackType === 'like' ? 'Geri bildirim kaydedilemedi' : 'İşlem başarısız',

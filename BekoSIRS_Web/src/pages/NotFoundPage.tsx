@@ -1,8 +1,10 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 export default function NotFoundPage() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     return (
         <div style={{
@@ -33,7 +35,7 @@ export default function NotFoundPage() {
                 margin: "1rem 0 0.5rem",
                 fontWeight: 600,
             }}>
-                Sayfa Bulunamadı
+                {t('notFound.title')}
             </p>
             <p style={{
                 fontSize: "1rem",
@@ -41,7 +43,7 @@ export default function NotFoundPage() {
                 maxWidth: "400px",
                 marginBottom: "2rem",
             }}>
-                Aradığınız sayfa mevcut değil veya taşınmış olabilir.
+                {t('notFound.desc')}
             </p>
             <div style={{ display: "flex", gap: "1rem" }}>
                 <button
@@ -59,7 +61,7 @@ export default function NotFoundPage() {
                     onMouseOver={(e) => (e.currentTarget.style.background = "#1e293b")}
                     onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                    ← Geri Dön
+                    {t('notFound.btnBack')}
                 </button>
                 <button
                     onClick={() => navigate("/dashboard")}
@@ -77,7 +79,7 @@ export default function NotFoundPage() {
                     onMouseOver={(e) => (e.currentTarget.style.opacity = "0.9")}
                     onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
                 >
-                    Dashboard'a Git
+                    {t('notFound.btnDashboard')}
                 </button>
             </div>
         </div>

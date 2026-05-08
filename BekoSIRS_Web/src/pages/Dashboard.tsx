@@ -4,6 +4,7 @@ import { Package, AlertTriangle, Activity, TrendingUp, ShoppingCart, Clock, Plus
 import { useNavigate } from "react-router-dom";
 import { KpiCard, AlertItem, SimpleBarChart } from "./DashboardComponents";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 interface DashboardData {
   products: {
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -49,7 +51,7 @@ export default function Dashboard() {
 
       } catch (err: any) {
         console.error("Dashboard fetch error:", err);
-        setError(err.message || "Veri yüklenemedi");
+        setError(err.message || t('dashboard.errorLoad'));
       } finally {
         setLoading(false);
       }
@@ -82,7 +84,7 @@ export default function Dashboard() {
               onClick={() => window.location.reload()}
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              Tekrar Dene
+              {t('dashboard.tryAgain')}
             </button>
           </div>
         </div>
@@ -92,9 +94,9 @@ export default function Dashboard() {
 
   // Prepare chart data from API response
   const chartData = [
-    { name: 'Stokta', value: (data?.products.total || 0) - (data?.products.out_of_stock || 0) - (data?.products.low_stock || 0) },
-    { name: 'Düşük Stok', value: data?.products.low_stock || 0 },
-    { name: 'Tükendi', value: data?.products.out_of_stock || 0 },
+    { name: t('dashboard.chartInStock'), value: (data?.products.total || 0) - (data?.products.out_of_stock || 0) - (data?.products.low_stock || 0) },
+    { name: t('dashboard.chartLowStock'), value: data?.products.low_stock || 0 },
+    { name: t('dashboard.chartOutOfStock'), value: data?.products.out_of_stock || 0 },
   ];
 
   return (
@@ -106,13 +108,13 @@ export default function Dashboard() {
         <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
           <div className="px-8 py-5 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-sm text-gray-500 mt-1">Sistemin genel durumunu buradan takip edebilirsiniz.</p>
+              <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
+              <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
             </div>
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                Sistem Aktif
+                {t('dashboard.systemActive')}
               </span>
             </div>
           </div>
@@ -124,36 +126,36 @@ export default function Dashboard() {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
-                title="Toplam Ürün"
+                title={t('dashboard.kpiTotalProducts')}
                 value={data?.products.total || 0}
                 icon={Package}
                 color="blue"
                 onClick={() => navigate("/dashboard/products")}
-                subtext="Envanterdeki tüm ürünler"
+                subtext={t('dashboard.kpiTotalProductsDesc')}
               />
               <KpiCard
-                title="Stok Tükendi"
+                title={t('dashboard.kpiOutOfStock')}
                 value={data?.products.out_of_stock || 0}
                 icon={AlertTriangle}
                 color="red"
                 onClick={() => navigate("/dashboard/products?stock=out_of_stock")}
-                subtext="Acil stok girişi gerekli"
+                subtext={t('dashboard.kpiOutOfStockDesc')}
               />
               <KpiCard
-                title="Düşük Stok"
+                title={t('dashboard.kpiLowStock')}
                 value={data?.products.low_stock || 0}
                 icon={TrendingUp}
                 color="yellow"
                 onClick={() => navigate("/dashboard/products?stock=low_stock")}
-                subtext="10 adetin altındaki ürünler"
+                subtext={t('dashboard.kpiLowStockDesc')}
               />
               <KpiCard
-                title="Bekleyen Talepler"
+                title={t('dashboard.kpiPendingRequests')}
                 value={data?.service_requests.pending || 0}
                 icon={Clock}
                 color="purple"
                 onClick={() => navigate("/dashboard/service-requests")}
-                subtext="İşlem bekleyen servis talepleri"
+                subtext={t('dashboard.kpiPendingRequestsDesc')}
               />
             </div>
 
@@ -162,22 +164,22 @@ export default function Dashboard() {
               <div className="lg:col-span-2 space-y-8">
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                   <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-900">Son Eklenen Ürünler</h3>
+                    <h3 className="font-bold text-gray-900">{t('dashboard.recentProducts')}</h3>
                     <button
                       onClick={() => navigate("/dashboard/products")}
                       className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                     >
-                      Tümünü Gör
+                      {t('dashboard.seeAll')}
                     </button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
                       <thead className="bg-gray-50 text-gray-500 font-medium">
                         <tr>
-                          <th className="px-6 py-3">Ürün</th>
-                          <th className="px-6 py-3">Kategori</th>
-                          <th className="px-6 py-3">Fiyat</th>
-                          <th className="px-6 py-3">Stok</th>
+                          <th className="px-6 py-3">{t('dashboard.tableProduct')}</th>
+                          <th className="px-6 py-3">{t('dashboard.tableCategory')}</th>
+                          <th className="px-6 py-3">{t('dashboard.tablePrice')}</th>
+                          <th className="px-6 py-3">{t('dashboard.tableStock')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -191,12 +193,12 @@ export default function Dashboard() {
                                 p.stock < 10 ? 'bg-yellow-100 text-yellow-700' :
                                   'bg-green-100 text-green-700'
                                 }`}>
-                                {p.stock} adet
+                                {p.stock} {t('dashboard.pieces')}
                               </span>
                             </td>
                           </tr>
                         )) : (
-                          <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Henüz veri yok</td></tr>
+                          <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">{t('dashboard.noData')}</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -206,7 +208,7 @@ export default function Dashboard() {
                 {/* Analytics Chart */}
                 <div className="h-80">
                   <SimpleBarChart
-                    title="Stok Durumu Özeti"
+                    title={t('dashboard.chartTitle')}
                     data={chartData}
                   />
                 </div>
@@ -218,15 +220,15 @@ export default function Dashboard() {
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
                   <div className="flex items-center gap-2 mb-6">
                     <Activity className="text-blue-600" size={20} />
-                    <h3 className="font-bold text-gray-900">Sistem Uyarıları</h3>
+                    <h3 className="font-bold text-gray-900">{t('dashboard.systemAlerts')}</h3>
                   </div>
 
                   <div className="space-y-3">
                     {data?.products.out_of_stock ? (
                       <AlertItem
                         severity="critical"
-                        title="Stok Tükendi"
-                        message={`${data.products.out_of_stock} ürünün stoğu bitti. Acil sipariş verilmeli.`}
+                        title={t('dashboard.alertOutOfStockTitle')}
+                        message={t('dashboard.alertOutOfStockMsg', { count: data.products.out_of_stock })}
                         onClick={() => navigate("/dashboard/products?stock=out_of_stock")}
                       />
                     ) : null}
@@ -234,8 +236,8 @@ export default function Dashboard() {
                     {data?.products.low_stock ? (
                       <AlertItem
                         severity="warning"
-                        title="Stok Azalıyor"
-                        message={`${data.products.low_stock} ürün kritik seviyenin altında.`}
+                        title={t('dashboard.alertLowStockTitle')}
+                        message={t('dashboard.alertLowStockMsg', { count: data.products.low_stock })}
                         onClick={() => navigate("/dashboard/products?stock=low_stock")}
                       />
                     ) : null}
@@ -243,8 +245,8 @@ export default function Dashboard() {
                     {data?.service_requests.pending ? (
                       <AlertItem
                         severity="info"
-                        title="Bekleyen İşler"
-                        message={`${data.service_requests.pending} adet servis talebi işlem bekliyor.`}
+                        title={t('dashboard.alertPendingTitle')}
+                        message={t('dashboard.alertPendingMsg', { count: data.service_requests.pending })}
                         onClick={() => navigate("/dashboard/service-requests")}
                       />
                     ) : null}
@@ -254,8 +256,8 @@ export default function Dashboard() {
                         <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
                           <Package />
                         </div>
-                        <p className="text-gray-900 font-medium">Her şey yolunda!</p>
-                        <p className="text-sm text-gray-500">Şu an acil bir durum yok.</p>
+                        <p className="text-gray-900 font-medium">{t('dashboard.allGoodTitle')}</p>
+                        <p className="text-sm text-gray-500">{t('dashboard.allGoodMsg')}</p>
                       </div>
                     )}
                   </div>
@@ -263,8 +265,8 @@ export default function Dashboard() {
 
                 {/* Quick Actions Support Panel */}
                 <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-sm p-6 text-white">
-                  <h3 className="font-bold text-lg mb-2">Hızlı İşlemler</h3>
-                  <p className="text-gray-400 text-sm mb-6">Sık kullanılan işlemler</p>
+                  <h3 className="font-bold text-lg mb-2">{t('dashboard.quickActions')}</h3>
+                  <p className="text-gray-400 text-sm mb-6">{t('dashboard.quickActionsDesc')}</p>
 
                   <div className="space-y-3">
                     <button
@@ -272,14 +274,14 @@ export default function Dashboard() {
                       className="w-full bg-white/10 hover:bg-white/20 transition-colors p-3 rounded-xl flex items-center gap-3 text-sm font-medium"
                     >
                       <div className="p-2 bg-white/10 rounded-lg"><Plus size={16} /></div>
-                      Yeni Ürün Ekle
+                      {t('dashboard.addProduct')}
                     </button>
                     <button
                       onClick={() => navigate("/dashboard/products")}
                       className="w-full bg-white/10 hover:bg-white/20 transition-colors p-3 rounded-xl flex items-center gap-3 text-sm font-medium"
                     >
                       <div className="p-2 bg-white/10 rounded-lg"><ShoppingCart size={16} /></div>
-                      Ürünleri Yönet
+                      {t('dashboard.manageProducts')}
                     </button>
                   </div>
                 </div>

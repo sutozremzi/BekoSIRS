@@ -4,6 +4,7 @@ import * as Lucide from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import { ToastContainer, type ToastType } from "../components/Toast";
 import api, { installmentAPI, customerAPI } from "../services/api";
+import { useTranslation } from "react-i18next";
 
 const {
     CreditCard = () => <span>💳</span>,
@@ -71,6 +72,7 @@ interface Toast {
 }
 
 export default function InstallmentPlansPage() {
+    const { t } = useTranslation();
     const [plans, setPlans] = useState<InstallmentPlan[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -123,7 +125,7 @@ export default function InstallmentPlansPage() {
             setCustomers(custRes.data.results || custRes.data);
         } catch (error) {
             console.error("Error fetching customers:", error);
-            showToast("error", "Müşteri listesi alınamadı");
+            showToast("error", t('installments.errCustomerList'));
         }
     };
 
@@ -166,7 +168,7 @@ export default function InstallmentPlansPage() {
             };
 
             await installmentAPI.createPlan(payload);
-            showToast("success", "Taksit planı başarıyla oluşturuldu");
+            showToast("success", t('installments.succCreated'));
             setIsCreateModalOpen(false);
             setCreateForm({
                 customer: "", product: "", down_payment: "", installment_count: 9, start_date: new Date().toISOString().split('T')[0]
@@ -174,7 +176,7 @@ export default function InstallmentPlansPage() {
             fetchPlans();
         } catch (error: any) {
             console.error("Create plan error:", error);
-            showToast("error", error.response?.data?.detail || "Plan oluşturulurken hata oluştu");
+            showToast("error", error.response?.data?.detail || t('installments.errCreate'));
         } finally {
             setCreating(false);
         }
@@ -190,7 +192,7 @@ export default function InstallmentPlansPage() {
             setPlans(Array.isArray(data) ? data : (data.results || []));
         } catch (error: any) {
             console.error("Failed to fetch plans:", error);
-            showToast("error", "Taksit planları yüklenemedi");
+            showToast("error", t('installments.errList'));
         } finally {
             setLoading(false);
         }
@@ -205,7 +207,7 @@ export default function InstallmentPlansPage() {
             setInstallments(Array.isArray(data) ? data : (data.results || []));
         } catch (error: any) {
             console.error("Failed to fetch installments:", error);
-            showToast("error", "Taksitler yüklenemedi");
+            showToast("error", t('installments.errInstList'));
         } finally {
             setDetailLoading(false);
         }
@@ -262,7 +264,7 @@ export default function InstallmentPlansPage() {
                     await fetchInstallments(Number(planId));
                 } catch (error) {
                     console.error("Plan detay hatası:", error);
-                    showToast("error", "Plan detayları yüklenemedi");
+                    showToast("error", t('installments.errDetail'));
                     setSearchParams({}); // Hatada listeye dön
                 } finally {
                     setLoading(false);
@@ -280,14 +282,14 @@ export default function InstallmentPlansPage() {
         setApprovingId(installmentId);
         try {
             await installmentAPI.adminApprovePayment(installmentId);
-            showToast("success", "Ödeme onaylandı");
+            showToast("success", t('installments.succApproved'));
             if (selectedPlan) {
                 fetchInstallments(selectedPlan.id);
                 fetchPlans(); // Refresh list to update progress
             }
         } catch (error: any) {
             console.error("Failed to approve payment:", error);
-            showToast("error", "Ödeme onaylanamadı");
+            showToast("error", t('installments.errApprove'));
         } finally {
             setApprovingId(null);
         }
@@ -317,14 +319,14 @@ export default function InstallmentPlansPage() {
                 payload.payment_date = null;
             }
             await installmentAPI.updateInstallment(installmentId, payload);
-            showToast("success", "Taksit güncellendi");
+            showToast("success", t('installments.succUpdated'));
             setEditingInstallmentId(null);
             if (selectedPlan) {
                 fetchInstallments(selectedPlan.id);
                 fetchPlans();
             }
         } catch (error: any) {
-            showToast("error", error.response?.data?.detail || "Taksit güncellenemedi");
+            showToast("error", error.response?.data?.detail || t('installments.errUpdate'));
         } finally {
             setSavingInstallment(false);
         }
@@ -335,12 +337,12 @@ export default function InstallmentPlansPage() {
         setCancellingPlan(true);
         try {
             await installmentAPI.cancelPlan(selectedPlan.id);
-            setSelectedPlan({ ...selectedPlan, status: 'cancelled', status_display: 'İptal Edildi' });
+            setSelectedPlan({ ...selectedPlan, status: 'cancelled', status_display: t('installments.filterCancelled') });
             setCancelConfirmOpen(false);
-            showToast("success", "Plan iptal edildi");
+            showToast("success", t('installments.succCancelled'));
             fetchPlans();
         } catch (error: any) {
-            showToast("error", error.response?.data?.detail || "Plan iptal edilemedi");
+            showToast("error", error.response?.data?.detail || t('installments.errCancel'));
         } finally {
             setCancellingPlan(false);
         }
@@ -353,9 +355,9 @@ export default function InstallmentPlansPage() {
             await installmentAPI.updatePlanNotes(selectedPlan.id, notesValue);
             setSelectedPlan({ ...selectedPlan, notes: notesValue });
             setEditingNotes(false);
-            showToast("success", "Not kaydedildi");
+            showToast("success", t('installments.succNote'));
         } catch (error: any) {
-            showToast("error", "Not kaydedilemedi");
+            showToast("error", t('installments.errNote'));
         } finally {
             setSavingNotes(false);
         }
@@ -411,7 +413,7 @@ export default function InstallmentPlansPage() {
                         onClick={handleBackToList}
                         className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
                     >
-                        ← Listeye Dön
+                        {t('installments.btnBack')}
                     </button>
 
                     <div className="bg-white rounded-xl shadow-md p-6 mb-6">
@@ -419,7 +421,7 @@ export default function InstallmentPlansPage() {
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900">{selectedPlan.product_name}</h1>
                                 <div className="flex items-center gap-4 mt-1 flex-wrap">
-                                    <p className="text-gray-600">Müşteri: <span className="font-medium">{selectedPlan.customer_name}</span></p>
+                                    <p className="text-gray-600">{t('installments.lblCustomer')}<span className="font-medium">{selectedPlan.customer_name}</span></p>
                                     {customerDetail?.phone_number && (
                                         <span className="flex items-center gap-1 text-sm text-gray-500">
                                             <Phone className="w-3 h-3" />
@@ -445,7 +447,7 @@ export default function InstallmentPlansPage() {
                                         className="flex items-center gap-1 px-3 py-1 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium"
                                     >
                                         <Ban className="w-4 h-4" />
-                                        İptal Et
+                                        {t('installments.btnCancel')}
                                     </button>
                                 )}
                             </div>
@@ -453,19 +455,19 @@ export default function InstallmentPlansPage() {
 
                         <div className="grid grid-cols-4 gap-4 mb-4">
                             <div className="text-center p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm text-gray-500">Toplam</div>
+                                <div className="text-sm text-gray-500">{t('installments.kpiTotal')}</div>
                                 <div className="text-lg font-bold">{formatCurrency(selectedPlan.total_amount)}</div>
                             </div>
                             <div className="text-center p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm text-gray-500">Peşinat</div>
+                                <div className="text-sm text-gray-500">{t('installments.kpiDownPayment')}</div>
                                 <div className="text-lg font-bold">{formatCurrency(selectedPlan.down_payment)}</div>
                             </div>
                             <div className="text-center p-4 bg-green-50 rounded-lg">
-                                <div className="text-sm text-green-600">Ödenen</div>
+                                <div className="text-sm text-green-600">{t('installments.kpiPaid')}</div>
                                 <div className="text-lg font-bold text-green-700">{formatCurrency(selectedPlan.paid_amount)}</div>
                             </div>
                             <div className="text-center p-4 bg-red-50 rounded-lg">
-                                <div className="text-sm text-red-600">Kalan</div>
+                                <div className="text-sm text-red-600">{t('installments.kpiRemaining')}</div>
                                 <div className="text-lg font-bold text-red-700">{formatCurrency(selectedPlan.remaining_amount)}</div>
                             </div>
                         </div>
@@ -484,7 +486,7 @@ export default function InstallmentPlansPage() {
                         <div className="border-t border-gray-100 pt-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="flex items-center gap-1 text-sm font-medium text-gray-600">
-                                    <FileText className="w-4 h-4" /> Plan Notu
+                                    <FileText className="w-4 h-4" /> {t('installments.lblNote')}
                                 </span>
                                 {!editingNotes && selectedPlan.status !== 'cancelled' && (
                                     <button
@@ -492,7 +494,7 @@ export default function InstallmentPlansPage() {
                                         onClick={() => { setEditingNotes(true); setNotesValue(selectedPlan.notes || ""); }}
                                         className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800"
                                     >
-                                        <Pencil className="w-3 h-3" /> Düzenle
+                                        <Pencil className="w-3 h-3" /> {t('installments.btnEdit')}
                                     </button>
                                 )}
                             </div>
@@ -504,7 +506,7 @@ export default function InstallmentPlansPage() {
                                         onChange={e => setNotesValue(e.target.value)}
                                         rows={2}
                                         className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-black focus:border-transparent resize-none"
-                                        placeholder="Plana not ekleyin..."
+                                        placeholder={t('installments.placeholderNote')}
                                     />
                                     <div className="flex flex-col gap-1">
                                         <button
@@ -513,26 +515,26 @@ export default function InstallmentPlansPage() {
                                             data-testid="save-notes-btn"
                                             className="flex items-center gap-1 px-3 py-1 bg-black text-white rounded-lg text-sm disabled:opacity-50"
                                         >
-                                            <Save className="w-3 h-3" /> {savingNotes ? "..." : "Kaydet"}
+                                            <Save className="w-3 h-3" /> {savingNotes ? "..." : t('installments.btnSave')}
                                         </button>
                                         <button
                                             onClick={() => setEditingNotes(false)}
                                             className="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
                                         >
-                                            Vazgeç
+                                            {t('installments.btnCancelEdit')}
                                         </button>
                                     </div>
                                 </div>
                             ) : (
                                 <p className="text-sm text-gray-500 italic">
-                                    {selectedPlan.notes || "Not eklenmemiş"}
+                                    {selectedPlan.notes || t('installments.noNote')}
                                 </p>
                             )}
                         </div>
                     </div>
 
                     <div className="bg-white rounded-xl shadow-md p-6">
-                        <h2 className="text-xl font-bold mb-4">Taksitler</h2>
+                        <h2 className="text-xl font-bold mb-4">{t('installments.titleInstallments')}</h2>
 
                         {detailLoading ? (
                             <div className="flex justify-center py-12">
@@ -542,12 +544,12 @@ export default function InstallmentPlansPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Taksit No</th>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Tutar</th>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Vade Tarihi</th>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Ödeme Tarihi</th>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Durum</th>
-                                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">İşlem</th>
+                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">{t('installments.colInstNo')}</th>
+                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">{t('installments.colAmount')}</th>
+                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">{t('installments.colDueDate')}</th>
+                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">{t('installments.colPayDate')}</th>
+                                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">{t('installments.colStatus')}</th>
+                                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">{t('installments.colAction')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -556,9 +558,9 @@ export default function InstallmentPlansPage() {
                                         const daysAbs = Math.abs(inst.days_until_due);
                                         let daysLabel = "";
                                         if (inst.status !== 'paid' && inst.status !== 'customer_confirmed') {
-                                            if (isOverdue) daysLabel = `${daysAbs} gün gecikmiş`;
-                                            else if (inst.days_until_due === 0) daysLabel = "Bugün son gün";
-                                            else daysLabel = `${inst.days_until_due} gün kaldı`;
+                                            if (isOverdue) daysLabel = t('installments.daysOverdue', { days: daysAbs });
+                                            else if (inst.days_until_due === 0) daysLabel = t('installments.todayDue');
+                                            else daysLabel = t('installments.daysLeft', { days: inst.days_until_due });
                                         }
                                         const isEditing = editingInstallmentId === inst.id;
                                         return (
@@ -623,10 +625,10 @@ export default function InstallmentPlansPage() {
                                                             onChange={e => setEditInstallmentForm(f => ({ ...f, status: e.target.value }))}
                                                             className="border border-gray-300 rounded px-2 py-1 text-sm"
                                                         >
-                                                            <option value="pending">Bekliyor</option>
-                                                            <option value="customer_confirmed">Müşteri Onayladı</option>
-                                                            <option value="paid">Ödendi</option>
-                                                            <option value="overdue">Gecikmiş</option>
+                                                            <option value="pending">{t('installments.statusPending')}</option>
+                                                            <option value="customer_confirmed">{t('installments.statusCustomerConfirmed')}</option>
+                                                            <option value="paid">{t('installments.statusPaid')}</option>
+                                                            <option value="overdue">{t('installments.statusOverdue')}</option>
                                                         </select>
                                                     ) : (
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(inst.status)}`}>
@@ -643,13 +645,13 @@ export default function InstallmentPlansPage() {
                                                                 disabled={savingInstallment}
                                                                 className="px-3 py-1 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 text-sm"
                                                             >
-                                                                {savingInstallment ? "..." : "Kaydet"}
+                                                                {savingInstallment ? "..." : t('installments.btnSave')}
                                                             </button>
                                                             <button
                                                                 onClick={() => setEditingInstallmentId(null)}
                                                                 className="px-3 py-1 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 text-sm"
                                                             >
-                                                                İptal
+                                                                {t('installments.btnCancelEdit')}
                                                             </button>
                                                         </div>
                                                     ) : (
@@ -660,7 +662,7 @@ export default function InstallmentPlansPage() {
                                                                     disabled={approvingId === inst.id}
                                                                     className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                                                                 >
-                                                                    {approvingId === inst.id ? "..." : "Onayla"}
+                                                                    {approvingId === inst.id ? "..." : t('installments.btnApprove')}
                                                                 </button>
                                                             )}
                                                             <button
@@ -668,7 +670,7 @@ export default function InstallmentPlansPage() {
                                                                 className="px-3 py-1 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 text-sm flex items-center gap-1"
                                                             >
                                                                 <Pencil />
-                                                                Düzenle
+                                                                {t('installments.btnEdit')}
                                                             </button>
                                                         </div>
                                                     )}
@@ -685,16 +687,14 @@ export default function InstallmentPlansPage() {
                     {cancelConfirmOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                             <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
-                                <h3 className="text-lg font-bold text-gray-900 mb-2">Planı İptal Et</h3>
-                                <p className="text-gray-600 text-sm mb-6">
-                                    <strong>{selectedPlan?.product_name}</strong> için oluşturulan taksit planı iptal edilecek. Bu işlem geri alınamaz.
-                                </p>
+                                <h3 className="text-lg font-bold text-gray-900 mb-2">{t('installments.titleCancelPlan')}</h3>
+                                <p className="text-gray-600 text-sm mb-6" dangerouslySetInnerHTML={{ __html: t('installments.descCancelPlan', { product: selectedPlan?.product_name }) }} />
                                 <div className="flex gap-3">
                                     <button
                                         onClick={() => setCancelConfirmOpen(false)}
                                         className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm"
                                     >
-                                        Vazgeç
+                                        {t('installments.btnCancelEdit')}
                                     </button>
                                     <button
                                         onClick={handleCancelPlan}
@@ -702,7 +702,7 @@ export default function InstallmentPlansPage() {
                                         data-testid="confirm-cancel-btn"
                                         className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium text-sm"
                                     >
-                                        {cancellingPlan ? "İptal ediliyor..." : "Evet, İptal Et"}
+                                        {cancellingPlan ? "..." : t('installments.btnConfirmCancel')}
                                     </button>
                                 </div>
                             </div>
@@ -723,21 +723,21 @@ export default function InstallmentPlansPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div className="flex items-center gap-3">
                         <CreditCard className="w-8 h-8 text-gray-700" />
-                        <h1 className="text-2xl font-bold text-gray-900">Taksit Yönetimi</h1>
+                        <h1 className="text-2xl font-bold text-gray-900">{t('installments.title')}</h1>
                     </div>
                     <button
                         onClick={fetchPlans}
                         className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900"
                     >
                         <RefreshCw className="w-4 h-4" />
-                        Yenile
+                        {t('installments.btnRefresh')}
                     </button>
                     <button
                         onClick={handleOpenCreateModal}
                         className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800"
                     >
                         <Plus className="w-4 h-4" />
-                        Yeni Plan Oluştur
+                        {t('installments.btnNewPlan')}
                     </button>
                 </div>
 
@@ -747,7 +747,7 @@ export default function InstallmentPlansPage() {
                         <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Müşteri veya ürün ara..."
+                            placeholder={t('installments.searchPlaceholder')}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
@@ -758,10 +758,10 @@ export default function InstallmentPlansPage() {
                         onChange={(e) => setStatusFilter(e.target.value)}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                     >
-                        <option value="all">Tüm Durumlar</option>
-                        <option value="active">Aktif</option>
-                        <option value="completed">Tamamlanmış</option>
-                        <option value="cancelled">İptal Edilmiş</option>
+                        <option value="all">{t('installments.filterAll')}</option>
+                        <option value="active">{t('installments.filterActive')}</option>
+                        <option value="completed">{t('installments.filterCompleted')}</option>
+                        <option value="cancelled">{t('installments.filterCancelled')}</option>
                     </select>
                 </div>
 
@@ -774,19 +774,19 @@ export default function InstallmentPlansPage() {
                     ) : filteredPlans.length === 0 ? (
                         <div className="text-center py-12">
                             <CreditCard className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                            <p className="text-gray-500">Henüz taksit planı bulunmuyor</p>
+                            <p className="text-gray-500">{t('installments.noPlans')}</p>
                         </div>
                     ) : (
                         <table className="w-full">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Müşteri</th>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Ürün</th>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Toplam</th>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Kalan</th>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">İlerleme</th>
-                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">Durum</th>
-                                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-600">İşlem</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colCustomer')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colProduct')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colTotal')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colRemaining')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colProgress')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-600">{t('installments.colStatus')}</th>
+                                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-600">{t('installments.colAction')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -833,7 +833,7 @@ export default function InstallmentPlansPage() {
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                         <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-900">Yeni Taksit Planı</h3>
+                                <h3 className="font-bold text-gray-900">{t('installments.modalTitle')}</h3>
                                 <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                                     <XCircle className="w-6 h-6" />
                                 </button>
@@ -841,7 +841,7 @@ export default function InstallmentPlansPage() {
 
                             <form onSubmit={handleCreateSubmit} className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Müşteri</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblCustomerSelect')}</label>
                                     <select
                                         required
                                         className="w-full border-gray-300 rounded-lg focus:ring-black focus:border-black"
@@ -856,7 +856,7 @@ export default function InstallmentPlansPage() {
                                             }
                                         }}
                                     >
-                                        <option value="">Seçiniz</option>
+                                        <option value="">{t('installments.optSelect', { defaultValue: 'Seçiniz' })}</option>
                                         {customers.map((c: any) => (
                                             <option key={c.id} value={c.id}>{c.first_name} {c.last_name} ({c.email})</option>
                                         ))}
@@ -864,7 +864,7 @@ export default function InstallmentPlansPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Atanmış Ürün</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblProductSelect', { defaultValue: 'Atanmış Ürün' })}</label>
                                     <select
                                         required
                                         disabled={!createForm.customer}
@@ -872,7 +872,7 @@ export default function InstallmentPlansPage() {
                                         value={createForm.product}
                                         onChange={e => setCreateForm({ ...createForm, product: e.target.value })}
                                     >
-                                        <option value="">{createForm.customer ? "Atanmış ürün seçiniz" : "Önce müşteri seçin"}</option>
+                                        <option value="">{createForm.customer ? t('installments.optSelectAssigned', { defaultValue: 'Atanmış ürün seçiniz' }) : t('installments.optSelectCustomerFirst', { defaultValue: 'Önce müşteri seçin' })}</option>
                                         {customerAssignments.map((a: any) => (
                                             <option key={a.id} value={a.id}>
                                                 {a.product?.name} - {a.product?.price} TL ({a.status_display})
@@ -880,13 +880,13 @@ export default function InstallmentPlansPage() {
                                         ))}
                                     </select>
                                     {createForm.customer && customerAssignments.length === 0 && (
-                                        <p className="text-xs text-orange-600 mt-1">Bu müşteriye atanmış ürün bulunmuyor</p>
+                                        <p className="text-xs text-orange-600 mt-1">{t('installments.noAssignedProduct', { defaultValue: 'Bu müşteriye atanmış ürün bulunmuyor' })}</p>
                                     )}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Toplam Tutar</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblTotalAmount')}</label>
                                         <input
                                             type="text"
                                             disabled
@@ -895,7 +895,7 @@ export default function InstallmentPlansPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Peşinat</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblDownPayment')}</label>
                                         <input
                                             type="number"
                                             min="0"
@@ -910,19 +910,19 @@ export default function InstallmentPlansPage() {
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Taksit Sayısı</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblInstallmentCount')}</label>
                                         <select
                                             className="w-full border-gray-300 rounded-lg focus:ring-black focus:border-black"
                                             value={createForm.installment_count}
                                             onChange={e => setCreateForm({ ...createForm, installment_count: Number(e.target.value) })}
                                         >
                                             {[3, 6, 9, 12, 18, 24].map(n => (
-                                                <option key={n} value={n}>{n} Taksit</option>
+                                                <option key={n} value={n}>{n} {t('installments.installments', { defaultValue: 'Taksit' })}</option>
                                             ))}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç Tarihi</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('installments.lblStartDate')}</label>
                                         <input
                                             type="date"
                                             required
@@ -939,14 +939,14 @@ export default function InstallmentPlansPage() {
                                         onClick={() => setIsCreateModalOpen(false)}
                                         className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium"
                                     >
-                                        İptal
+                                        {t('installments.btnCancelEdit')}
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={creating}
                                         className="flex-1 py-2.5 bg-black text-white rounded-xl hover:bg-gray-800 font-medium disabled:opacity-50"
                                     >
-                                        {creating ? 'Oluşturuluyor...' : 'Planı Oluştur'}
+                                        {creating ? t('installments.btnCreateLoading') : t('installments.btnCreate')}
                                     </button>
                                 </div>
                             </form>

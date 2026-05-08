@@ -21,11 +21,13 @@ import {
     marketingAPI,
     auditLogAPI
 } from '../services/api';
+import { useTranslation } from 'react-i18next';
 
 // Tab Types
 type TabType = 'charts' | 'forecast' | 'seasonal' | 'marketing' | 'audit' | 'stock';
 
 export default function AnalyticsPage() {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<TabType>('charts');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export default function AnalyticsPage() {
                         break;
                 }
             } catch (err: any) {
-                setError(err.response?.data?.detail || err.message || 'Veri yüklenirken hata oluştu');
+                setError(err.response?.data?.detail || err.message || t('analytics.error'));
             } finally {
                 setLoading(false);
             }
@@ -78,12 +80,12 @@ export default function AnalyticsPage() {
     }, [activeTab]);
 
     const tabs = [
-        { id: 'charts' as TabType, label: 'Dashboard Grafikleri', icon: BarChart3 },
-        { id: 'stock' as TabType, label: 'Stok Zekası', icon: TrendingUp },
-        { id: 'forecast' as TabType, label: 'Satış Tahmini', icon: Play },
-        { id: 'seasonal' as TabType, label: 'Mevsimsel Analiz', icon: Snowflake },
-        { id: 'marketing' as TabType, label: 'Pazarlama', icon: Mail },
-        { id: 'audit' as TabType, label: 'Denetim Kayıtları', icon: FileText },
+        { id: 'charts' as TabType, label: t('analytics.tabCharts'), icon: BarChart3 },
+        { id: 'stock' as TabType, label: t('analytics.tabStock'), icon: TrendingUp },
+        { id: 'forecast' as TabType, label: t('analytics.tabForecast'), icon: Play },
+        { id: 'seasonal' as TabType, label: t('analytics.tabSeasonal'), icon: Snowflake },
+        { id: 'marketing' as TabType, label: t('analytics.tabMarketing'), icon: Mail },
+        { id: 'audit' as TabType, label: t('analytics.tabAudit'), icon: FileText },
     ];
 
     return (
@@ -95,8 +97,8 @@ export default function AnalyticsPage() {
                 <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
                     <div className="px-8 py-5 flex items-center justify-between">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Analitikler & Raporlar</h1>
-                            <p className="text-sm text-gray-500 mt-1">İşletme verilerinizi analiz edin ve akıllı kararlar alın</p>
+                            <h1 className="text-2xl font-bold text-gray-900">{t('analytics.title')}</h1>
+                            <p className="text-sm text-gray-500 mt-1">{t('analytics.subtitle')}</p>
                         </div>
                     </div>
                 </header>
@@ -125,14 +127,14 @@ export default function AnalyticsPage() {
                         {loading && activeTab !== 'stock' && (
                             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center">
                                 <RefreshCw className="mx-auto animate-spin text-blue-600 mb-4" size={32} />
-                                <p className="text-gray-500">Veriler yükleniyor...</p>
+                                <p className="text-gray-500">{t('analytics.loading')}</p>
                             </div>
                         )}
 
                         {/* Error State */}
                         {error && activeTab !== 'stock' && (
                             <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
-                                <p className="font-medium">❌ Hata</p>
+                                <p className="font-medium">❌ {t('analytics.error')}</p>
                                 <p className="text-sm mt-1">{error}</p>
                             </div>
                         )}
@@ -159,6 +161,7 @@ export default function AnalyticsPage() {
 // Charts Content
 // ==========================================
 const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
+    const { t } = useTranslation();
     if (!data) return <EmptyState />;
 
     const summary = data.summary || {};
@@ -174,39 +177,39 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <KpiCard
-                    title="Bugün Satış"
+                    title={t('analytics.kpiTodaySales')}
                     value={summary.today_sales || 0}
                     icon={BarChart3}
                     color="blue"
-                    subtext="Bugünkü satış adedi"
+                    subtext={t('analytics.kpiTodaySalesDesc')}
                 />
                 <KpiCard
-                    title="Bugün Gelir"
+                    title={t('analytics.kpiTodayRevenue')}
                     value={`₺${(summary.today_revenue || 0).toLocaleString()}`}
                     icon={TrendingUp}
                     color="green"
-                    subtext="Bugünkü ciro"
+                    subtext={t('analytics.kpiTodayRevenueDesc')}
                 />
                 <KpiCard
-                    title="Bekleyen Servis"
+                    title={t('analytics.kpiPendingService')}
                     value={summary.pending_service || 0}
                     icon={RefreshCw}
                     color="yellow"
-                    subtext="İşlem bekliyor"
+                    subtext={t('analytics.kpiPendingServiceDesc')}
                 />
                 <KpiCard
-                    title="Toplam Müşteri"
+                    title={t('analytics.kpiTotalCustomers')}
                     value={summary.total_customers || 0}
                     icon={Users}
                     color="purple"
-                    subtext="Kayıtlı müşteriler"
+                    subtext={t('analytics.kpiTotalCustomersDesc')}
                 />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Revenue by Category */}
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                    <h3 className="font-bold text-gray-900 mb-4">Kategori Bazlı Gelir</h3>
+                    <h3 className="font-bold text-gray-900 mb-4">{t('analytics.revByCategory')}</h3>
                     <div className="space-y-3">
                         {revenueLabels.slice(0, 6).map((label: string, idx: number) => {
                             const maxRevenue = Math.max(...revenueData.slice(0, 6), 1);
@@ -231,7 +234,7 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
 
                 {/* Top Products */}
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                    <h3 className="font-bold text-gray-900 mb-4">En Çok Satan Ürünler</h3>
+                    <h3 className="font-bold text-gray-900 mb-4">{t('analytics.topProducts')}</h3>
                     <div className="space-y-3">
                         {topProducts.slice(0, 5).map((product: string, idx: number) => (
                             <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
@@ -245,7 +248,7 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-gray-900 truncate">{product}</p>
                                 </div>
-                                <span className="text-sm font-bold text-blue-600">{topProductsData[idx]} adet</span>
+                                <span className="text-sm font-bold text-blue-600">{topProductsData[idx]} {t('analytics.pcs')}</span>
                             </div>
                         ))}
                     </div>
@@ -253,7 +256,7 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
 
                 {/* Customer Segments */}
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                    <h3 className="font-bold text-gray-900 mb-4">Müşteri Segmentleri</h3>
+                    <h3 className="font-bold text-gray-900 mb-4">{t('analytics.customerSegments')}</h3>
                     <div className="grid grid-cols-2 gap-4">
                         {segmentLabels.map((label: string, idx: number) => {
                             const colors = ['bg-yellow-100 text-yellow-700', 'bg-purple-100 text-purple-700', 'bg-blue-100 text-blue-700', 'bg-gray-100 text-gray-700', 'bg-green-100 text-green-700'];
@@ -269,7 +272,7 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
 
                 {/* Service Status */}
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                    <h3 className="font-bold text-gray-900 mb-4">Servis Durumları</h3>
+                    <h3 className="font-bold text-gray-900 mb-4">{t('analytics.serviceStatus')}</h3>
                     <SimpleBarChart
                         title=""
                         data={(data.service_by_status?.labels || []).map((label: string, idx: number) => ({
@@ -287,6 +290,7 @@ const ChartsContent: React.FC<{ data: any }> = ({ data }) => {
 // Forecast Content - with 3/12 month toggle & AreaChart
 // ==========================================
 const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
+    const { t } = useTranslation();
     const [forecastMonths, setForecastMonths] = useState<3 | 12>(3);
     const [data, setData] = useState<any>(initialData);
     const [loading, setLoading] = useState(false);
@@ -352,7 +356,7 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
                             <TrendingUp size={20} className="text-white" />
                         </div>
                         <div className="min-w-0">
-                            <p className="font-semibold text-gray-900 text-sm">Ridge Regression AI Modeli Aktif</p>
+                            <p className="font-semibold text-gray-900 text-sm">{t('analytics.modelActive')}</p>
                             <p className="text-xs text-gray-500 truncate">
                                 R²={modelInfo.test_r2?.toFixed(3)} · MAE={modelInfo.test_mae?.toFixed(1)} · {modelInfo.n_samples} örnek
                             </p>
@@ -361,7 +365,7 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
                 ) : (
                     <div className="flex items-center gap-2 text-sm text-yellow-700">
                         <RefreshCw size={16} />
-                        <span>AI modeli eğitiliyor...</span>
+                        <span>{t('analytics.modelTraining')}</span>
                     </div>
                 )}
 
@@ -373,7 +377,7 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
                             ? 'bg-blue-600 text-white shadow-md'
                             : 'text-gray-600 hover:bg-gray-100'}`}
                     >
-                        3 Aylık
+                        {t('analytics.btn3Months')}
                     </button>
                     <button
                         onClick={() => setForecastMonths(12)}
@@ -381,7 +385,7 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
                             ? 'bg-blue-600 text-white shadow-md'
                             : 'text-gray-600 hover:bg-gray-100'}`}
                     >
-                        12 Aylık
+                        {t('analytics.btn12Months')}
                     </button>
                 </div>
             </div>
@@ -411,14 +415,14 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
             {loading ? (
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center">
                     <RefreshCw className="mx-auto animate-spin text-blue-600 mb-4" size={32} />
-                    <p className="text-gray-500">Tahminler hesaplanıyor...</p>
+                    <p className="text-gray-500">{t('analytics.calculating')}</p>
                 </div>
             ) : (
                 <>
                     {/* Product Selector */}
                     {topForecasts.length > 0 && (
                         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                            <h3 className="font-bold text-gray-900 mb-4">📈 Satış Tahmin Grafiği — Geçmiş 12 Ay + Gelecek {forecastMonths} Ay</h3>
+                            <h3 className="font-bold text-gray-900 mb-4">{t('analytics.chartTitle', { months: forecastMonths })}</h3>
                             <div className="flex flex-wrap gap-2 mb-6">
                                 {topForecasts.slice(0, 10).map((item: any, idx: number) => (
                                     <button
@@ -445,26 +449,26 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
                     {/* Forecast Table */}
                     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100">
-                            <h3 className="font-bold text-gray-900">Satış Tahminleri — Ridge Regresyon ({forecastMonths} Aylık)</h3>
+                            <h3 className="font-bold text-gray-900">{t('analytics.tableTitle', { months: forecastMonths })}</h3>
                             <p className="text-sm text-gray-500 mt-1">
                                 {modelInfo
-                                    ? `${modelInfo.model_type} · 95% güven aralığı: ±${modelInfo.ci_95_halfwidth ?? '—'} adet`
-                                    : 'Trend tabanlı projeksiyon'}
+                                    ? t('analytics.tableSubtitleModel', { model: modelInfo.model_type, ci: modelInfo.ci_95_halfwidth ?? '—' })
+                                    : t('analytics.tableSubtitleTrend')}
                             </p>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-gray-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase sticky left-0 bg-gray-50">Ürün</th>
-                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Stok</th>
-                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Trend</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase sticky left-0 bg-gray-50">{t('analytics.colProduct')}</th>
+                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">{t('analytics.colStock')}</th>
+                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">{t('analytics.colTrend')}</th>
                                         {currentProduct?.forecasts?.map((_: any, idx: number) => (
                                             <th key={idx} className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
                                                 {topForecasts[0]?.forecasts?.[idx]?.month || `Ay ${idx + 1}`}
                                             </th>
                                         ))}
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Öneri</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colRecommendation')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -517,6 +521,7 @@ const ForecastContent: React.FC<{ data: any }> = ({ data: initialData }) => {
 // Marketing Content
 // ==========================================
 const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
+    const { t } = useTranslation();
     const [activePeriod, setActivePeriod] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
 
     if (!data) return <EmptyState />;
@@ -533,9 +538,9 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <div>
                         <h3 className="font-bold text-gray-900 text-xl flex items-center gap-2">
-                            📊 Satış Performans Analizi
+                            {t('analytics.marketingTitle')}
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">Pazarlama stratejilerinizi belirlemek için satış trendlerini inceleyin</p>
+                        <p className="text-sm text-gray-500 mt-1">{t('analytics.marketingSubtitle')}</p>
                     </div>
 
                     <div className="flex bg-white p-1.5 rounded-xl shadow-sm self-start md:self-auto">
@@ -545,7 +550,7 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
                                 ? 'bg-blue-600 text-white shadow-md'
                                 : 'text-gray-600 hover:bg-gray-100'}`}
                         >
-                            Haftalık
+                            {t('analytics.btnWeekly')}
                         </button>
                         <button
                             onClick={() => setActivePeriod('monthly')}
@@ -553,7 +558,7 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
                                 ? 'bg-blue-600 text-white shadow-md'
                                 : 'text-gray-600 hover:bg-gray-100'}`}
                         >
-                            Aylık
+                            {t('analytics.btnMonthly')}
                         </button>
                         <button
                             onClick={() => setActivePeriod('yearly')}
@@ -561,7 +566,7 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
                                 ? 'bg-blue-600 text-white shadow-md'
                                 : 'text-gray-600 hover:bg-gray-100'}`}
                         >
-                            Yıllık
+                            {t('analytics.btnYearly')}
                         </button>
                     </div>
                 </div>
@@ -576,8 +581,8 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
                     <div className="h-[400px] flex items-center justify-center text-gray-400 bg-white rounded-xl">
                         <div className="text-center">
                             <div className="text-6xl mb-4">📊</div>
-                            <p className="text-lg font-medium">Veri bulunamadı</p>
-                            <p className="text-sm">Seçilen dönem için satış verisi yok</p>
+                            <p className="text-lg font-medium">{t('analytics.noData')}</p>
+                            <p className="text-sm">{t('analytics.noDataDesc')}</p>
                         </div>
                     </div>
                 )}
@@ -591,6 +596,7 @@ const MarketingContent: React.FC<{ data: any }> = ({ data }) => {
 // Audit Content
 // ==========================================
 const AuditContent: React.FC<{ data: any }> = ({ data }) => {
+    const { t } = useTranslation();
     if (!data) return <EmptyState />;
 
     const logs = data.logs || [];
@@ -607,26 +613,26 @@ const AuditContent: React.FC<{ data: any }> = ({ data }) => {
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
                 <div>
-                    <h3 className="font-bold text-gray-900">Denetim Kayıtları</h3>
-                    <p className="text-sm text-gray-500">Son {logs.length} işlem</p>
+                    <h3 className="font-bold text-gray-900">{t('analytics.auditTitle')}</h3>
+                    <p className="text-sm text-gray-500">{t('analytics.lastNLogs', { count: logs.length })}</p>
                 </div>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Zaman</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Kullanıcı</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">İşlem</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Model</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">IP</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colTime')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colUser')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colAction')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colModel')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{t('analytics.colIp')}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {logs.length === 0 ? (
                             <tr>
                                 <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                    Henüz kayıt yok
+                                    {t('analytics.noLogs')}
                                 </td>
                             </tr>
                         ) : (
@@ -657,6 +663,7 @@ const AuditContent: React.FC<{ data: any }> = ({ data }) => {
 // Seasonal Content - Heat Map
 // ==========================================
 const SeasonalContent: React.FC<{ data: any }> = ({ data }) => {
+    const { t } = useTranslation();
     if (!data) return <EmptyState />;
 
     const products = data.seasonal_products || [];
@@ -679,13 +686,13 @@ const SeasonalContent: React.FC<{ data: any }> = ({ data }) => {
             {/* Category Summary */}
             {data.category_summary && Object.keys(data.category_summary).length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                    <h3 className="font-bold text-gray-900 mb-4">📊 Kategori Bazlı Mevsimsellik</h3>
+                    <h3 className="font-bold text-gray-900 mb-4">{t('analytics.catSeasonality')}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {Object.entries(data.category_summary).map(([category, info]: [string, any]) => (
                             <div key={category} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-100">
                                 <p className="font-medium text-gray-900">{category}</p>
                                 <p className="text-sm text-gray-600 mt-1">
-                                    {info.products_count} ürün
+                                    {t('analytics.productsCount', { count: info.products_count })}
                                 </p>
                                 <div className="flex flex-wrap gap-1 mt-2">
                                     {info.peak_months?.map((month: string) => (
@@ -703,30 +710,30 @@ const SeasonalContent: React.FC<{ data: any }> = ({ data }) => {
             {/* Heat Map Table */}
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-900">🗓️ Aylık Satış Isı Haritası</h3>
+                    <h3 className="font-bold text-gray-900">{t('analytics.heatMapTitle')}</h3>
                     <p className="text-sm text-gray-500 mt-1">
-                        Her ürünün hangi aylarda daha çok sattığını gösterir
+                        {t('analytics.heatMapSubtitle')}
                     </p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-4 py-3 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 min-w-[200px]">Ürün</th>
+                                <th className="px-4 py-3 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 min-w-[200px]">{t('analytics.colProduct')}</th>
                                 {months.map(month => (
                                     <th key={month} className="px-2 py-3 text-center font-semibold text-gray-600 min-w-[60px]">
                                         {month.substring(0, 3)}
                                     </th>
                                 ))}
-                                <th className="px-4 py-3 text-center font-semibold text-gray-600">Toplam</th>
-                                <th className="px-4 py-3 text-left font-semibold text-gray-600">Öneri</th>
+                                <th className="px-4 py-3 text-center font-semibold text-gray-600">{t('analytics.colTotal')}</th>
+                                <th className="px-4 py-3 text-left font-semibold text-gray-600">{t('analytics.colRecommendation')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {products.length === 0 ? (
                                 <tr>
                                     <td colSpan={15} className="px-6 py-12 text-center text-gray-500">
-                                        Henüz yeterli satış verisi yok
+                                        {t('analytics.notEnoughData')}
                                     </td>
                                 </tr>
                             ) : (
@@ -765,7 +772,7 @@ const SeasonalContent: React.FC<{ data: any }> = ({ data }) => {
             {/* Data Period Info */}
             {data.data_period && (
                 <div className="text-center text-sm text-gray-400">
-                    Veri Dönemi: {data.data_period.start} → {data.data_period.end}
+                    {t('analytics.dataPeriod', { start: data.data_period.start, end: data.data_period.end })}
                 </div>
             )}
         </div>
@@ -797,6 +804,7 @@ const ForecastChartTooltip = ({ active, payload, label }: any) => {
 };
 
 const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
+    const { t } = useTranslation();
     // Find the boundary index between historical and forecast
     const boundaryIdx = data.findIndex(d => d.predicted !== null && d.historical === null);
 
@@ -843,7 +851,7 @@ const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
                         x={data[boundaryIdx]?.name}
                         stroke="#6b7280"
                         strokeDasharray="5 5"
-                        label={{ value: 'Tahmin Başlangıcı', position: 'top', fontSize: 10, fill: '#6b7280' }}
+                        label={{ value: t('analytics.forecastStart', { defaultValue: 'Tahmin Başlangıcı' }), position: 'top', fontSize: 10, fill: '#6b7280' }}
                     />
                 )}
                 {/* Confidence band (shaded area between lower and upper) */}
@@ -853,7 +861,7 @@ const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
                     stroke="none"
                     fill="url(#colorCI)"
                     fillOpacity={1}
-                    name="Üst Sınır"
+                    name={t('analytics.upperBound', { defaultValue: 'Üst Sınır' })}
                     connectNulls={false}
                 />
                 <Area
@@ -862,7 +870,7 @@ const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
                     stroke="none"
                     fill="#ffffff"
                     fillOpacity={1}
-                    name="Alt Sınır"
+                    name={t('analytics.lowerBound', { defaultValue: 'Alt Sınır' })}
                     connectNulls={false}
                 />
                 {/* Historical line */}
@@ -873,7 +881,7 @@ const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#colorHistorical)"
-                    name="Geçmiş Satış"
+                    name={t('analytics.histSales')}
                     connectNulls={false}
                 />
                 {/* Predicted line */}
@@ -885,7 +893,7 @@ const ForecastAreaChart: React.FC<{ data: any[] }> = ({ data }) => {
                     strokeDasharray="5 3"
                     fillOpacity={1}
                     fill="url(#colorPredicted)"
-                    name="Tahmin"
+                    name={t('analytics.predictedSales')}
                     connectNulls={false}
                 />
             </AreaChart>

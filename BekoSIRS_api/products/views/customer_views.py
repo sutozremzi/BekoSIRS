@@ -858,6 +858,14 @@ class CustomerManagementViewSet(viewsets.ModelViewSet):
                 Q(last_name__icontains=search) |
                 Q(username__icontains=search)
             )
+
+        starts_with = self.request.query_params.get('starts_with', '').strip()
+        if starts_with:
+            queryset = queryset.filter(
+                Q(first_name__istartswith=starts_with) |
+                Q(last_name__istartswith=starts_with) |
+                Q(username__istartswith=starts_with)
+            )
         
         # Ordering (default: first_name)
         ordering = self.request.query_params.get('ordering', 'first_name')

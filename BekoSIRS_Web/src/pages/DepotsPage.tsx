@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import Toast, { type ToastType } from "../components/Toast";
 import { depotAPI } from "../services/api";
 import type { DepotLocation } from "../types/location";
+import { useTranslation } from "react-i18next";
 
 const {
     MapPin = () => <span>📍</span>,
@@ -17,6 +18,7 @@ const {
 } = Lucide as any;
 
 export default function DepotsPage() {
+    const { t } = useTranslation();
     const [depots, setDepots] = useState<DepotLocation[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -51,7 +53,7 @@ export default function DepotsPage() {
             setDepots(Array.isArray(depotList) ? depotList : []);
         } catch (error: any) {
             console.error('Error fetching depots:', error);
-            showToast("Depolar yüklenirken hata oluştu", "error");
+            showToast(t('depots.errFetch'), "error");
             setDepots([]); // Reset to empty array on error
         } finally {
             setLoading(false);
@@ -104,12 +106,12 @@ export default function DepotsPage() {
         e.preventDefault();
 
         if (!name.trim()) {
-            showToast("Depo adı zorunludur", "error");
+            showToast(t('depots.valNameReq'), "error");
             return;
         }
 
         if (!latitude || !longitude) {
-            showToast("Konum seçilmelidir", "error");
+            showToast(t('depots.valLocReq'), "error");
             return;
         }
 
@@ -125,16 +127,16 @@ export default function DepotsPage() {
 
             if (editingDepot) {
                 await depotAPI.update(editingDepot.id, depotData);
-                showToast("Depo başarıyla güncellendi", "success");
+                showToast(t('depots.successUpdate'), "success");
             } else {
                 await depotAPI.create(depotData);
-                showToast("Depo başarıyla oluşturuldu", "success");
+                showToast(t('depots.successCreate'), "success");
             }
 
             handleCloseModal();
             fetchDepots();
         } catch (error: any) {
-            const errorMsg = error.response?.data?.name?.[0] || "İşlem başarısız oldu";
+            const errorMsg = error.response?.data?.name?.[0] || t('depots.errSave');
             showToast(errorMsg, "error");
             console.error("Error saving depot:", error);
         } finally {
@@ -145,25 +147,25 @@ export default function DepotsPage() {
     const handleSetDefault = async (depot: DepotLocation) => {
         try {
             await depotAPI.setDefault(depot.id);
-            showToast(`${depot.name} varsayılan depo olarak ayarlandı`, "success");
+            showToast(t('depots.successSetDefault', { depot: depot.name }), "success");
             fetchDepots();
         } catch (error) {
-            showToast("Varsayılan depo ayarlanamadı", "error");
+            showToast(t('depots.errSetDefault'), "error");
             console.error("Error setting default depot:", error);
         }
     };
 
     const handleDelete = async (depot: DepotLocation) => {
-        if (!confirm(`${depot.name} deposunu silmek istediğinizden emin misiniz?`)) {
+        if (!confirm(t('depots.confirmDelete', { depot: depot.name }))) {
             return;
         }
 
         try {
             await depotAPI.delete(depot.id);
-            showToast("Depo başarıyla silindi", "success");
+            showToast(t('depots.successDelete'), "success");
             fetchDepots();
         } catch (error) {
-            showToast("Depo silinemedi", "error");
+            showToast(t('depots.errDelete'), "error");
             console.error("Error deleting depot:", error);
         }
     };
@@ -177,10 +179,10 @@ export default function DepotsPage() {
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                         <MapPin className="w-8 h-8 text-blue-600" />
-                        Depo Yönetimi
+                        {t('depots.title')}
                     </h1>
                     <p className="mt-2 text-gray-600">
-                        Teslimat başlangıç noktalarını yönetin
+                        {t('depots.subtitle')}
                     </p>
                 </div>
 
@@ -191,7 +193,7 @@ export default function DepotsPage() {
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
-                        Yeni Depo Ekle
+                        {t('depots.btnAdd')}
                     </button>
                 </div>
 
@@ -204,16 +206,16 @@ export default function DepotsPage() {
                     <div className="bg-white rounded-lg shadow p-12 text-center">
                         <MapPin className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 mb-2">
-                            Henüz depo eklenmemiş
+                            {t('depots.noDepotsTitle')}
                         </h3>
                         <p className="text-gray-600 mb-4">
-                            Teslimat rotalarınız için bir depo konumu ekleyin
+                            {t('depots.noDepotsDesc')}
                         </p>
                         <button
                             onClick={() => handleOpenModal()}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                         >
-                            İlk Depoyu Ekle
+                            {t('depots.btnFirstDepot')}
                         </button>
                     </div>
                 ) : (
@@ -222,19 +224,19 @@ export default function DepotsPage() {
                             <thead className="bg-gray-50 border-b">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        Depo Adı
+                                        {t('depots.colName')}
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        Konum
+                                        {t('depots.colLoc')}
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        Durum
+                                        {t('depots.colStatus')}
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        Oluşturan
+                                        {t('depots.colCreator')}
                                     </th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                                        İşlemler
+                                        {t('depots.colActions')}
                                     </th>
                                 </tr>
                             </thead>
@@ -249,7 +251,7 @@ export default function DepotsPage() {
                                                 {depot.is_default && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded">
                                                         <Star className="w-3 h-3" />
-                                                        Varsayılan
+                                                        {t('depots.badgeDefault')}
                                                     </span>
                                                 )}
                                             </div>
@@ -259,7 +261,7 @@ export default function DepotsPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
-                                                Aktif
+                                                {t('depots.statusActive')}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -271,7 +273,7 @@ export default function DepotsPage() {
                                                     <button
                                                         onClick={() => handleSetDefault(depot)}
                                                         className="p-2 text-yellow-600 hover:bg-yellow-50 rounded transition"
-                                                        title="Varsayılan Yap"
+                                                        title={t('depots.btnSetDefault')}
                                                     >
                                                         <Star className="w-4 h-4" />
                                                     </button>
@@ -279,14 +281,14 @@ export default function DepotsPage() {
                                                 <button
                                                     onClick={() => handleOpenModal(depot)}
                                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded transition"
-                                                    title="Düzenle"
+                                                    title={t('depots.btnEdit')}
                                                 >
                                                     <Edit className="w-4 h-4" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(depot)}
                                                     className="p-2 text-red-600 hover:bg-red-50 rounded transition"
-                                                    title="Sil"
+                                                    title={t('depots.btnDelete')}
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -305,7 +307,7 @@ export default function DepotsPage() {
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
                             <div className="flex items-center justify-between p-6 border-b">
                                 <h2 className="text-xl font-bold">
-                                    {editingDepot ? "Depo Düzenle" : "Yeni Depo Ekle"}
+                                    {editingDepot ? t('depots.modalTitleEdit') : t('depots.modalTitleAdd')}
                                 </h2>
                                 <button
                                     onClick={handleCloseModal}
@@ -319,14 +321,14 @@ export default function DepotsPage() {
                                 {/* Name */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Depo Adı *
+                                        {t('depots.lblName')}
                                     </label>
                                     <input
                                         type="text"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="Örn: Lefkoşa Ana Depo"
+                                        placeholder={t('depots.plcName')}
                                         required
                                     />
                                 </div>
@@ -334,7 +336,7 @@ export default function DepotsPage() {
                                 {/* Location */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Konum *
+                                        {t('depots.lblLoc')}
                                     </label>
                                     <div className="flex gap-2">
                                         <input
@@ -342,7 +344,7 @@ export default function DepotsPage() {
                                             value={latitude}
                                             onChange={(e) => setLatitude(e.target.value)}
                                             className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                                            placeholder="Enlem"
+                                            placeholder={t('depots.plcLat')}
                                             readOnly
                                         />
                                         <input
@@ -350,7 +352,7 @@ export default function DepotsPage() {
                                             value={longitude}
                                             onChange={(e) => setLongitude(e.target.value)}
                                             className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                                            placeholder="Boylam"
+                                            placeholder={t('depots.plcLng')}
                                             readOnly
                                         />
                                     </div>
@@ -360,7 +362,7 @@ export default function DepotsPage() {
                                         className="mt-2 w-full px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition flex items-center justify-center gap-2"
                                     >
                                         <MapPin className="w-4 h-4" />
-                                        Harita'dan Seç
+                                        {t('depots.btnMap')}
                                     </button>
                                 </div>
 
@@ -374,7 +376,7 @@ export default function DepotsPage() {
                                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                     />
                                     <label htmlFor="isDefault" className="text-sm text-gray-700 cursor-pointer">
-                                        Varsayılan depo olarak ayarla
+                                        {t('depots.lblIsDefault')}
                                     </label>
                                 </div>
 
@@ -385,7 +387,7 @@ export default function DepotsPage() {
                                         onClick={handleCloseModal}
                                         className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
                                     >
-                                        İptal
+                                        {t('depots.btnCancel')}
                                     </button>
                                     <button
                                         type="submit"
@@ -395,12 +397,12 @@ export default function DepotsPage() {
                                         {submitting ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                                Kaydediliyor...
+                                                {t('depots.btnSaving')}
                                             </>
                                         ) : (
                                             <>
                                                 <CheckCircle className="w-4 h-4" />
-                                                {editingDepot ? "Güncelle" : "Oluştur"}
+                                                {editingDepot ? t('depots.btnUpdate') : t('depots.btnCreate')}
                                             </>
                                         )}
                                     </button>
@@ -415,7 +417,7 @@ export default function DepotsPage() {
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4 h-[600px] flex flex-col">
                             <div className="flex items-center justify-between p-4 border-b">
-                                <h2 className="text-lg font-bold">Depo Konumunu Seçin</h2>
+                                <h2 className="text-lg font-bold">{t('depots.mapTitle')}</h2>
                                 <button
                                     onClick={() => setMapModalOpen(false)}
                                     className="p-1 hover:bg-gray-100 rounded transition"
@@ -428,23 +430,23 @@ export default function DepotsPage() {
                                 <div className="text-center">
                                     <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                                     <p className="text-gray-600 mb-4">
-                                        Google Maps entegrasyonu için API key gereklidir
+                                        {t('depots.mapKeyReq')}
                                     </p>
                                     <p className="text-sm text-gray-500 mb-4">
-                                        Şimdilik manuel koordinat girişi kullanılıyor
+                                        {t('depots.mapManualInfo')}
                                     </p>
                                     <div className="space-y-2">
                                         <button
                                             onClick={() => handleSelectLocation(35.1856, 33.3823)}
                                             className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                                         >
-                                            Örnek: Lefkoşa (35.1856, 33.3823)
+                                            {t('depots.mapExLefkosa')}
                                         </button>
                                         <button
                                             onClick={() => handleSelectLocation(35.3387, 33.3176)}
                                             className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                                         >
-                                            Örnek: Girne (35.3387, 33.3176)
+                                            {t('depots.mapExGirne')}
                                         </button>
                                     </div>
                                 </div>

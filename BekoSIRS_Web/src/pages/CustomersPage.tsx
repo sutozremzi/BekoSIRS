@@ -6,8 +6,10 @@ import EditCustomerModal from "../components/EditCustomerModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { customerService } from "../services/customerService";
 import type { Customer, CustomerDetail } from "../types/customer";
+import { useTranslation } from "react-i18next";
 
 export default function CustomersPage() {
+    const { t } = useTranslation();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -107,7 +109,7 @@ export default function CustomersPage() {
             }
         } catch (error) {
             console.error("Error deleting customer:", error);
-            alert("Müşteri silinirken bir hata oluştu. Müşterinin ilişkili siparişleri/teslimatları olabilir.");
+            alert(t('customers.errDelete'));
         }
     };
 
@@ -118,7 +120,7 @@ export default function CustomersPage() {
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black mx-auto"></div>
-                        <p className="text-gray-600 mt-4 text-lg">Müşteriler yükleniyor...</p>
+                        <p className="text-gray-600 mt-4 text-lg">{t('customers.loading')}</p>
                     </div>
                 </div>
             </div>
@@ -136,7 +138,7 @@ export default function CustomersPage() {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
                                 <UserCheck size={28} className="text-blue-500" />
-                                <h1 className="text-2xl font-bold text-gray-900">Müşteri Yönetimi</h1>
+                                <h1 className="text-2xl font-bold text-gray-900">{t('customers.title')}</h1>
                             </div>
                         </div>
                     </div>
@@ -145,10 +147,10 @@ export default function CustomersPage() {
                 {/* Hero Section */}
                 <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
                     <div className="max-w-7xl mx-auto px-6 py-12">
-                        <p className="text-gray-400 text-sm font-medium mb-2">KKTC ADRES YÖNETİMİ</p>
-                        <h2 className="text-3xl font-bold mb-2">Müşteri Bilgilerini Yönetin</h2>
+                        <p className="text-gray-400 text-sm font-medium mb-2">{t('customers.heroTag')}</p>
+                        <h2 className="text-3xl font-bold mb-2">{t('customers.heroTitle')}</h2>
                         <p className="text-gray-300">
-                            Müşteri iletişim ve adres bilgilerini görüntüleyin ve güncelleyin
+                            {t('customers.heroDesc')}
                         </p>
                     </div>
                 </div>
@@ -164,7 +166,7 @@ export default function CustomersPage() {
                                 />
                                 <input
                                     type="text"
-                                    placeholder="Telefon veya isim ile ara..."
+                                    placeholder={t('customers.searchPlaceholder')}
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     onKeyPress={(e) => e.key === "Enter" && handleSearch()}
@@ -187,14 +189,14 @@ export default function CustomersPage() {
                                     onClick={handleSearch}
                                     className="bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 transition-all font-medium"
                                 >
-                                    Ara
+                                    {t('customers.btnSearch')}
                                 </button>
 
                                 <button
                                     onClick={handleClearFilters}
                                     className="px-4 py-3 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors text-sm font-medium"
                                 >
-                                    Temizle
+                                    {t('customers.btnClear')}
                                 </button>
                             </div>
                         </div>
@@ -207,19 +209,19 @@ export default function CustomersPage() {
                                 <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                            Ad Soyad
+                                            {t('customers.colName')}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                            Telefon
+                                            {t('customers.colPhone')}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                            E-posta
+                                            {t('customers.colEmail')}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                            İlçe / Mahalle
+                                            {t('customers.colAddress')}
                                         </th>
                                         <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                            Aksiyonlar
+                                            {t('customers.colActions')}
                                         </th>
                                     </tr>
                                 </thead>
@@ -253,21 +255,21 @@ export default function CustomersPage() {
                                                         <button
                                                             onClick={() => handleView(customer)}
                                                             className="p-2 hover:bg-blue-50 rounded-lg transition-colors group"
-                                                            title="Görüntüle"
+                                                            title={t('customers.btnView')}
                                                         >
                                                             <Eye size={18} className="text-gray-600 group-hover:text-blue-600" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleEdit(customer)}
                                                             className="p-2 hover:bg-green-50 rounded-lg transition-colors group"
-                                                            title="Düzenle"
+                                                            title={t('customers.btnEdit')}
                                                         >
                                                             <Edit2 size={18} className="text-gray-600 group-hover:text-green-600" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDeleteClick(customer)}
                                                             className="p-2 hover:bg-red-50 rounded-lg transition-colors group"
-                                                            title="Sil"
+                                                            title={t('customers.btnDelete')}
                                                         >
                                                             <Trash2 size={18} className="text-gray-600 group-hover:text-red-600" />
                                                         </button>
@@ -279,7 +281,7 @@ export default function CustomersPage() {
                                         <tr>
                                             <td colSpan={5} className="px-6 py-16 text-center">
                                                 <UserCheck size={48} className="mx-auto text-gray-300 mb-3" />
-                                                <p className="text-gray-600 font-medium">Müşteri bulunamadı</p>
+                                                <p className="text-gray-600 font-medium">{t('customers.noCustomers')}</p>
                                             </td>
                                         </tr>
                                     )}
@@ -293,9 +295,9 @@ export default function CustomersPage() {
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mt-4">
                             <div className="flex items-center justify-between">
                                 <div className="text-sm text-gray-600">
-                                    Toplam <span className="font-semibold">{totalCount}</span> müşteri
+                                    {t('customers.statTotal1')}<span className="font-semibold">{totalCount}</span>{t('customers.statTotal2')}
                                     <span className="mx-2">•</span>
-                                    Sayfa <span className="font-semibold">{currentPage}</span> / {totalPages}
+                                    {t('customers.statPage1')}<span className="font-semibold">{currentPage}</span>{t('customers.statPage2')}{totalPages}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
@@ -304,14 +306,14 @@ export default function CustomersPage() {
                                         className="flex items-center gap-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                         <ChevronLeft size={16} />
-                                        Önceki
+                                        {t('customers.btnPrev')}
                                     </button>
                                     <button
                                         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                                         disabled={currentPage >= totalPages}
                                         className="flex items-center gap-1 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
-                                        Sonraki
+                                        {t('customers.btnNext')}
                                         <ChevronRight size={16} />
                                     </button>
                                 </div>
@@ -350,10 +352,10 @@ export default function CustomersPage() {
                     setCustomerToDelete(null);
                 }}
                 onConfirm={handleConfirmDelete}
-                title="Müşteriyi Sil"
-                message={`${customerToDelete?.full_name || customerToDelete?.username} isimli müşteriyi tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
-                confirmText="Evet, Sil"
-                cancelText="İptal"
+                title={t('customers.modalDeleteTitle')}
+                message={t('customers.modalDeleteDesc', { customer: customerToDelete?.full_name || customerToDelete?.username })}
+                confirmText={t('customers.btnYesDelete')}
+                cancelText={t('customers.btnCancel')}
                 variant="danger"
             />
         </div>

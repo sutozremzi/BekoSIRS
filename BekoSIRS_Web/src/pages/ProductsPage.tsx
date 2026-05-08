@@ -5,6 +5,7 @@ import Drawer from "../components/Drawer";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { ToastContainer, type ToastType } from "../components/Toast";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 // Safe Icon Imports with fallbacks
 const {
@@ -61,6 +62,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
@@ -115,7 +117,7 @@ export default function ProductsPage() {
       const res = await api.get("/products/?page_size=1000");
       setProducts(Array.isArray(res.data) ? res.data : res.data.results || []);
     } catch (error: any) {
-      showToast('error', 'Ürünler yüklenemedi: ' + error.message);
+      showToast('error', t('products.loadError', { msg: error.message }));
     } finally {
       setLoading(false);
     }
@@ -285,19 +287,19 @@ export default function ProductsPage() {
   const handleDelete = (product: Product) => {
     setConfirmDialog({
       open: true,
-      title: 'Ürünü Sil',
-      message: `"${product.name}" ürününü silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
+      title: t('products.deleteConfirmTitle'),
+      message: t('products.deleteConfirmMsg', { name: product.name }),
       action: async () => {
         try {
           const res = await api.delete(`/products/${product.id}/`);
           if (res.status === 204 || res.status === 200) {
-            showToast('success', 'Ürün başarıyla silindi');
+            showToast('success', t('products.deleteSuccess'));
             await fetchProducts();
           } else {
             throw new Error("Silme işlemi başarısız");
           }
         } catch (error: any) {
-          showToast('error', 'Ürün silinemedi: ' + error.message);
+          showToast('error', t('products.deleteError', { msg: error.message }));
         }
       }
     });
@@ -308,7 +310,7 @@ export default function ProductsPage() {
     const copy = { ...product };
     // @ts-ignore
     delete copy.id;
-    copy.name = `${copy.name} (Kopyası)`;
+    copy.name = `${copy.name} ${t('products.copySuffix')}`;
     setEditingProduct(copy as Product);
     setDrawerOpen(true);
     setOpenDropdown(null);
@@ -327,14 +329,12 @@ export default function ProductsPage() {
         await api.put(url, formData);
       }
 
-
-
-      showToast('success', isNew ? 'Ürün başarıyla eklendi' : 'Ürün başarıyla güncellendi');
+      showToast('success', isNew ? t('products.saveSuccessAdd') : t('products.saveSuccessEdit'));
       setDrawerOpen(false);
       setEditingProduct(null);
       await fetchProducts();
     } catch (error: any) {
-      showToast('error', 'Hata: ' + error.message);
+      showToast('error', t('products.saveError', { msg: error.message }));
     }
   };
 
@@ -342,8 +342,8 @@ export default function ProductsPage() {
   const handleBulkDelete = () => {
     setConfirmDialog({
       open: true,
-      title: 'Toplu Silme',
-      message: `${selectedRows.size} ürünü silmek istediğinizden emin misiniz?`,
+      title: t('products.bulkDeleteTitle'),
+      message: t('products.bulkDeleteMsg', { count: selectedRows.size }),
       action: async () => {
         let successCount = 0;
         for (const id of selectedRows) {
@@ -354,7 +354,7 @@ export default function ProductsPage() {
             console.error(`Failed to delete product ${id}`);
           }
         }
-        showToast('success', `${successCount} ürün silindi`);
+        showToast('success', t('products.bulkDeleteSuccess', { count: successCount }));
         setSelectedRows(new Set());
         await fetchProducts();
       }
@@ -390,15 +390,15 @@ export default function ProductsPage() {
           <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Package />
-              <h1 className="text-2xl font-bold text-gray-900">Ürün Yönetimi</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{t('products.title')}</h1>
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => showToast('info', 'Excel import özelliği yakında eklenecek')}
+                onClick={() => showToast('info', t('products.importSoon'))}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
               >
                 <FileSpreadsheet />
-                Excel İçe Aktar
+                {t('products.importExcel')}
               </button>
               <button
                 onClick={() => {
@@ -408,7 +408,7 @@ export default function ProductsPage() {
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
               >
                 <Plus />
-                Ürün Ekle
+                {t('products.addProduct')}
               </button>
             </div>
           </div>
@@ -424,25 +424,25 @@ export default function ProductsPage() {
                 onClick={() => applySavedView('all')}
                 className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
               >
-                <p className="text-sm text-gray-600 mb-1">Toplam Ürün</p>
+                <p className="text-sm text-gray-600 mb-1">{t('products.kpiTotal')}</p>
                 <p className="text-3xl font-bold text-gray-900">{kpis.total}</p>
               </div>
               <div
                 onClick={() => applySavedView('out_of_stock')}
                 className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
               >
-                <p className="text-sm text-gray-600 mb-1">Stok Tükendi</p>
+                <p className="text-sm text-gray-600 mb-1">{t('products.kpiOut')}</p>
                 <p className="text-3xl font-bold text-red-600">{kpis.outOfStock}</p>
               </div>
               <div
                 onClick={() => applySavedView('low_stock')}
                 className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
               >
-                <p className="text-sm text-gray-600 mb-1">Düşük Stok</p>
+                <p className="text-sm text-gray-600 mb-1">{t('products.kpiLow')}</p>
                 <p className="text-3xl font-bold text-yellow-600">{kpis.lowStock}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-sm text-gray-600 mb-1">Toplam Değer</p>
+                <p className="text-sm text-gray-600 mb-1">{t('products.kpiValue')}</p>
                 <p className="text-3xl font-bold text-green-600">{kpis.totalValue.toLocaleString('tr-TR')}₺</p>
               </div>
             </div>
@@ -450,10 +450,10 @@ export default function ProductsPage() {
             {/* Saved Views */}
             <div className="flex gap-2 flex-wrap">
               {[
-                { id: 'all', label: 'Tüm Ürünler' },
-                { id: 'out_of_stock', label: 'Stok Tükenenler' },
-                { id: 'low_stock', label: 'Düşük Stok' },
-                { id: 'recent', label: 'Son Eklenenler' },
+                { id: 'all', label: t('products.viewAll') },
+                { id: 'out_of_stock', label: t('products.viewOut') },
+                { id: 'low_stock', label: t('products.viewLow') },
+                { id: 'recent', label: t('products.viewRecent') },
               ].map(view => (
                 <button
                   key={view.id}
@@ -478,7 +478,7 @@ export default function ProductsPage() {
                   </div>
                   <input
                     type="text"
-                    placeholder="Ürün, marka veya kategori ara..."
+                    placeholder={t('products.searchPlaceholder')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -491,7 +491,7 @@ export default function ProductsPage() {
                   onChange={(e) => setSelectedCategory(e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  <option value="all">Tüm Kategoriler</option>
+                  <option value="all">{t('products.allCategories')}</option>
                   {categories.map(cat => (
                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
@@ -500,7 +500,7 @@ export default function ProductsPage() {
                 {/* Price Min */}
                 <input
                   type="number"
-                  placeholder="Min Fiyat"
+                  placeholder={t('products.minPrice')}
                   value={priceMin}
                   onChange={(e) => setPriceMin(e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -509,7 +509,7 @@ export default function ProductsPage() {
                 {/* Price Max */}
                 <input
                   type="number"
-                  placeholder="Max Fiyat"
+                  placeholder={t('products.maxPrice')}
                   value={priceMax}
                   onChange={(e) => setPriceMax(e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -527,7 +527,7 @@ export default function ProductsPage() {
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                     >
-                      {filter === 'all' ? 'Tümü' : filter === 'in_stock' ? 'Stokta' : filter === 'out_of_stock' ? 'Tükendi' : 'Düşük'}
+                      {filter === 'all' ? t('products.filterAll') : filter === 'in_stock' ? t('products.filterIn') : filter === 'out_of_stock' ? t('products.filterOut') : t('products.filterLow')}
                     </button>
                   ))}
                 </div>
@@ -538,7 +538,7 @@ export default function ProductsPage() {
                     className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
                   >
                     <X />
-                    Filtreleri Temizle
+                    {t('products.clearFilters')}
                   </button>
                 )}
               </div>
@@ -548,7 +548,7 @@ export default function ProductsPage() {
             {selectedRows.size > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-blue-900">
-                  {selectedRows.size} ürün seçildi
+                  {t('products.selectedCount', { count: selectedRows.size })}
                 </span>
                 <div className="flex gap-2">
                   <button
@@ -556,13 +556,13 @@ export default function ProductsPage() {
                     className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-1"
                   >
                     <Trash2 />
-                    Seçilenleri Sil
+                    {t('products.deleteSelected')}
                   </button>
                   <button
                     onClick={() => setSelectedRows(new Set())}
                     className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
                   >
-                    İptal
+                    {t('products.cancel')}
                   </button>
                 </div>
               </div>
@@ -573,7 +573,7 @@ export default function ProductsPage() {
               {/* Table Header Controls */}
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                 <span className="text-sm text-gray-600">
-                  {filteredAndSortedProducts.length} ürün gösteriliyor
+                  {t('products.showingCount', { count: filteredAndSortedProducts.length })}
                 </span>
                 <div className="flex items-center gap-2">
                   <select
@@ -618,11 +618,11 @@ export default function ProductsPage() {
                         />
                       </th>
                       {[
-                        { field: 'name', label: 'Ürün Adı' },
-                        { field: 'model_code', label: 'Model' },
-                        { field: 'category', label: 'Kategori' },
-                        { field: 'price', label: 'Fiyat' },
-                        { field: 'stock', label: 'Stok' },
+                        { field: 'name', label: t('products.colName') },
+                        { field: 'model_code', label: t('products.colModel') },
+                        { field: 'category', label: t('products.colCategory') },
+                        { field: 'price', label: t('products.colPrice') },
+                        { field: 'stock', label: t('products.colStock') },
                       ].map(col => (
                         <th
                           key={col.field}
@@ -637,7 +637,7 @@ export default function ProductsPage() {
                           </div>
                         </th>
                       ))}
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">İşlemler</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">{t('products.colActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -645,8 +645,8 @@ export default function ProductsPage() {
                       <tr>
                         <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
                           <Package />
-                          <p className="font-medium">Ürün bulunamadı</p>
-                          <p className="text-sm mt-1">Filtreleri değiştirmeyi deneyin</p>
+                          <p className="font-medium">{t('products.notFound')}</p>
+                          <p className="text-sm mt-1">{t('products.tryFilters')}</p>
                         </td>
                       </tr>
                     ) : (
@@ -677,7 +677,7 @@ export default function ProductsPage() {
                           </td>
                           <td className={`px-4 ${densityPadding[density]}`}>
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                              {product.category?.name || 'Kategorisiz'}
+                              {product.category?.name || t('products.uncategorized')}
                             </span>
                           </td>
                           <td className={`px-4 ${densityPadding[density]} font-semibold text-gray-900`}>
@@ -688,7 +688,7 @@ export default function ProductsPage() {
                               product.stock < 10 ? 'bg-yellow-100 text-yellow-700' :
                                 'bg-green-100 text-green-700'
                               }`}>
-                              {product.stock} adet
+                              {product.stock} {t('products.pieces')}
                             </span>
                           </td>
                           <td className={`px-4 ${densityPadding[density]} relative`}>
@@ -696,7 +696,7 @@ export default function ProductsPage() {
                               <button
                                 onClick={() => setViewingProduct(product)}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Detayları Gör"
+                                title={t('products.actionView')}
                               >
                                 <Eye />
                               </button>
@@ -721,21 +721,21 @@ export default function ProductsPage() {
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                                   >
                                     <Edit2 />
-                                    Düzenle
+                                    {t('products.actionEdit')}
                                   </button>
                                   <button
                                     onClick={() => handleEdit(product)}
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                                   >
                                     <DollarSign />
-                                    Fiyat Güncelle
+                                    {t('products.actionUpdatePrice')}
                                   </button>
                                   <button
                                     onClick={() => handleDuplicate(product)}
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                                   >
                                     <Copy />
-                                    Çoğalt
+                                    {t('products.actionDuplicate')}
                                   </button>
                                   <div className="border-t border-gray-200 my-1" />
                                   <button
@@ -743,7 +743,7 @@ export default function ProductsPage() {
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
                                   >
                                     <Trash2 />
-                                    Sil
+                                    {t('products.actionDelete')}
                                   </button>
                                 </div>
                               </>
@@ -760,7 +760,7 @@ export default function ProductsPage() {
               {totalPages > 1 && (
                 <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
                   <span className="text-sm text-gray-600">
-                    Sayfa {currentPage} / {totalPages}
+                    {t('products.page')} {currentPage} / {totalPages}
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -768,14 +768,14 @@ export default function ProductsPage() {
                       disabled={currentPage === 1}
                       className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
-                      Önceki
+                      {t('products.prev')}
                     </button>
                     <button
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
                       className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
-                      Sonraki
+                      {t('products.next')}
                     </button>
                   </div>
                 </div>
@@ -792,7 +792,7 @@ export default function ProductsPage() {
           setDrawerOpen(false);
           setEditingProduct(null);
         }}
-        title={editingProduct?.id ? "Ürünü Düzenle" : "Yeni Ürün Ekle"}
+        title={editingProduct?.id ? t('products.editTitle') : t('products.addTitle')}
       >
         <ProductForm
           product={editingProduct}
@@ -809,7 +809,7 @@ export default function ProductsPage() {
       <Drawer
         open={!!viewingProduct}
         onClose={() => setViewingProduct(null)}
-        title="Ürün Detayları"
+        title={t('products.detailTitle')}
       >
         {viewingProduct && (
           <div className="space-y-6">
@@ -825,12 +825,12 @@ export default function ProductsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Ürün Adı</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailName')}</label>
                 <p className="text-lg font-medium text-gray-900">{viewingProduct.name}</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Marka / Model</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailBrandModel')}</label>
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-gray-100 rounded-lg">
@@ -845,26 +845,26 @@ export default function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Kategori</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailCategory')}</label>
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 bg-gray-100 rounded-lg">
                     <LayoutGrid size={16} className="text-gray-500" />
                   </span>
-                  <p className="font-medium text-gray-900">{viewingProduct.category?.name || 'Kategorisiz'}</p>
+                  <p className="font-medium text-gray-900">{viewingProduct.category?.name || t('products.uncategorized')}</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Fiyatlar</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailPrices')}</label>
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-green-50 rounded-lg">
                       <DollarSign size={16} className="text-green-600" />
                     </span>
-                    <p className="font-medium text-green-700">Peşin: {parseFloat(viewingProduct.price_cash || viewingProduct.price || '0').toLocaleString('tr-TR')} ₺</p>
+                    <p className="font-medium text-green-700">{t('products.detailCash')}: {parseFloat(viewingProduct.price_cash || viewingProduct.price || '0').toLocaleString('tr-TR')} ₺</p>
                   </div>
                   {viewingProduct.price_list && (
-                    <p className="text-xs text-gray-500 line-through ml-9">Liste: {parseFloat(viewingProduct.price_list).toLocaleString('tr-TR')} ₺</p>
+                    <p className="text-xs text-gray-500 line-through ml-9">{t('products.detailList')}: {parseFloat(viewingProduct.price_list).toLocaleString('tr-TR')} ₺</p>
                   )}
                   {viewingProduct.campaign_tag && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 ml-9 w-fit">
@@ -875,31 +875,31 @@ export default function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Stok Durumu</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailStock')}</label>
                 <div className="flex items-center gap-2">
                   <span className={`p-1.5 rounded-lg ${viewingProduct.stock === 0 ? 'bg-red-50' : viewingProduct.stock < 10 ? 'bg-yellow-50' : 'bg-green-50'}`}>
                     <Package size={16} className={`${viewingProduct.stock === 0 ? 'text-red-600' : viewingProduct.stock < 10 ? 'text-yellow-600' : 'text-green-600'}`} />
                   </span>
                   <p className={`font-medium ${viewingProduct.stock === 0 ? 'text-red-700' : viewingProduct.stock < 10 ? 'text-yellow-700' : 'text-green-700'}`}>
-                    {viewingProduct.stock} adet
+                    {viewingProduct.stock} {t('products.pieces')}
                   </p>
                 </div>
               </div>
 
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Garanti Süresi</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{t('products.detailWarranty')}</label>
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 bg-blue-50 rounded-lg">
                     <FileSpreadsheet size={16} className="text-blue-600" />
                   </span>
-                  <p className="font-medium text-gray-900">{viewingProduct.warranty_duration_months} Ay</p>
+                  <p className="font-medium text-gray-900">{viewingProduct.warranty_duration_months} {t('products.detailMonths')}</p>
                 </div>
               </div>
             </div>
 
             {viewingProduct.description && (
               <div className="pt-4 border-t border-gray-100">
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Açıklama</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{t('products.detailDesc')}</label>
                 <div className="bg-gray-50 rounded-lg p-4 text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
                   {viewingProduct.description}
                 </div>
@@ -911,7 +911,7 @@ export default function ProductsPage() {
                 onClick={() => setViewingProduct(null)}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium transition-colors"
               >
-                Kapat
+                {t('products.close')}
               </button>
             </div>
           </div>
@@ -940,6 +940,7 @@ interface ProductFormProps {
 }
 
 function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: product?.name || '',
     brand: product?.brand || '',
@@ -967,7 +968,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Ürün Adı *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formName')}</label>
         <input
           type="text"
           required
@@ -979,7 +980,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Marka *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formBrand')}</label>
           <input
             type="text"
             required
@@ -989,7 +990,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Model Kodu</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formModel')}</label>
           <input
             type="text"
             value={formData.model_code}
@@ -1000,13 +1001,13 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formCategory')}</label>
         <select
           value={formData.category}
           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
         >
-          <option value="">Kategori Seç</option>
+          <option value="">{t('products.formSelectCategory')}</option>
           {categories.map(cat => (
             <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
@@ -1015,7 +1016,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Fiyat (₺) *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formPrice')}</label>
           <input
             type="number"
             required
@@ -1028,7 +1029,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Stok Adedi *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formStock')}</label>
           <input
             type="number"
             required
@@ -1041,7 +1042,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Garanti (Ay)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formWarranty')}</label>
         <input
           type="number"
           min="0"
@@ -1052,7 +1053,7 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Açıklama</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.formDesc')}</label>
         <textarea
           rows={4}
           value={formData.description}
@@ -1067,13 +1068,13 @@ function ProductForm({ product, categories, onSave, onCancel }: ProductFormProps
           onClick={onCancel}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
         >
-          İptal
+          {t('products.cancel')}
         </button>
         <button
           type="submit"
           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
         >
-          Kaydet
+          {t('products.save')}
         </button>
       </div>
     </form>

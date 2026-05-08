@@ -12,13 +12,14 @@ import {
   Star,
   BoxSelect,
   Bell,
-  Truck,
   UserCheck,
   MapPin,
   BarChart3,
   CreditCard,
+  Globe,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 type MenuItem = {
   name: string;
@@ -32,28 +33,33 @@ export default function Sidebar() {
   const location = useLocation();
   const userRole = (localStorage.getItem("user_role") || "").toLowerCase();
   const isAdmin = userRole === "admin";
+  const { t, i18n } = useTranslation();
+
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'tr' ? 'en' : 'tr';
+    i18n.changeLanguage(newLang);
+  };
 
   const menus: MenuItem[] = [
-    { name: "Dashboard", icon: <Home size={20} />, link: "/dashboard" },
-    { name: "Analitikler", icon: <BarChart3 size={20} />, link: "/dashboard/analytics" },
-    { name: "Taksitler", icon: <CreditCard size={20} />, link: "/dashboard/installments" },
-    { name: "Urunler", icon: <Package size={20} />, link: "/dashboard/products" },
-    { name: "Kategoriler", icon: <Tag size={20} />, link: "/dashboard/categories" },
-    { name: "Servis Talepleri", icon: <Wrench size={20} />, link: "/dashboard/service-requests" },
-    { name: "Degerlendirmeler", icon: <Star size={20} />, link: "/dashboard/reviews" },
-    { name: "Gruplar", icon: <Layers size={20} />, link: "/dashboard/groups" },
-    { name: "Kullanicilar", icon: <Users size={20} />, link: "/dashboard/users", adminOnly: true },
-    { name: "Musteri Yonetimi", icon: <UserCheck size={20} />, link: "/dashboard/customers" },
-    { name: "Urun Atamalari", icon: <BoxSelect size={20} />, link: "/dashboard/assignments" },
-    { name: "Teslimatlar", icon: <Truck size={20} />, link: "/dashboard/deliveries" },
-    { name: "Depolar", icon: <MapPin size={20} />, link: "/dashboard/depots" },
-    { name: "Bildirimler", icon: <Bell size={20} />, link: "/dashboard/notifications" },
+    { name: t('sidebar.dashboard'), icon: <Home size={20} />, link: "/dashboard" },
+    { name: t('sidebar.analytics'), icon: <BarChart3 size={20} />, link: "/dashboard/analytics" },
+    { name: t('sidebar.installments'), icon: <CreditCard size={20} />, link: "/dashboard/installments" },
+    { name: t('sidebar.products'), icon: <Package size={20} />, link: "/dashboard/products" },
+    { name: t('sidebar.categories'), icon: <Tag size={20} />, link: "/dashboard/categories" },
+    { name: t('sidebar.serviceRequests'), icon: <Wrench size={20} />, link: "/dashboard/service-requests" },
+    { name: t('sidebar.reviews'), icon: <Star size={20} />, link: "/dashboard/reviews" },
+    { name: t('sidebar.groups'), icon: <Layers size={20} />, link: "/dashboard/groups" },
+    { name: t('sidebar.users'), icon: <Users size={20} />, link: "/dashboard/users", adminOnly: true },
+    { name: t('sidebar.customers'), icon: <UserCheck size={20} />, link: "/dashboard/customers" },
+    { name: t('sidebar.assignments'), icon: <BoxSelect size={20} />, link: "/dashboard/assignments" },
+    { name: t('sidebar.depots'), icon: <MapPin size={20} />, link: "/dashboard/depots" },
+    { name: t('sidebar.notifications'), icon: <Bell size={20} />, link: "/dashboard/notifications" },
   ];
 
   const visibleMenus = menus.filter((menu) => !menu.adminOnly || isAdmin);
 
   const handleLogout = () => {
-    if (window.confirm("Cikis yapmak istediginizden emin misiniz?")) {
+    if (window.confirm(t('sidebar.logoutConfirm'))) {
       localStorage.removeItem("access");
       localStorage.removeItem("refresh");
       localStorage.removeItem("user_role");
@@ -75,8 +81,8 @@ export default function Sidebar() {
             <div className="bg-black text-white px-3 py-2 rounded-lg font-bold text-lg">BEKO</div>
             {open && (
               <div>
-                <p className="text-sm font-semibold text-gray-900">Admin Panel</p>
-                <p className="text-xs text-gray-500">{isAdmin ? "Yonetici" : "Satici Paneli"}</p>
+                <p className="text-sm font-semibold text-gray-900">{t('sidebar.adminPanel')}</p>
+                <p className="text-xs text-gray-500">{isAdmin ? t('sidebar.manager') : t('sidebar.sellerPanel')}</p>
               </div>
             )}
           </div>
@@ -127,11 +133,19 @@ export default function Sidebar() {
         <div className="p-4 border-t border-gray-200">
           <div className="flex items-center space-x-3 px-3 py-3 bg-gray-50 rounded-xl">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">{isAdmin ? "A" : "S"}</span>
+              <span className="text-white font-bold text-sm">{isAdmin ? t('sidebar.admin')[0] : t('sidebar.seller')[0]}</span>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900">{isAdmin ? "Admin" : "Satici"}</p>
-              <p className="text-xs text-gray-500">{isAdmin ? "Yonetici" : "Yetkili Kullanici"}</p>
+            <div className="flex-1 flex flex-col items-start justify-center">
+              <button
+                onClick={toggleLanguage}
+                className="flex items-center space-x-1 text-[10px] text-gray-500 hover:text-black bg-gray-200 px-1.5 py-0.5 rounded mb-1 w-max transition-colors"
+                title={t('navbar.language')}
+              >
+                <Globe size={10} />
+                <span className="font-bold uppercase">{i18n.language}</span>
+              </button>
+              <p className="text-sm font-semibold text-gray-900 leading-tight">{isAdmin ? t('sidebar.admin') : t('sidebar.seller')}</p>
+              <p className="text-xs text-gray-500 leading-tight">{isAdmin ? t('sidebar.manager') : t('sidebar.authUser')}</p>
             </div>
           </div>
         </div>
@@ -145,7 +159,7 @@ export default function Sidebar() {
           }`}
         >
           <LogOut size={20} />
-          {open && <span className="text-sm font-medium">Cikis Yap</span>}
+          {open && <span className="text-sm font-medium">{t('sidebar.logout')}</span>}
         </button>
       </div>
     </div>

@@ -768,6 +768,9 @@ class DeliveryRouteSerializer(serializers.ModelSerializer):
         return None
 
     def get_stop_count(self, obj):
+        prefetched = getattr(obj, '_prefetched_objects_cache', {}).get('stops')
+        if prefetched is not None:
+            return len(prefetched)
         return obj.stops.count()
 
 

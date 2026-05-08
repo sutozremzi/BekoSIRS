@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import { ToastContainer, type ToastType } from "../components/Toast";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 const {
     Bell = () => <span>🔔</span>,
@@ -39,9 +40,20 @@ const NotificationTypeLabels: Record<string, { label: string; color: string }> =
 };
 
 export default function NotificationsPage() {
+    const { t } = useTranslation();
     const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+
+    // Since NotificationTypeLabels is defined outside the component, we can use the translation inside the render loop, but for cleaner code we can compute them inside the component:
+    const notificationTypeLabels: Record<string, { label: string; color: string }> = {
+        general: { label: t('notifications.typeGeneral'), color: "bg-blue-100 text-blue-700" },
+        price_drop: { label: t('notifications.typePriceDrop'), color: "bg-green-100 text-green-700" },
+        restock: { label: t('notifications.typeRestock'), color: "bg-purple-100 text-purple-700" },
+        service_update: { label: t('notifications.typeService'), color: "bg-orange-100 text-orange-700" },
+        recommendation: { label: t('notifications.typeRecommendation'), color: "bg-yellow-100 text-yellow-700" },
+        warranty_expiry: { label: t('notifications.typeWarranty'), color: "bg-red-100 text-red-700" },
+    };
 
     // Filter & Search
     const [searchQuery, setSearchQuery] = useState("");
@@ -82,7 +94,7 @@ export default function NotificationsPage() {
             const res = await api.get("/notifications/all/");
             setNotifications(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
-            showToast("error", "Bildirimler yüklenemedi");
+            showToast("error", t('notifications.errFetch'));
         } finally {
             setLoading(false);
         }
@@ -99,7 +111,7 @@ export default function NotificationsPage() {
 
     const handleSubmit = async () => {
         if (!title.trim() || !message.trim()) {
-            showToast("error", "Başlık ve mesaj zorunludur");
+            showToast("error", t('notifications.valTitleMsgReq'));
             return;
         }
 
@@ -118,7 +130,7 @@ export default function NotificationsPage() {
             fetchNotifications();
         } catch (error: any) {
             const errData = error.response?.data;
-            showToast("error", errData?.error || error.message || "Bir hata oluştu");
+            showToast("error", errData?.error || error.message || t('notifications.errDefault'));
         } finally {
             setSubmitting(false);
         }
@@ -166,8 +178,8 @@ export default function NotificationsPage() {
                                 <Bell className="w-5 h-5 text-purple-600" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-gray-900">Bildirim Yönetimi</h1>
-                                <p className="text-sm text-gray-500">Tüm bildirimleri görüntüle ve yönet</p>
+                                <h1 className="text-xl font-bold text-gray-900">{t('notifications.title')}</h1>
+                                <p className="text-sm text-gray-500">{t('notifications.subtitle')}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -176,14 +188,14 @@ export default function NotificationsPage() {
                                 className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
                             >
                                 <Settings className="w-4 h-4" />
-                                Tercihler
+                                {t('notifications.btnPrefs')}
                             </button>
                             <button
                                 onClick={() => setModalOpen(true)}
                                 className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center gap-2"
                             >
                                 <Send className="w-4 h-4" />
-                                Bildirim Gönder
+                                {t('notifications.btnSend')}
                             </button>
                         </div>
                     </div>
@@ -194,7 +206,7 @@ export default function NotificationsPage() {
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                                 type="text"
-                                placeholder="Bildirim ara..."
+                                placeholder={t('notifications.searchPlaceholder')}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-sm"
@@ -205,13 +217,13 @@ export default function NotificationsPage() {
                             onChange={(e) => setFilterType(e.target.value)}
                             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
                         >
-                            <option value="all">Tüm Türler</option>
-                            <option value="general">Genel</option>
-                            <option value="price_drop">Fiyat Düşüşü</option>
-                            <option value="restock">Stok Geldi</option>
-                            <option value="service_update">Servis</option>
-                            <option value="recommendation">Öneri</option>
-                            <option value="warranty_expiry">Garanti</option>
+                            <option value="all">{t('notifications.filterAll')}</option>
+                            <option value="general">{t('notifications.typeGeneral')}</option>
+                            <option value="price_drop">{t('notifications.typePriceDrop')}</option>
+                            <option value="restock">{t('notifications.typeRestock')}</option>
+                            <option value="service_update">{t('notifications.typeService')}</option>
+                            <option value="recommendation">{t('notifications.typeRecommendation')}</option>
+                            <option value="warranty_expiry">{t('notifications.typeWarranty')}</option>
                         </select>
                     </div>
                 </header>
@@ -222,17 +234,17 @@ export default function NotificationsPage() {
                         {/* Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="bg-white rounded-xl border border-gray-200 p-4">
-                                <p className="text-sm text-gray-600 mb-1">Toplam Bildirim</p>
+                                <p className="text-sm text-gray-600 mb-1">{t('notifications.statTotal')}</p>
                                 <p className="text-3xl font-bold text-gray-900">{filteredNotifications.length}</p>
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-4">
-                                <p className="text-sm text-gray-600 mb-1">Okunmuş</p>
+                                <p className="text-sm text-gray-600 mb-1">{t('notifications.statRead')}</p>
                                 <p className="text-3xl font-bold text-green-600">
                                     {filteredNotifications.filter((n) => n.is_read).length}
                                 </p>
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-4">
-                                <p className="text-sm text-gray-600 mb-1">Okunmamış</p>
+                                <p className="text-sm text-gray-600 mb-1">{t('notifications.statUnread')}</p>
                                 <p className="text-3xl font-bold text-orange-600">
                                     {filteredNotifications.filter((n) => !n.is_read).length}
                                 </p>
@@ -242,15 +254,15 @@ export default function NotificationsPage() {
                         {/* Recent Notifications */}
                         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                             <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                                <span className="text-sm font-medium text-gray-700">Son Gönderilen Bildirimler</span>
-                                <span className="text-xs text-gray-500">Son 100 kayıt</span>
+                                <span className="text-sm font-medium text-gray-700">{t('notifications.recentTitle')}</span>
+                                <span className="text-xs text-gray-500">{t('notifications.recentSubtitle')}</span>
                             </div>
 
                             {notifications.length === 0 ? (
                                 <div className="px-4 py-12 text-center text-gray-500">
                                     <Megaphone className="mx-auto mb-2 text-4xl" />
-                                    <p className="font-medium">Henüz bildirim yok</p>
-                                    <p className="text-sm mt-1">"Bildirim Gönder" ile başlayın</p>
+                                    <p className="font-medium">{t('notifications.noNotifs')}</p>
+                                    <p className="text-sm mt-1">{t('notifications.noNotifsDesc')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
@@ -273,7 +285,7 @@ export default function NotificationsPage() {
                                                         <p className="font-medium text-gray-900">{notif.title}</p>
                                                         <p className="text-sm text-gray-600 line-clamp-2">{notif.message}</p>
                                                         <p className="text-xs text-gray-400 mt-1">
-                                                            → {notif.user?.email || "Unknown"} • {formatDate(notif.created_at)}
+                                                            → {notif.user?.email || t('notifications.unknownUser')} • {formatDate(notif.created_at)}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -292,7 +304,7 @@ export default function NotificationsPage() {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl w-full max-w-lg mx-4 shadow-2xl">
                         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                            <h2 className="text-lg font-bold text-gray-900">Bildirim Gönder</h2>
+                            <h2 className="text-lg font-bold text-gray-900">{t('notifications.modalTitle')}</h2>
                             <button onClick={() => setModalOpen(false)} className="p-1 hover:bg-gray-100 rounded">
                                 <X />
                             </button>
@@ -302,13 +314,13 @@ export default function NotificationsPage() {
                             {/* Title */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Başlık <span className="text-red-500">*</span>
+                                    {t('notifications.lblTitle')} <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                     type="text"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="Örn: Bayrama Özel İndirimler!"
+                                    placeholder={t('notifications.plcTitle')}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                                 />
                             </div>
@@ -316,12 +328,12 @@ export default function NotificationsPage() {
                             {/* Message */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Mesaj <span className="text-red-500">*</span>
+                                    {t('notifications.lblMessage')} <span className="text-red-500">*</span>
                                 </label>
                                 <textarea
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
-                                    placeholder="Bildirim mesajınızı yazın..."
+                                    placeholder={t('notifications.plcMessage')}
                                     rows={4}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none resize-none"
                                 />
@@ -329,22 +341,22 @@ export default function NotificationsPage() {
 
                             {/* Notification Type */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Bildirim Türü</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('notifications.lblType')}</label>
                                 <select
                                     value={notificationType}
                                     onChange={(e) => setNotificationType(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                                 >
-                                    <option value="general">Genel</option>
-                                    <option value="price_drop">Fiyat Düşüşü</option>
-                                    <option value="restock">Stok Geldi</option>
-                                    <option value="recommendation">Öneri</option>
+                                    <option value="general">{t('notifications.typeGeneral')}</option>
+                                    <option value="price_drop">{t('notifications.typePriceDrop')}</option>
+                                    <option value="restock">{t('notifications.typeRestock')}</option>
+                                    <option value="recommendation">{t('notifications.typeRecommendation')}</option>
                                 </select>
                             </div>
 
                             {/* Target Audience */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Hedef Kitle</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('notifications.lblTarget')}</label>
                                 <div className="flex gap-3">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
@@ -355,7 +367,7 @@ export default function NotificationsPage() {
                                             onChange={() => setTarget("customers")}
                                             className="w-4 h-4 text-purple-600"
                                         />
-                                        <span className="text-sm">Tüm Müşteriler</span>
+                                        <span className="text-sm">{t('notifications.targetCustomers')}</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
@@ -366,7 +378,7 @@ export default function NotificationsPage() {
                                             onChange={() => setTarget("all")}
                                             className="w-4 h-4 text-purple-600"
                                         />
-                                        <span className="text-sm">Herkese</span>
+                                        <span className="text-sm">{t('notifications.targetAll')}</span>
                                     </label>
                                 </div>
                             </div>
@@ -377,7 +389,7 @@ export default function NotificationsPage() {
                                 onClick={() => setModalOpen(false)}
                                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
                             >
-                                İptal
+                                {t('notifications.btnCancel')}
                             </button>
                             <button
                                 onClick={handleSubmit}
@@ -386,7 +398,7 @@ export default function NotificationsPage() {
                             >
                                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                                 <Send className="w-4 h-4" />
-                                Gönder
+                                {t('notifications.btnSubmit')}
                             </button>
                         </div>
                     </div>

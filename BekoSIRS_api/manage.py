@@ -35,11 +35,11 @@ def main():
                 if new_content != content:
                     with open(api_file, 'w', encoding='utf-8') as f:
                         f.write(new_content)
-                    print(f"\n✅ Auto-updated Frontend API IP to: {local_ip} in api.ts\n")
+                    print(f"\n[OK] Auto-updated Frontend API IP to: {local_ip} in api.ts\n")
                 elif local_ip not in content:
-                    print(f"\n⚠️ Could not find COMPUTER_IP string to replace in api.ts\n")
+                    print(f"\n[WARNING] Could not find COMPUTER_IP string to replace in api.ts\n")
         except Exception as e:
-            print(f"\n⚠️ Failed to auto-update frontend IP: {e}\n")
+            print(f"\n[ERROR] Failed to auto-update frontend IP: {e}\n")
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bekosirs_backend.settings')
     try:
         from django.core.management import execute_from_command_line

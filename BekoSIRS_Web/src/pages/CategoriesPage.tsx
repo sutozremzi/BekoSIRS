@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Tag, Plus, Edit2, Trash2, Search, X, Package } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<any[]>([]);
@@ -11,6 +12,7 @@ export default function CategoriesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const { t } = useTranslation();
   const [newCategory, setNewCategory] = useState({
     name: "",
     description: "",
@@ -28,7 +30,7 @@ export default function CategoriesPage() {
       const res = await api.get("/categories/");
       setCategories(Array.isArray(res.data) ? res.data : res.data.results || []);
     } catch (err: any) {
-      setError(err.message || "Kategoriler alınamadı.");
+      setError(err.message || t('categories.errFetch'));
     } finally {
       setLoading(false);
     }
@@ -41,9 +43,9 @@ export default function CategoriesPage() {
       await fetchCategories();
       setNewCategory({ name: "", description: "" });
       setShowAddModal(false);
-      alert("✅ Kategori başarıyla eklendi!");
+      alert(t('categories.succAdd'));
     } catch (err: any) {
-      setError(err.message || "Kategori eklenemedi.");
+      setError(err.message || t('categories.errAdd'));
     }
   };
 
@@ -57,20 +59,20 @@ export default function CategoriesPage() {
       await fetchCategories();
       setShowEditModal(false);
       setSelectedCategory(null);
-      alert("✅ Kategori başarıyla güncellendi!");
+      alert(t('categories.succUpdate'));
     } catch (err: any) {
-      setError(err.message || "Kategori güncellenemedi.");
+      setError(err.message || t('categories.errUpdate'));
     }
   };
 
   const handleDeleteCategory = async (id: number, name: string) => {
-    if (window.confirm(`"${name}" kategorisini silmek istediğinizden emin misiniz?`)) {
+    if (window.confirm(t('categories.confirmDelete', { name }))) {
       try {
         await api.delete(`/categories/${id}/`);
         await fetchCategories();
-        alert("✅ Kategori başarıyla silindi!");
+        alert(t('categories.succDelete'));
       } catch (err: any) {
-        setError(err.message || "Kategori silinemedi.");
+        setError(err.message || t('categories.errDelete'));
       }
     }
   };
@@ -89,7 +91,7 @@ export default function CategoriesPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black mx-auto"></div>
-          <p className="text-gray-600 mt-4 text-lg">Kategoriler yükleniyor...</p>
+          <p className="text-gray-600 mt-4 text-lg">{t('categories.loading')}</p>
         </div>
       </div>
     );
@@ -117,14 +119,14 @@ export default function CategoriesPage() {
           <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Tag size={28} className="text-blue-500" />
-              <h1 className="text-2xl font-bold text-gray-900">Kategori Yönetimi</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{t('categories.title')}</h1>
             </div>
             <button
               onClick={() => setShowAddModal(true)}
               className="bg-black text-white px-6 py-2.5 rounded-full hover:bg-gray-800 transition-all font-medium flex items-center space-x-2"
             >
               <Plus size={20} />
-              <span>Yeni Kategori</span>
+              <span>{t('categories.btnNew')}</span>
             </button>
           </div>
         </header>
@@ -134,9 +136,9 @@ export default function CategoriesPage() {
           {/* Hero Section */}
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
             <div className="max-w-7xl mx-auto px-6 py-12">
-              <p className="text-gray-400 text-sm font-medium mb-2">YÖNETİM PANELİ</p>
-              <h2 className="text-3xl font-bold mb-2">Kategorileri Yönetin</h2>
-              <p className="text-gray-300">Ürün kategorilerini oluşturun, düzenleyin ve silin</p>
+              <p className="text-gray-400 text-sm font-medium mb-2">{t('categories.subtitle')}</p>
+              <h2 className="text-3xl font-bold mb-2">{t('categories.pageDesc')}</h2>
+              <p className="text-gray-300">{t('categories.pageSubDesc')}</p>
             </div>
           </div>
 
@@ -148,7 +150,7 @@ export default function CategoriesPage() {
                   <Tag size={24} className="text-blue-500" />
                   <span className="text-3xl font-bold text-gray-900">{categories.length}</span>
                 </div>
-                <p className="text-gray-600 font-medium">Toplam Kategori</p>
+                <p className="text-gray-600 font-medium">{t('categories.statTotalCats')}</p>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -158,7 +160,7 @@ export default function CategoriesPage() {
                     {categories.reduce((sum, cat) => sum + (cat.product_count || 0), 0)}
                   </span>
                 </div>
-                <p className="text-gray-600 font-medium">Toplam Ürün</p>
+                <p className="text-gray-600 font-medium">{t('categories.statTotalProds')}</p>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -166,7 +168,7 @@ export default function CategoriesPage() {
                   <Search size={24} className="text-purple-500" />
                   <span className="text-3xl font-bold text-gray-900">{filteredCategories.length}</span>
                 </div>
-                <p className="text-gray-600 font-medium">Filtrelenmiş Sonuç</p>
+                <p className="text-gray-600 font-medium">{t('categories.statFiltered')}</p>
               </div>
             </div>
 
@@ -176,7 +178,7 @@ export default function CategoriesPage() {
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="Kategori ara..."
+                  placeholder={t('categories.searchPlaceholder')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
@@ -190,10 +192,10 @@ export default function CategoriesPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori Bilgisi</th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Açıklama</th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İstatistik</th>
-                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">İşlemler</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('categories.colCategory')}</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('categories.colDesc')}</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('categories.colStats')}</th>
+                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('categories.colAction')}</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -206,7 +208,7 @@ export default function CategoriesPage() {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-bold text-gray-900">{category.name}</div>
-                              <div className="text-xs text-gray-500">ID: #{category.id}</div>
+                              <div className="text-xs text-gray-500">{t('categories.lblId', { id: category.id })}</div>
                             </div>
                           </div>
                         </td>
@@ -216,7 +218,7 @@ export default function CategoriesPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
                             <Package size={16} className="text-gray-400" />
-                            <span className="text-sm font-medium text-gray-700">{category.product_count || 0} Ürün</span>
+                            <span className="text-sm font-medium text-gray-700">{t('categories.lblProds', { count: category.product_count || 0 })}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -224,14 +226,14 @@ export default function CategoriesPage() {
                             <button
                               onClick={() => openEditModal(category)}
                               className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                              title="Düzenle"
+                              title={t('categories.btnEdit')}
                             >
                               <Edit2 size={18} />
                             </button>
                             <button
                               onClick={() => handleDeleteCategory(category.id, category.name)}
                               className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                              title="Sil"
+                              title={t('categories.btnDelete')}
                             >
                               <Trash2 size={18} />
                             </button>
@@ -245,11 +247,11 @@ export default function CategoriesPage() {
             ) : (
               <div className="text-center py-20">
                 <Tag size={64} className="mx-auto text-gray-300 mb-4" />
-                <h3 className="text-2xl font-bold text-gray-700 mb-2">Kategori bulunamadı</h3>
+                <h3 className="text-2xl font-bold text-gray-700 mb-2">{t('categories.noCat')}</h3>
                 <p className="text-gray-500 mb-6">
                   {searchTerm
-                    ? "Arama kriterlerinizi değiştirmeyi deneyin"
-                    : "Yeni kategori ekleyerek başlayın"}
+                    ? t('categories.noCatSearch')
+                    : t('categories.noCatFirst')}
                 </p>
                 {!searchTerm && (
                   <button
@@ -257,7 +259,7 @@ export default function CategoriesPage() {
                     className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 transition-all font-medium inline-flex items-center space-x-2"
                   >
                     <Plus size={20} />
-                    <span>İlk Kategoriyi Ekle</span>
+                    <span>{t('categories.btnAddFirst')}</span>
                   </button>
                 )}
               </div>
@@ -273,7 +275,7 @@ export default function CategoriesPage() {
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold flex items-center space-x-2">
                 <Plus size={24} />
-                <span>Yeni Kategori Ekle</span>
+                <span>{t('categories.modalAddTitle')}</span>
               </h2>
               <button
                 onClick={() => {
@@ -289,7 +291,7 @@ export default function CategoriesPage() {
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Kategori Adı *
+                  {t('categories.lblCatName')}
                 </label>
                 <input
                   type="text"
@@ -297,21 +299,21 @@ export default function CategoriesPage() {
                   onChange={(e) =>
                     setNewCategory({ ...newCategory, name: e.target.value })
                   }
-                  placeholder="Örn: Beyaz Eşya"
+                  placeholder={t('categories.plcCatName')}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Açıklama
+                  {t('categories.lblCatDesc')}
                 </label>
                 <textarea
                   value={newCategory.description}
                   onChange={(e) =>
                     setNewCategory({ ...newCategory, description: e.target.value })
                   }
-                  placeholder="Kategori açıklaması..."
+                  placeholder={t('categories.plcCatDesc')}
                   rows={3}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black resize-none"
                 />
@@ -326,7 +328,7 @@ export default function CategoriesPage() {
                 }}
                 className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-100 transition-all font-medium text-gray-700"
               >
-                İptal
+                {t('categories.btnCancel')}
               </button>
               <button
                 onClick={handleAddCategory}
@@ -334,7 +336,7 @@ export default function CategoriesPage() {
                 className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 transition-all font-semibold flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus size={20} />
-                <span>Kategori Ekle</span>
+                <span>{t('categories.btnAdd')}</span>
               </button>
             </div>
           </div>
@@ -346,7 +348,7 @@ export default function CategoriesPage() {
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold flex items-center space-x-2">
                 <Edit2 size={24} />
-                <span>Kategoriyi Düzenle</span>
+                <span>{t('categories.modalEditTitle')}</span>
               </h2>
               <button
                 onClick={() => {
@@ -362,7 +364,7 @@ export default function CategoriesPage() {
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Kategori Adı *
+                  {t('categories.lblCatName')}
                 </label>
                 <input
                   type="text"
@@ -370,14 +372,14 @@ export default function CategoriesPage() {
                   onChange={(e) =>
                     setSelectedCategory({ ...selectedCategory, name: e.target.value })
                   }
-                  placeholder="Örn: Beyaz Eşya"
+                  placeholder={t('categories.plcCatName')}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Açıklama
+                  {t('categories.lblCatDesc')}
                 </label>
                 <textarea
                   value={selectedCategory.description || ""}
@@ -387,7 +389,7 @@ export default function CategoriesPage() {
                       description: e.target.value,
                     })
                   }
-                  placeholder="Kategori açıklaması..."
+                  placeholder={t('categories.plcCatDesc')}
                   rows={3}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black resize-none"
                 />
@@ -402,7 +404,7 @@ export default function CategoriesPage() {
                 }}
                 className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-100 transition-all font-medium text-gray-700"
               >
-                İptal
+                {t('categories.btnCancel')}
               </button>
               <button
                 onClick={handleUpdateCategory}
@@ -410,7 +412,7 @@ export default function CategoriesPage() {
                 className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 transition-all font-semibold flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Edit2 size={20} />
-                <span>Güncelle</span>
+                <span>{t('categories.btnUpdate')}</span>
               </button>
             </div>
           </div>

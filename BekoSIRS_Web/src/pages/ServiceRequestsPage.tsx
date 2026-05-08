@@ -17,6 +17,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { serviceRequestAPI, staffAPI } from "../services/api";
+import { useTranslation } from "react-i18next";
 
 interface ServiceRequest {
   id: number;
@@ -55,46 +56,48 @@ interface StaffUser {
   role: string;
 }
 
-// Simplified 3-status system
-const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: any }> = {
-  pending: { label: "Bekleniyor", color: "text-orange-600", bgColor: "bg-orange-100", icon: Clock },
-  in_queue: { label: "Bekleniyor", color: "text-orange-600", bgColor: "bg-orange-100", icon: Clock },
-  in_progress: { label: "Çözülüyor", color: "text-blue-600", bgColor: "bg-blue-100", icon: Play },
-  completed: { label: "Çözüldü", color: "text-green-600", bgColor: "bg-green-100", icon: CheckCircle },
-  cancelled: { label: "İptal", color: "text-gray-600", bgColor: "bg-gray-100", icon: X },
-};
-
-// Status options for dropdown (only 3 main statuses)
-const statusOptions = [
-  { value: "pending", label: "Bekleniyor" },
-  { value: "in_progress", label: "Çözülüyor" },
-  { value: "completed", label: "Çözüldü" },
-];
-
-const requestTypeLabels: Record<string, string> = {
-  repair: "Tamir",
-  maintenance: "Bakım",
-  warranty: "Garanti",
-  complaint: "Şikayet",
-  other: "Diğer",
-};
-
-// Tabs configuration
-const tabs = [
-  { id: 'all', label: 'Tümü (Aktif)' },
-  { id: 'repair', label: 'Tamir' },
-  { id: 'maintenance', label: 'Bakım' },
-  { id: 'warranty', label: 'Garanti' },
-  { id: 'complaint', label: 'Şikayet' },
-  { id: 'history', label: 'Geçmiş / Tamamlanan' },
-];
-
 export default function ServiceRequestsPage() {
+  const { t } = useTranslation();
+
+  // Simplified 3-status system
+  const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: any }> = {
+    pending: { label: t('serviceRequests.statusPending'), color: "text-orange-600", bgColor: "bg-orange-100", icon: Clock },
+    in_queue: { label: t('serviceRequests.statusPending'), color: "text-orange-600", bgColor: "bg-orange-100", icon: Clock },
+    in_progress: { label: t('serviceRequests.statusInProgress'), color: "text-blue-600", bgColor: "bg-blue-100", icon: Play },
+    completed: { label: t('serviceRequests.statusCompleted'), color: "text-green-600", bgColor: "bg-green-100", icon: CheckCircle },
+    cancelled: { label: t('serviceRequests.statusCancelled'), color: "text-gray-600", bgColor: "bg-gray-100", icon: X },
+  };
+
+  // Status options for dropdown (only 3 main statuses)
+  const statusOptions = [
+    { value: "pending", label: t('serviceRequests.statusPending') },
+    { value: "in_progress", label: t('serviceRequests.statusInProgress') },
+    { value: "completed", label: t('serviceRequests.statusCompleted') },
+  ];
+
+  const requestTypeLabels: Record<string, string> = {
+    repair: t('serviceRequests.typeRepair'),
+    maintenance: t('serviceRequests.typeMaintenance'),
+    warranty: t('serviceRequests.typeWarranty'),
+    complaint: t('serviceRequests.typeComplaint'),
+    other: t('serviceRequests.typeOther'),
+  };
+
+  // Tabs configuration
+  const tabs = [
+    { id: 'all', label: t('serviceRequests.tabAllActive') },
+    { id: 'repair', label: t('serviceRequests.typeRepair') },
+    { id: 'maintenance', label: t('serviceRequests.typeMaintenance') },
+    { id: 'warranty', label: t('serviceRequests.typeWarranty') },
+    { id: 'complaint', label: t('serviceRequests.typeComplaint') },
+    { id: 'history', label: t('serviceRequests.tabHistory') },
+  ];
+
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Tümü");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("all");
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
 
@@ -118,7 +121,7 @@ export default function ServiceRequestsPage() {
       const requestsArray = Array.isArray(response.data) ? response.data : response.data.results || [];
       setRequests(requestsArray);
     } catch (err: any) {
-      setError(err.message || "Veriler yüklenemedi");
+      setError(err.message || t('serviceRequests.errorLoad'));
     } finally {
       setLoading(false);
     }
@@ -161,7 +164,7 @@ export default function ServiceRequestsPage() {
       };
       setSelectedRequest(updated);
     } catch (err: any) {
-      alert(err.response?.data?.error || "Atama yapılamadı");
+      alert(err.response?.data?.error || t('serviceRequests.errorAssign'));
     } finally {
       setAssignLoading(false);
     }
@@ -190,7 +193,7 @@ export default function ServiceRequestsPage() {
       // If moved to completed/cancelled and we are in active tab, maybe close panel or warn?
       // For now just keeping it open.
     } catch (err: any) {
-      alert(err.response?.data?.error || "İşlem başarısız");
+      alert(err.response?.data?.error || t('serviceRequests.errorAction'));
     } finally {
       setActionLoading(false);
     }
@@ -212,7 +215,7 @@ export default function ServiceRequestsPage() {
       const updated = { ...selectedRequest, queue_entry: updatedQueue };
       setSelectedRequest(updated);
     } catch (err: any) {
-      alert(err.response?.data?.error || "Öncelik güncellenemedi");
+      alert(err.response?.data?.error || t('serviceRequests.errorPriority'));
     } finally {
       setActionLoading(false);
     }
@@ -227,7 +230,7 @@ export default function ServiceRequestsPage() {
       await serviceRequestAPI.patch(selectedRequest.id, { resolution_notes: resolutionNotes });
       await fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.error || "Notlar kaydedilemedi");
+      alert(err.response?.data?.error || t('serviceRequests.errorNotes'));
     } finally {
       setActionLoading(false);
     }
@@ -246,7 +249,7 @@ export default function ServiceRequestsPage() {
       req.description?.toLowerCase().includes(searchTerm.toLowerCase());
 
     // 2. Status Filter (Dropdown)
-    let matchesStatus = statusFilter === "Tümü";
+    let matchesStatus = statusFilter === "all";
     if (statusFilter === "pending") matchesStatus = req.status === "pending" || req.status === "in_queue";
     else if (statusFilter === "in_progress") matchesStatus = req.status === "in_progress";
     else if (statusFilter === "completed") matchesStatus = req.status === "completed";
@@ -332,7 +335,7 @@ export default function ServiceRequestsPage() {
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center space-x-3">
               <Wrench size={28} className="text-purple-500" />
-              <h1 className="text-2xl font-bold text-gray-900">Servis Talepleri</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{t('serviceRequests.title')}</h1>
             </div>
           </div>
         </header>
@@ -340,8 +343,8 @@ export default function ServiceRequestsPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-purple-900 via-purple-800 to-black text-white">
           <div className="max-w-7xl mx-auto px-6 py-8">
-            <h2 className="text-2xl font-bold mb-1">Servis Yönetimi</h2>
-            <p className="text-purple-200 text-sm">Talepleri hızlıca işleme alın</p>
+            <h2 className="text-2xl font-bold mb-1">{t('serviceRequests.management')}</h2>
+            <p className="text-purple-200 text-sm">{t('serviceRequests.subtitle')}</p>
 
             {/* Stats - 3 status */}
             <div className="grid grid-cols-3 gap-4 mt-6">
@@ -371,7 +374,7 @@ export default function ServiceRequestsPage() {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Talep ara..."
+                placeholder={t('serviceRequests.searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-11 pr-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
@@ -385,10 +388,10 @@ export default function ServiceRequestsPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer bg-white text-sm"
               >
-                <option value="Tümü">Tümü</option>
-                <option value="pending">Bekleniyor</option>
-                <option value="in_progress">Çözülüyor</option>
-                <option value="completed">Çözüldü</option>
+                <option value="all">{t('serviceRequests.statusAll')}</option>
+                <option value="pending">{t('serviceRequests.statusPending')}</option>
+                <option value="in_progress">{t('serviceRequests.statusInProgress')}</option>
+                <option value="completed">{t('serviceRequests.statusCompleted')}</option>
               </select>
             </div>
           </div>
@@ -440,14 +443,14 @@ export default function ServiceRequestsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Müşteri</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ürün</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tür</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Durum</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Atanan</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tarih</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">İşlem</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableId')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableCustomer')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableProduct')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableType')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableStatus')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableAssigned')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableDate')}</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">{t('serviceRequests.tableAction')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -515,12 +518,12 @@ export default function ServiceRequestsPage() {
                   {activeTab === 'history' ? (
                     <>
                       <CheckCircle size={48} className="mx-auto text-gray-200 mb-4" />
-                      <p className="text-gray-500">Henüz tamamlanmış veya taranmış bir talep yok</p>
+                      <p className="text-gray-500">{t('serviceRequests.noHistory')}</p>
                     </>
                   ) : (
                     <>
                       <Wrench size={48} className="mx-auto text-gray-200 mb-4" />
-                      <p className="text-gray-500">Süper! Bu kategoride bekleyen iş yok</p>
+                      <p className="text-gray-500">{t('serviceRequests.noActive')}</p>
                     </>
                   )}
                 </div>
@@ -557,7 +560,7 @@ export default function ServiceRequestsPage() {
               {/* Customer Info */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                  <User size={14} /> Müşteri Bilgileri
+                  <User size={14} /> {t('serviceRequests.customerInfo')}
                 </h3>
                 <div className="space-y-2">
                   <p className="font-semibold text-lg">{selectedRequest.customer_name}</p>
@@ -585,11 +588,11 @@ export default function ServiceRequestsPage() {
               {/* Product & Type */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-xs text-gray-500 uppercase">Ürün</p>
+                  <p className="text-xs text-gray-500 uppercase">{t('serviceRequests.tableProduct')}</p>
                   <p className="font-semibold text-sm mt-1">{selectedRequest.product_name}</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-xs text-gray-500 uppercase">Tür</p>
+                  <p className="text-xs text-gray-500 uppercase">{t('serviceRequests.tableType')}</p>
                   <p className="font-semibold text-sm mt-1">
                     {requestTypeLabels[selectedRequest.request_type] || selectedRequest.request_type}
                   </p>
@@ -599,21 +602,21 @@ export default function ServiceRequestsPage() {
               {/* Complaint/Description */}
               <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
                 <h3 className="text-xs font-bold text-orange-600 uppercase mb-2 flex items-center gap-2">
-                  <FileText size={14} /> Şikayet / Açıklama
+                  <FileText size={14} /> {t('serviceRequests.complaintDesc')}
                 </h3>
-                <p className="text-gray-800">{selectedRequest.description || "Açıklama yok"}</p>
+                <p className="text-gray-800">{selectedRequest.description || t('serviceRequests.noDesc')}</p>
               </div>
 
               {/* Assign to Staff */}
               <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
                 <h3 className="text-xs font-bold text-purple-600 uppercase mb-3 flex items-center gap-2">
-                  <UserCheck size={14} /> Personele Ata
+                  <UserCheck size={14} /> {t('serviceRequests.assignStaff')}
                 </h3>
 
                 {selectedRequest.assigned_to_name && (
                   <div className="mb-3 flex items-center gap-2 text-sm text-purple-800 bg-white rounded-lg px-3 py-2 border border-purple-200">
                     <UserCheck size={14} className="text-purple-500" />
-                    <span>Mevcut: <strong>{selectedRequest.assigned_to_name}</strong></span>
+                    <span>{t('serviceRequests.currentAssigned')} <strong>{selectedRequest.assigned_to_name}</strong></span>
                   </div>
                 )}
 
@@ -625,7 +628,7 @@ export default function ServiceRequestsPage() {
                       disabled={assignLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
                       className="w-full px-3 py-2.5 border border-purple-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm disabled:opacity-50"
                     >
-                      <option value="">Kişi seçin...</option>
+                      <option value="">{t('serviceRequests.selectPerson')}</option>
                       {staffUsers.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.first_name && u.last_name
@@ -641,18 +644,18 @@ export default function ServiceRequestsPage() {
                     disabled={!selectedAssignee || assignLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
                     className="px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                   >
-                    {assignLoading ? "..." : "Ata"}
+                    {assignLoading ? "..." : t('serviceRequests.assignBtn')}
                   </button>
                 </div>
 
                 {staffUsers.length === 0 && (
-                  <p className="text-xs text-gray-400 mt-2">Atanabilecek personel bulunamadı.</p>
+                  <p className="text-xs text-gray-400 mt-2">{t('serviceRequests.noStaff')}</p>
                 )}
               </div>
 
               {/* Status Selector */}
               <div>
-                <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Durum Değiştir</h3>
+                <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">{t('serviceRequests.changeStatus')}</h3>
                 <div className="relative">
                   <select
                     value={getDisplayStatus(selectedRequest.status)}
@@ -673,7 +676,7 @@ export default function ServiceRequestsPage() {
               {/* Priority Selector */}
               {selectedRequest.queue_entry && (
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Sıra Önceliği (Priority)</h3>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">{t('serviceRequests.priorityTitle')}</h3>
                   <div className="relative">
                     <select
                       value={selectedRequest.queue_entry.priority.toString()}
@@ -681,26 +684,26 @@ export default function ServiceRequestsPage() {
                       disabled={actionLoading || selectedRequest.status === "cancelled" || selectedRequest.status === "completed"}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white font-medium disabled:opacity-50"
                     >
-                      <option value="1">1 - Yüksek Öncelik</option>
-                      <option value="2">2 - Normal Öncelik</option>
-                      <option value="3">3 - Düşük Öncelik</option>
+                      <option value="1">{t('serviceRequests.priorityHigh')}</option>
+                      <option value="2">{t('serviceRequests.priorityNormal')}</option>
+                      <option value="3">{t('serviceRequests.priorityLow')}</option>
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
-                    Mevcut Sıra No: <span className="font-bold">{selectedRequest.queue_entry.queue_number}</span> |
-                    Tahmini Bekleme: <span className="font-bold">{selectedRequest.queue_entry.estimated_wait_time} dk</span>
+                    {t('serviceRequests.currentQueueNo')} <span className="font-bold">{selectedRequest.queue_entry.queue_number}</span> |
+                    {t('serviceRequests.estimatedWait')} <span className="font-bold">{selectedRequest.queue_entry.estimated_wait_time} {t('serviceRequests.min', { defaultValue: 'dk' })}</span>
                   </p>
                 </div>
               )}
 
               {/* Resolution Notes */}
               <div>
-                <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Çözüm Notları</h3>
+                <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">{t('serviceRequests.resolutionNotesTitle')}</h3>
                 <textarea
                   value={resolutionNotes}
                   onChange={(e) => setResolutionNotes(e.target.value)}
-                  placeholder="Yapılan işlemleri yazın..."
+                  placeholder={t('serviceRequests.resolutionNotesPlaceholder')}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
                   rows={4}
                 />
@@ -709,14 +712,14 @@ export default function ServiceRequestsPage() {
                   disabled={actionLoading}
                   className="mt-2 w-full bg-gray-100 text-gray-700 py-2 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50"
                 >
-                  Notları Kaydet
+                  {t('serviceRequests.saveNotesBtn')}
                 </button>
               </div>
 
               {/* Existing Resolution Notes (if completed) */}
               {selectedRequest.status === "completed" && selectedRequest.resolution_notes && (
                 <div className="bg-green-50 rounded-xl p-4 border border-green-100">
-                  <h3 className="text-xs font-bold text-green-600 uppercase mb-2">Çözüm</h3>
+                  <h3 className="text-xs font-bold text-green-600 uppercase mb-2">{t('serviceRequests.resolution')}</h3>
                   <p className="text-gray-800">{selectedRequest.resolution_notes}</p>
                 </div>
               )}
@@ -725,7 +728,7 @@ export default function ServiceRequestsPage() {
             {/* Footer */}
             <div className="p-4 border-t bg-gray-50">
               <p className="text-xs text-gray-400 text-center">
-                Oluşturulma: {formatDate(selectedRequest.created_at)}
+                {t('serviceRequests.createdAt')} {formatDate(selectedRequest.created_at)}
               </p>
             </div>
           </div>

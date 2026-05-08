@@ -5,6 +5,7 @@ import { deliveryAPI, deliveryRouteAPI } from "../services/api";
 import api from "../services/api";
 import type { Delivery, DeliveryStats } from "../types/delivery";
 import Toast, { type ToastType } from "../components/Toast";
+import { useTranslation } from "react-i18next";
 
 /* ============ Interfaces ============ */
 interface RouteStop {
@@ -44,6 +45,7 @@ interface DriverUser {
 }
 
 export default function DeliveriesPage() {
+    const { t } = useTranslation();
     const [deliveries, setDeliveries] = useState<Delivery[]>([]);
     const [stats, setStats] = useState<DeliveryStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -113,9 +115,9 @@ export default function DeliveriesPage() {
             const data = response.data;
             const list = data?.results || data;
             setDeliveries(Array.isArray(list) ? list : []);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error fetching deliveries:", error);
-            showToast("Teslimatlar yüklenirken hata oluştu", "error");
+            showToast(t('deliveries.loadError', { msg: error.message }), "error");
         } finally {
             setLoading(false);
         }
@@ -171,11 +173,11 @@ export default function DeliveriesPage() {
         try {
             setDeleting(true);
             await deliveryAPI.delete(deleteId);
-            showToast("Teslimat silindi", "success");
+            showToast(t('deliveries.deleteSuccess'), "success");
             fetchData(); fetchStats(); fetchRoutes();
             setDeleteModalOpen(false);
         } catch (error: any) {
-            showToast(error.response?.data?.error || "Silme işlemi başarısız", "error");
+            showToast(t('deliveries.deleteError', { msg: error.response?.data?.error || "Silme işlemi başarısız" }), "error");
         } finally {
             setDeleting(false);
             setDeleteId(null);
@@ -195,11 +197,11 @@ export default function DeliveriesPage() {
         try {
             setDeletingRoute(true);
             await api.delete(`/delivery-routes/${deleteRouteId}/`);
-            showToast("Rota silindi ve teslimatlar boşa çıkarıldı", "success");
+            showToast(t('deliveries.routeDeleteSuccess'), "success");
             fetchData(); fetchStats(); fetchRoutes();
             setDeleteRouteModalOpen(false);
         } catch (error: any) {
-            showToast(error.response?.data?.error || "Rota silme işlemi başarısız", "error");
+            showToast(t('deliveries.routeDeleteError', { msg: error.response?.data?.error || "Rota silme işlemi başarısız" }), "error");
         } finally {
             setDeletingRoute(false);
             setDeleteRouteId(null);
@@ -218,11 +220,11 @@ export default function DeliveriesPage() {
         };
         try {
             await deliveryAPI.update(selectedDelivery.id, data);
-            showToast("Teslimat güncellendi", "success");
+            showToast(t('deliveries.updateSuccess'), "success");
             setModalOpen(false);
             fetchData(); fetchStats();
         } catch {
-            showToast("Güncelleme başarısız", "error");
+            showToast(t('deliveries.updateError'), "error");
         } finally {
             setSubmitting(false);
         }
@@ -245,7 +247,7 @@ export default function DeliveriesPage() {
     const handleOptimize = async () => {
         if (selectedIds.length === 0) return;
         if (!dateFilter) {
-            showToast("Lütfen önce bir tarih seçin", "warning");
+            showToast(t('deliveries.selectDateWarning'), "warning");
             return;
         }
         setOptimizing(true);
@@ -255,13 +257,13 @@ export default function DeliveriesPage() {
                 delivery_ids: selectedIds
             });
             if (response.data.route_id) {
-                showToast(`Rota optimize edildi! ${response.data.stop_count} durak, ${response.data.total_distance_km} km`, "success");
+                showToast(t('deliveries.optimizeSuccess', { stops: response.data.stop_count, distance: response.data.total_distance_km }), "success");
                 fetchData();
                 fetchRoutes();
                 setSelectedIds([]);
             }
         } catch (error: any) {
-            showToast(error.response?.data?.error || "Optimizasyon başarısız", "error");
+            showToast(t('deliveries.optimizeError', { msg: error.response?.data?.error || "Optimizasyon başarısız" }), "error");
         } finally {
             setOptimizing(false);
         }
@@ -281,18 +283,18 @@ export default function DeliveriesPage() {
             // Find all delivery IDs in this route
             const route = routes.find(r => r.id === assigningRouteId);
             if (!route || !route.stops.length) {
-                showToast("Rota durakları bulunamadı", "error");
+                showToast(t('deliveries.routeNoStops'), "error");
                 return;
             }
             const deliveryIds = route.stops.map(s => s.delivery.id);
 
             await deliveryAPI.assignDriver(deliveryIds, Number(selectedDriverId));
-            showToast("Teslimatçı atandı!", "success");
+            showToast(t('deliveries.driverAssignSuccess'), "success");
             setDriverModalOpen(false);
             fetchRoutes();
             fetchData();
         } catch (error: any) {
-            showToast(error.response?.data?.error || "Atama başarısız", "error");
+            showToast(t('deliveries.driverAssignError', { msg: error.response?.data?.error || "Atama başarısız" }), "error");
         } finally {
             setAssigningDriver(false);
         }
@@ -306,19 +308,19 @@ export default function DeliveriesPage() {
 
     const handleRefresh = () => {
         fetchData(); fetchStats(); fetchRoutes();
-        showToast("Liste güncellendi", "success");
+        showToast(t('deliveries.listUpdated'), "success");
     };
 
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'WAITING':
-                return <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.Clock size={12} /> Bekliyor</span>;
+                return <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.Clock size={12} /> {t('deliveries.statusWaiting')}</span>;
             case 'OUT_FOR_DELIVERY':
-                return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.Truck size={12} /> Dağıtımda</span>;
+                return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.Truck size={12} /> {t('deliveries.statusOut')}</span>;
             case 'DELIVERED':
-                return <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.CheckCircle size={12} /> Teslim Edildi</span>;
+                return <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.CheckCircle size={12} /> {t('deliveries.statusDelivered')}</span>;
             case 'FAILED':
-                return <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.XCircle size={12} /> Başarısız</span>;
+                return <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium flex items-center gap-1"><Lucide.XCircle size={12} /> {t('deliveries.statusFailed')}</span>;
             default:
                 return <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">{status}</span>;
         }
@@ -327,11 +329,11 @@ export default function DeliveriesPage() {
     const getRouteStatusBadge = (status: string) => {
         switch (status) {
             case 'PLANNED':
-                return <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium">Planlandı</span>;
+                return <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium">{t('deliveries.statusPlanned')}</span>;
             case 'IN_PROGRESS':
-                return <span className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-full text-xs font-medium">Devam Ediyor</span>;
+                return <span className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-full text-xs font-medium">{t('deliveries.statusInProgress')}</span>;
             case 'COMPLETED':
-                return <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-medium">Tamamlandı</span>;
+                return <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-medium">{t('deliveries.statusCompleted')}</span>;
             default:
                 return <span className="px-2.5 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded-full text-xs font-medium">{status}</span>;
         }
@@ -347,12 +349,12 @@ export default function DeliveriesPage() {
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                                 <Lucide.Truck className="text-blue-600" />
-                                Teslimat Yönetimi
+                                {t('deliveries.title')}
                             </h1>
-                            <p className="text-sm text-gray-500 mt-1">Teslimat planlaması, rota yönetimi ve takibi</p>
+                            <p className="text-sm text-gray-500 mt-1">{t('deliveries.subtitle')}</p>
                         </div>
                         <div className="flex gap-3">
-                            <button onClick={handleRefresh} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title="Yenile">
+                            <button onClick={handleRefresh} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title={t('deliveries.refresh')}>
                                 <Lucide.RefreshCw size={20} />
                             </button>
                         </div>
@@ -369,7 +371,7 @@ export default function DeliveriesPage() {
                                     <Lucide.Clock size={24} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-medium">Bekleyen Teslimatlar</p>
+                                    <p className="text-sm text-gray-500 font-medium">{t('deliveries.kpiWaiting')}</p>
                                     <p className="text-2xl font-bold text-gray-900">{stats?.waiting_count || 0}</p>
                                 </div>
                             </div>
@@ -378,7 +380,7 @@ export default function DeliveriesPage() {
                                     <Lucide.Calendar size={24} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-medium">Seçili Tarihte Planlanan</p>
+                                    <p className="text-sm text-gray-500 font-medium">{t('deliveries.kpiScheduled')}</p>
                                     <p className="text-2xl font-bold text-gray-900">{stats?.scheduled_for_selected_date_count || 0}</p>
                                 </div>
                             </div>
@@ -387,7 +389,7 @@ export default function DeliveriesPage() {
                                     <Lucide.CheckCircle size={24} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-medium">Son 10 Günde Teslim Edilen</p>
+                                    <p className="text-sm text-gray-500 font-medium">{t('deliveries.kpiDeliveredLast10')}</p>
                                     <p className="text-2xl font-bold text-gray-900">{stats?.delivered_last_10_days_count || 0}</p>
                                 </div>
                             </div>
@@ -397,7 +399,7 @@ export default function DeliveriesPage() {
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-center">
                             <div className="flex items-center gap-2">
                                 <Lucide.Filter className="text-gray-400" size={20} />
-                                <span className="text-sm font-medium text-gray-700">Filtreler:</span>
+                                <span className="text-sm font-medium text-gray-700">{t('deliveries.filterTitle')}</span>
                             </div>
 
                             <div className="relative">
@@ -416,11 +418,11 @@ export default function DeliveriesPage() {
                                     onChange={(e) => setStatusFilter(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none bg-white"
                                 >
-                                    <option value="">Tüm Durumlar</option>
-                                    <option value="WAITING">Bekliyor</option>
-                                    <option value="OUT_FOR_DELIVERY">Dağıtımda</option>
-                                    <option value="DELIVERED">Teslim Edildi</option>
-                                    <option value="FAILED">Başarısız</option>
+                                    <option value="">{t('deliveries.allStatuses')}</option>
+                                    <option value="WAITING">{t('deliveries.statusWaiting')}</option>
+                                    <option value="OUT_FOR_DELIVERY">{t('deliveries.statusOut')}</option>
+                                    <option value="DELIVERED">{t('deliveries.statusDelivered')}</option>
+                                    <option value="FAILED">{t('deliveries.statusFailed')}</option>
                                 </select>
                                 <Lucide.ListFilter className="absolute left-3 top-2.5 text-gray-400" size={16} />
                                 <Lucide.ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16} />
@@ -431,7 +433,7 @@ export default function DeliveriesPage() {
                                     onClick={() => { setDateFilter(""); setStatusFilter(""); }}
                                     className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
                                 >
-                                    <Lucide.X size={16} /> Filtreleri Temizle
+                                    <Lucide.X size={16} /> {t('deliveries.clearFilters')}
                                 </button>
                             )}
                         </div>
@@ -443,14 +445,14 @@ export default function DeliveriesPage() {
                                     <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
                                         {selectedIds.length}
                                     </div>
-                                    <span className="text-blue-900 font-medium">Teslimat seçildi</span>
+                                    <span className="text-blue-900 font-medium">{t('deliveries.selectedCount')}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => setSelectedIds([])}
                                         className="px-4 py-2 text-gray-600 hover:bg-white hover:text-gray-900 rounded-lg transition-colors font-medium text-sm"
                                     >
-                                        Vazgeç
+                                        {t('deliveries.cancel')}
                                     </button>
                                     <button
                                         onClick={handleOptimize}
@@ -458,7 +460,7 @@ export default function DeliveriesPage() {
                                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2"
                                     >
                                         {optimizing ? <Lucide.Loader2 className="animate-spin" size={18} /> : <Lucide.Zap size={18} />}
-                                        Rotayı Optimize Et
+                                        {t('deliveries.optimizeRoute')}
                                     </button>
                                 </div>
                             </div>
@@ -470,7 +472,7 @@ export default function DeliveriesPage() {
                                 <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-green-50 to-blue-50 flex items-center justify-between">
                                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
                                         <Lucide.Route size={20} className="text-green-600" />
-                                        Bu Tarihteki Rotalar ({routes.length})
+                                        {t('deliveries.routesOnDate')} ({routes.length})
                                     </h3>
                                 </div>
 
@@ -488,21 +490,21 @@ export default function DeliveriesPage() {
                                                     </div>
                                                     <div>
                                                         <div className="font-medium text-gray-900 flex items-center gap-2">
-                                                            Rota #{route.id}
+                                                            {t('deliveries.routeSummary')} #{route.id}
                                                             {getRouteStatusBadge(route.status)}
                                                         </div>
                                                         <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
                                                             <span className="flex items-center gap-1">
-                                                                <Lucide.MapPin size={12} /> {route.stop_count} durak
+                                                                <Lucide.MapPin size={12} /> {route.stop_count} {t('deliveries.routeStopCount')}
                                                             </span>
                                                             <span className="flex items-center gap-1">
-                                                                <Lucide.Navigation size={12} /> {route.total_distance_km} km
+                                                                <Lucide.Navigation size={12} /> {route.total_distance_km} {t('deliveries.routeDistance')}
                                                             </span>
                                                             <span className="flex items-center gap-1">
                                                                 <Lucide.Clock size={12} />
                                                                 {Math.floor(route.total_duration_min / 60) > 0
-                                                                    ? `${Math.floor(route.total_duration_min / 60)} saat ${Math.round(route.total_duration_min % 60)} dk`
-                                                                    : `${Math.round(route.total_duration_min)} dk`
+                                                                    ? `${Math.floor(route.total_duration_min / 60)} ${t('deliveries.routeDurationHours')} ${Math.round(route.total_duration_min % 60)} ${t('deliveries.routeDurationMins')}`
+                                                                    : `${Math.round(route.total_duration_min)} ${t('deliveries.routeDurationMins')}`
                                                                 }
                                                             </span>
                                                         </div>
@@ -519,13 +521,13 @@ export default function DeliveriesPage() {
                                                             onClick={(e) => { e.stopPropagation(); openDriverModal(route.id); }}
                                                             className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors"
                                                         >
-                                                            <Lucide.UserPlus size={14} /> Teslimatçı Ata
+                                                            <Lucide.UserPlus size={14} /> {t('deliveries.assignDriver')}
                                                         </button>
                                                     )}
                                                     <button
                                                         onClick={(e) => handleDeleteRoute(route.id, e)}
                                                         className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition-colors ml-1"
-                                                        title="Rotayı Sil"
+                                                        title={t('deliveries.deleteRoute')}
                                                     >
                                                         <Lucide.Trash2 size={14} />
                                                     </button>
@@ -541,20 +543,20 @@ export default function DeliveriesPage() {
                                                     {/* Route KPI Row */}
                                                     <div className="grid grid-cols-3 gap-4 mb-4">
                                                         <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-100">
-                                                            <p className="text-sm text-blue-600 font-medium">Toplam Mesafe</p>
-                                                            <p className="text-2xl font-bold text-blue-800">{route.total_distance_km} km</p>
+                                                            <p className="text-sm text-blue-600 font-medium">{t('deliveries.totalDistance')}</p>
+                                                            <p className="text-2xl font-bold text-blue-800">{route.total_distance_km} {t('deliveries.routeDistance')}</p>
                                                         </div>
                                                         <div className="bg-orange-50 rounded-xl p-4 text-center border border-orange-100">
-                                                            <p className="text-sm text-orange-600 font-medium">Tahmini Süre</p>
+                                                            <p className="text-sm text-orange-600 font-medium">{t('deliveries.estimatedTime')}</p>
                                                             <p className="text-2xl font-bold text-orange-800">
                                                                 {Math.floor(route.total_duration_min / 60) > 0
-                                                                    ? `${Math.floor(route.total_duration_min / 60)} saat ${Math.round(route.total_duration_min % 60)} dk`
-                                                                    : `${Math.round(route.total_duration_min)} dk`
+                                                                    ? `${Math.floor(route.total_duration_min / 60)} ${t('deliveries.routeDurationHours')} ${Math.round(route.total_duration_min % 60)} ${t('deliveries.routeDurationMins')}`
+                                                                    : `${Math.round(route.total_duration_min)} ${t('deliveries.routeDurationMins')}`
                                                                 }
                                                             </p>
                                                         </div>
                                                         <div className="bg-green-50 rounded-xl p-4 text-center border border-green-100">
-                                                            <p className="text-sm text-green-600 font-medium">Durak Sayısı</p>
+                                                            <p className="text-sm text-green-600 font-medium">{t('deliveries.stopCount')}</p>
                                                             <p className="text-2xl font-bold text-green-800">{route.stop_count}</p>
                                                         </div>
                                                     </div>
@@ -577,7 +579,7 @@ export default function DeliveriesPage() {
                                                                 <div className="flex-1 bg-white rounded-lg border border-gray-200 p-3 mb-2 shadow-sm">
                                                                     <div className="flex justify-between items-start">
                                                                         <div>
-                                                                            <p className="font-medium text-gray-900">{stop.delivery?.customer_name || 'Müşteri'}</p>
+                                                                            <p className="font-medium text-gray-900">{stop.delivery?.customer_name || t('deliveries.customer')}</p>
                                                                             <p className="text-sm text-gray-500">{stop.delivery?.product_name}</p>
                                                                             {stop.delivery?.customer_address && (
                                                                                 <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -586,8 +588,8 @@ export default function DeliveriesPage() {
                                                                             )}
                                                                         </div>
                                                                         <div className="text-right text-sm flex-shrink-0 ml-4">
-                                                                            <p className="text-gray-700 font-semibold">{stop.distance_from_previous_km} km</p>
-                                                                            <p className="text-xs text-gray-500">{stop.duration_from_previous_min} dk</p>
+                                                                            <p className="text-gray-700 font-semibold">{stop.distance_from_previous_km} {t('deliveries.routeDistance')}</p>
+                                                                            <p className="text-xs text-gray-500">{stop.duration_from_previous_min} {t('deliveries.routeDurationMins')}</p>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -602,7 +604,7 @@ export default function DeliveriesPage() {
                                                                 onClick={() => openDriverModal(route.id)}
                                                                 className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors shadow-sm"
                                                             >
-                                                                <Lucide.UserPlus size={16} /> Teslimatçıya Ata
+                                                                <Lucide.UserPlus size={16} /> {t('deliveries.assignDriver')}
                                                             </button>
                                                         </div>
                                                     )}
@@ -619,21 +621,21 @@ export default function DeliveriesPage() {
                             <div className="px-6 py-4 border-b border-gray-100">
                                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
                                     <Lucide.Package size={18} className="text-gray-500" />
-                                    Teslimatlar ({deliveries.length})
+                                    {t('deliveries.tableTitle')} ({deliveries.length})
                                 </h3>
                             </div>
                             {loading ? (
                                 <div className="p-12 text-center">
                                     <Lucide.Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-                                    <p className="text-gray-500">Teslimatlar yükleniyor...</p>
+                                    <p className="text-gray-500">{t('deliveries.loading')}</p>
                                 </div>
                             ) : deliveries.length === 0 ? (
                                 <div className="p-12 text-center">
                                     <div className="w-16 h-16 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <Lucide.Inbox size={32} />
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-1">Teslimat Bulunamadı</h3>
-                                    <p className="text-gray-500">Seçilen filtrelere uygun teslimat kaydı yok.</p>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-1">{t('deliveries.notFound')}</h3>
+                                    <p className="text-gray-500">{t('deliveries.notFoundDesc')}</p>
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
@@ -648,12 +650,12 @@ export default function DeliveriesPage() {
                                                         className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                 </th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Müşteri / Ürün</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adres</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarih</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sıra</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">İşlemler</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colCustomerProduct')}</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colAddress')}</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colDate')}</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colOrder')}</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colStatus')}</th>
+                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('deliveries.colActions')}</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200">
@@ -670,7 +672,7 @@ export default function DeliveriesPage() {
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center">
                                                             <div>
-                                                                <div className="text-sm font-medium text-gray-900">{delivery.customer_name || 'İsimsiz Müşteri'}</div>
+                                                                <div className="text-sm font-medium text-gray-900">{delivery.customer_name || t('deliveries.unnamedCustomer')}</div>
                                                                 <div className="text-sm text-gray-500">{delivery.product_name}</div>
                                                             </div>
                                                         </div>
@@ -681,11 +683,11 @@ export default function DeliveriesPage() {
                                                         </div>
                                                         {delivery.address_lat && delivery.address_lng ? (
                                                             <div className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
-                                                                <Lucide.MapPin size={10} /> Konum Var
+                                                                <Lucide.MapPin size={10} /> {t('deliveries.locationAvailable')}
                                                             </div>
                                                         ) : (
                                                             <div className="text-xs text-orange-600 flex items-center gap-1 mt-0.5 font-medium">
-                                                                <Lucide.AlertTriangle size={10} /> Konum Eksik
+                                                                <Lucide.AlertTriangle size={10} /> {t('deliveries.locationMissing')}
                                                             </div>
                                                         )}
                                                     </td>
@@ -748,7 +750,7 @@ export default function DeliveriesPage() {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h3 className="font-bold text-gray-900">Teslimat Düzenle</h3>
+                            <h3 className="font-bold text-gray-900">{t('deliveries.editTitle')}</h3>
                             <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                                 <Lucide.X size={20} />
                             </button>
@@ -759,35 +761,35 @@ export default function DeliveriesPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Durum</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('deliveries.editStatus')}</label>
                                 <select name="status" defaultValue={selectedDelivery.status}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                                    <option value="WAITING">Bekliyor</option>
-                                    <option value="OUT_FOR_DELIVERY">Dağıtımda</option>
-                                    <option value="DELIVERED">Teslim Edildi</option>
-                                    <option value="FAILED">Başarısız</option>
+                                    <option value="WAITING">{t('deliveries.statusWaiting')}</option>
+                                    <option value="OUT_FOR_DELIVERY">{t('deliveries.statusOut')}</option>
+                                    <option value="DELIVERED">{t('deliveries.statusDelivered')}</option>
+                                    <option value="FAILED">{t('deliveries.statusFailed')}</option>
                                 </select>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Teslimat Tarihi</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('deliveries.editDate')}</label>
                                 <input type="date" name="scheduled_date" defaultValue={selectedDelivery.scheduled_date}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Notlar</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('deliveries.editNotes')}</label>
                                 <textarea name="notes" defaultValue={selectedDelivery.notes || ''}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none min-h-[80px]"
-                                    placeholder="Teslimat notları..." />
+                                    placeholder={t('deliveries.editNotesPlaceholder')} />
                             </div>
 
                             <div className="flex gap-3 pt-2">
                                 <button type="button" onClick={() => setModalOpen(false)}
-                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('deliveries.cancel')}</button>
                                 <button type="submit" disabled={submitting}
                                     className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {submitting ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Kaydet"}
+                                    {submitting ? <Lucide.Loader2 className="animate-spin" size={18} /> : t('deliveries.save')}
                                 </button>
                             </div>
                         </form>
@@ -803,15 +805,15 @@ export default function DeliveriesPage() {
                             <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <Lucide.AlertTriangle size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">Teslimatı Sil?</h3>
-                            <p className="text-gray-500 text-sm mb-6">Bu işlem geri alınamaz.</p>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">{t('deliveries.deleteTitle')}</h3>
+                            <p className="text-gray-500 text-sm mb-6">{t('deliveries.deleteDesc')}</p>
 
                             <div className="flex gap-3">
                                 <button onClick={() => setDeleteModalOpen(false)} disabled={deleting}
-                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('deliveries.cancel')}</button>
                                 <button onClick={confirmDelete} disabled={deleting}
                                     className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {deleting ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Sil"}
+                                    {deleting ? <Lucide.Loader2 className="animate-spin" size={18} /> : t('deliveries.deleteConfirm')}
                                 </button>
                             </div>
                         </div>
@@ -827,15 +829,15 @@ export default function DeliveriesPage() {
                             <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <Lucide.AlertTriangle size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">Rotayı Sil?</h3>
-                            <p className="text-gray-500 text-sm mb-6">Bu rotayı silmek, içindeki tüm teslimatları yerinden çıkarıp tekrar askıya (Bekliyor durumuna) alacaktır. Emin misiniz?</p>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">{t('deliveries.routeDeleteTitle')}</h3>
+                            <p className="text-gray-500 text-sm mb-6">{t('deliveries.routeDeleteDesc')}</p>
 
                             <div className="flex gap-3">
                                 <button onClick={() => setDeleteRouteModalOpen(false)} disabled={deletingRoute}
-                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('deliveries.cancel')}</button>
                                 <button onClick={confirmDeleteRoute} disabled={deletingRoute}
                                     className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {deletingRoute ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Rotayı Sil"}
+                                    {deletingRoute ? <Lucide.Loader2 className="animate-spin" size={18} /> : t('deliveries.routeDeleteConfirm')}
                                 </button>
                             </div>
                         </div>
@@ -848,29 +850,29 @@ export default function DeliveriesPage() {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h3 className="font-bold text-gray-900">Teslimatçı Ata</h3>
+                            <h3 className="font-bold text-gray-900">{t('deliveries.assignTitle')}</h3>
                             <button onClick={() => setDriverModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                                 <Lucide.X size={20} />
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-800">
-                                <span className="font-bold">Rota #{assigningRouteId}</span> için teslimatçı seçin.
+                                {t('deliveries.assignDesc', { id: assigningRouteId })}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Teslimatçı <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{t('deliveries.assignSelect')} <span className="text-red-500">*</span></label>
                                 <select value={selectedDriverId} onChange={(e) => setSelectedDriverId(Number(e.target.value))}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                                    <option value="">Seçiniz</option>
+                                    <option value="">{t('deliveries.assignSelectPlaceholder')}</option>
                                     {drivers.map(d => <option key={d.id} value={d.id}>{d.first_name} {d.last_name} ({d.username})</option>)}
                                 </select>
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setDriverModalOpen(false)}
-                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('deliveries.cancel')}</button>
                                 <button onClick={handleAssignDriverToRoute} disabled={assigningDriver || !selectedDriverId}
                                     className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {assigningDriver ? <Lucide.Loader2 className="animate-spin" size={18} /> : "Ata"}
+                                    {assigningDriver ? <Lucide.Loader2 className="animate-spin" size={18} /> : t('deliveries.assignConfirm')}
                                 </button>
                             </div>
                         </div>

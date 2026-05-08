@@ -44,6 +44,7 @@ export default function Navbar() {
 
           {/* Right - Actions */}
           <div className="flex items-center space-x-3">
+
             {/* Notifications */}
             <button className="p-2 text-gray-600 hover:text-black hover:bg-gray-100 rounded-full transition-all relative">
               <Bell size={20} />

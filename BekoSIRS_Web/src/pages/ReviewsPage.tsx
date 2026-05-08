@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import { Star, Search, Filter, CheckCircle, XCircle, ChevronRight, X, MessageSquare, Trash2, User, Package } from "lucide-react";
 import api from "../services/api";
+import { useTranslation } from "react-i18next";
 
 interface Review {
   id: number;
@@ -17,12 +18,14 @@ interface Review {
 }
 
 export default function ReviewsPage() {
+  const { t } = useTranslation();
+
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Tümü");
-  const [ratingFilter, setRatingFilter] = useState("Tümü");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [ratingFilter, setRatingFilter] = useState("all");
 
   // Detail Panel State
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
@@ -37,7 +40,7 @@ export default function ReviewsPage() {
       const response = await api.get("/reviews/");
       setReviews(Array.isArray(response.data) ? response.data : response.data.results || []);
     } catch (err: any) {
-      setError(err.message || "Değerlendirmeler yüklenemedi");
+      setError(err.message || t('reviews.errFetch'));
     } finally {
       setLoading(false);
     }
@@ -52,12 +55,12 @@ export default function ReviewsPage() {
         setSelectedReview(prev => prev ? { ...prev, is_approved: true } : null);
       }
     } catch (err: any) {
-      alert(err.message || "Onaylama başarısız");
+      alert(err.message || t('reviews.errApprove'));
     }
   };
 
   const handleDelete = async (reviewId: number) => {
-    if (!window.confirm("Bu değerlendirmeyi silmek istediğinize emin misiniz?")) return;
+    if (!window.confirm(t('reviews.confirmDelete'))) return;
 
     try {
       await api.delete(`/reviews/${reviewId}/`);
@@ -68,7 +71,7 @@ export default function ReviewsPage() {
         setSelectedReview(null);
       }
     } catch (err: any) {
-      alert(err.message || "Silme başarısız");
+      alert(err.message || t('reviews.errDelete'));
     }
   };
 
@@ -84,11 +87,11 @@ export default function ReviewsPage() {
       review.comment?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
-      statusFilter === "Tümü" ||
+      statusFilter === "all" ||
       (statusFilter === "approved" && review.is_approved) ||
       (statusFilter === "pending" && !review.is_approved);
 
-    const matchesRating = ratingFilter === "Tümü" || review.rating === Number(ratingFilter);
+    const matchesRating = ratingFilter === "all" || review.rating === Number(ratingFilter);
 
     return matchesSearch && matchesStatus && matchesRating;
   });
@@ -133,7 +136,7 @@ export default function ReviewsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <Star size={28} className="text-yellow-500" />
-                <h1 className="text-2xl font-bold text-gray-900">Ürün Değerlendirmeleri</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('reviews.title')}</h1>
               </div>
             </div>
           </div>
@@ -142,25 +145,25 @@ export default function ReviewsPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-yellow-600 via-yellow-500 to-orange-500 text-white">
           <div className="max-w-7xl mx-auto px-6 py-12">
-            <h2 className="text-3xl font-bold mb-2">Değerlendirme Yönetimi</h2>
-            <p className="text-yellow-100">Müşteri yorumlarını inceleyin ve onaylayın</p>
+            <h2 className="text-3xl font-bold mb-2">{t('reviews.subtitle')}</h2>
+            <p className="text-yellow-100">{t('reviews.desc')}</p>
 
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
               <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-                <p className="text-yellow-100 text-sm">Toplam</p>
+                <p className="text-yellow-100 text-sm">{t('reviews.statTotal')}</p>
                 <p className="text-2xl font-bold mt-1">{reviews.length}</p>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-                <p className="text-yellow-100 text-sm">Onaylı</p>
+                <p className="text-yellow-100 text-sm">{t('reviews.statApproved')}</p>
                 <p className="text-2xl font-bold mt-1">{approvedCount}</p>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-                <p className="text-yellow-100 text-sm">Bekleyen</p>
+                <p className="text-yellow-100 text-sm">{t('reviews.statPending')}</p>
                 <p className="text-2xl font-bold mt-1">{pendingCount}</p>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-                <p className="text-yellow-100 text-sm">Ortalama Puan</p>
+                <p className="text-yellow-100 text-sm">{t('reviews.statAvg')}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Star size={20} className="fill-white" />
                   <p className="text-2xl font-bold">{averageRating}</p>
@@ -178,7 +181,7 @@ export default function ReviewsPage() {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Değerlendirme ara..."
+                placeholder={t('reviews.searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-11 pr-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-500 text-sm"
@@ -192,9 +195,9 @@ export default function ReviewsPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-500 cursor-pointer bg-white text-sm"
               >
-                <option value="Tümü">Tüm Durumlar</option>
-                <option value="approved">Onaylı</option>
-                <option value="pending">Bekleyen</option>
+                <option value="all">{t('reviews.filterStatusAll')}</option>
+                <option value="approved">{t('reviews.filterStatusApproved')}</option>
+                <option value="pending">{t('reviews.filterStatusPending')}</option>
               </select>
             </div>
 
@@ -205,9 +208,9 @@ export default function ReviewsPage() {
                 onChange={(e) => setRatingFilter(e.target.value)}
                 className="px-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-500 cursor-pointer bg-white text-sm"
               >
-                <option value="Tümü">Tüm Puanlar</option>
+                <option value="all">{t('reviews.filterRatingAll')}</option>
                 {[5, 4, 3, 2, 1].map((r) => (
-                  <option key={r} value={r}>{r} Yıldız</option>
+                  <option key={r} value={r}>{t('reviews.filterRatingStars', { rating: r })}</option>
                 ))}
               </select>
             </div>
@@ -225,12 +228,12 @@ export default function ReviewsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Müşteri</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ürün</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Puan</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Durum</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tarih</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">İşlem</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('reviews.colCustomer')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('reviews.colProduct')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('reviews.colRating')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('reviews.colStatus')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{t('reviews.colDate')}</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">{t('reviews.colAction')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -254,7 +257,7 @@ export default function ReviewsPage() {
                           ? "bg-green-100 text-green-700"
                           : "bg-orange-100 text-orange-700"
                           }`}>
-                          {review.is_approved ? "Onaylı" : "Bekliyor"}
+                          {review.is_approved ? t('reviews.statusApproved') : t('reviews.statusPending')}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-xs text-gray-500">
@@ -272,7 +275,7 @@ export default function ReviewsPage() {
 
               {filteredReviews.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
-                  Değerlendirme bulunamadı
+                  {t('reviews.noReviews')}
                 </div>
               )}
             </div>
@@ -295,7 +298,7 @@ export default function ReviewsPage() {
             <div className="p-4 border-b flex justify-between items-center bg-yellow-500 text-white">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Star className="fill-white" size={20} />
-                İnceleme Detayı
+                {t('reviews.modalTitle')}
               </h2>
               <button
                 onClick={() => setShowDetailPanel(false)}
@@ -324,7 +327,7 @@ export default function ReviewsPage() {
                   <Package size={20} className="text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 uppercase font-semibold">İlgili Ürün</p>
+                  <p className="text-xs text-gray-500 uppercase font-semibold">{t('reviews.lblProduct')}</p>
                   <p className="text-sm font-medium text-gray-900 line-clamp-2">{selectedReview.product_name}</p>
                 </div>
               </div>
@@ -332,25 +335,25 @@ export default function ReviewsPage() {
               {/* Rating & Comment */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-gray-700">Değerlendirme</p>
+                  <p className="text-sm font-semibold text-gray-700">{t('reviews.lblRating')}</p>
                   {renderStars(selectedReview.rating, 20)}
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <div className="flex items-start gap-2">
                     <MessageSquare size={16} className="text-gray-400 mt-1 shrink-0" />
-                    <p className="text-gray-700 italic">"{selectedReview.comment || 'Yorum yapılmamış.'}"</p>
+                    <p className="text-gray-700 italic">"{selectedReview.comment || t('reviews.noComment')}"</p>
                   </div>
                 </div>
               </div>
 
               {/* Approval Status */}
               <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl">
-                <span className="text-sm font-medium text-gray-700">Durum</span>
+                <span className="text-sm font-medium text-gray-700">{t('reviews.lblStatus')}</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-bold ${selectedReview.is_approved
                     ? "bg-green-100 text-green-700"
                     : "bg-orange-100 text-orange-700"
                   }`}>
-                  {selectedReview.is_approved ? "Onaylandı" : "Onay Bekliyor"}
+                  {selectedReview.is_approved ? t('reviews.statusApprovedLong') : t('reviews.statusPendingLong')}
                 </span>
               </div>
             </div>
@@ -363,14 +366,14 @@ export default function ReviewsPage() {
                   className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <CheckCircle size={20} />
-                  Onayla
+                  {t('reviews.btnApprove')}
                 </button>
               )}
 
               <button
                 onClick={() => handleDelete(selectedReview.id)}
                 className="flex-none bg-red-100 text-red-600 p-3 rounded-xl hover:bg-red-200 transition-colors"
-                title="Sil"
+                title={t('reviews.btnDelete')}
               >
                 <Trash2 size={24} />
               </button>

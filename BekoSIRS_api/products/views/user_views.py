@@ -17,6 +17,8 @@ from products.serializers import RegisterSerializer, UserSerializer, GroupSerial
 class UserManagementViewSet(viewsets.ModelViewSet):
     """User CRUD with role management."""
     queryset = CustomUser.objects.all()
+    search_fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+    ordering_fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'date_joined']
 
     def get_queryset(self):
         qs = super().get_queryset().order_by('id')

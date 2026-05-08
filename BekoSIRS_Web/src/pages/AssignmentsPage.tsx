@@ -3,7 +3,8 @@ import * as Lucide from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import { ToastContainer, type ToastType } from "../components/Toast";
 import api from "../services/api";
-import { assignmentAPI, deliveryAPI, deliveryRouteAPI } from "../services/api";
+import { assignmentAPI, categoryAPI, customerAPI, deliveryAPI, deliveryRouteAPI, productAPI } from "../services/api";
+import { useTranslation } from "react-i18next";
 
 const {
     Package = () => <span>📦</span>,
@@ -30,8 +31,10 @@ interface Customer {
 }
 interface Product {
     id: number; name: string; brand: string;
-    model_code?: string; stock?: number; category?: { name: string };
+    model_code?: string; stock?: number; category?: { id?: number; name: string };
+    category_name?: string;
 }
+interface CategoryOption { id: number; name: string; product_count?: number; }
 interface ProductAssignment {
     id: number; customer: Customer; product: Product;
     assigned_at: string; status: string; status_display: string;
@@ -59,9 +62,29 @@ interface RouteResult {
     warnings?: { no_coordinates?: number[] };
 }
 interface DriverUser { id: number; username: string; first_name: string; last_name: string; }
+interface DepotOption { id: number; name: string; is_default?: boolean; }
+interface PreparedRouteStop {
+    id: number;
+    stop_order: number;
+    distance_from_previous_km?: number;
+    duration_from_previous_min?: number;
+    delivery: DeliveryItem;
+}
+interface PreparedRoute {
+    id: number;
+    date: string;
+    total_distance_km?: number;
+    total_duration_min?: number;
+    assigned_driver?: number | null;
+    driver_name?: string | null;
+    status: string;
+    stop_count: number;
+    stops: PreparedRouteStop[];
+}
 
 /* ============ Component ============ */
 export default function AssignmentsPage() {
+    const { t } = useTranslation();
     /* --- Main Tab --- */
     const [mainTab, setMainTab] = useState<'unscheduled' | 'planning'>('unscheduled');
 
@@ -71,7 +94,11 @@ export default function AssignmentsPage() {
     const [toasts, setToasts] = useState<Array<{ id: string; type: ToastType; message: string }>>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [drivers, setDrivers] = useState<DriverUser[]>([]);
+    const [depots, setDepots] = useState<DepotOption[]>([]);
+    const [preparedRoutes, setPreparedRoutes] = useState<PreparedRoute[]>([]);
+    const [expandedPreparedRoute, setExpandedPreparedRoute] = useState<number | null>(null);
 
     /* --- Tab 1: Unscheduled --- */
     const [assignments, setAssignments] = useState<ProductAssignment[]>([]);
@@ -86,17 +113,38 @@ export default function AssignmentsPage() {
     const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
     const [optimizing, setOptimizing] = useState(false);
 
+    /* --- Auto-Plan State --- */
+    const [autoPlanModal, setAutoPlanModal] = useState(false);
+    const [autoPlanLoading, setAutoPlanLoading] = useState(false);
+    const [autoPlanData, setAutoPlanData] = useState<any>(null);
+    const [autoPlanApproving, setAutoPlanApproving] = useState(false);
+    const [expandedDay, setExpandedDay] = useState<number | null>(null);
+    const [planStartDate, setPlanStartDate] = useState(new Date().toISOString().split("T")[0]);
+    const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([2, 3, 6]);
+    const [maxHoursPerDay, setMaxHoursPerDay] = useState(8);
+    const [selectedDepotId, setSelectedDepotId] = useState<number | "">("");
+    const [calendarRebalancing, setCalendarRebalancing] = useState(false);
+
     /* --- Modals --- */
     const [newSaleModal, setNewSaleModal] = useState(false);
     const [scheduleModal, setScheduleModal] = useState(false);
     const [batchScheduleModal, setBatchScheduleModal] = useState(false);
     const [driverModal, setDriverModal] = useState(false);
     const [deleteModal, setDeleteModal] = useState(false);
+    const [routeDeleteModal, setRouteDeleteModal] = useState(false);
+    const [routeDetailModal, setRouteDetailModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     /* --- Form State --- */
     const [selectedCustomer, setSelectedCustomer] = useState<number | "">("");
+    const [customerSearch, setCustomerSearch] = useState("");
+    const [customerSearching, setCustomerSearching] = useState(false);
+    const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<number | "">("");
+    const [selectedCategoryId, setSelectedCategoryId] = useState<number | "">("");
+    const [productSearch, setProductSearch] = useState("");
+    const [productSearching, setProductSearching] = useState(false);
+    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [assignedAt, setAssignedAt] = useState(new Date().toISOString().split("T")[0]);
     const [notes, setNotes] = useState("");
     const [quantity, setQuantity] = useState(1);
@@ -104,27 +152,92 @@ export default function AssignmentsPage() {
     const [scheduleAssignmentId, setScheduleAssignmentId] = useState<number | null>(null);
     const [selectedDriverId, setSelectedDriverId] = useState<number | "">("");
     const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [routeDeleteTarget, setRouteDeleteTarget] = useState<PreparedRoute | null>(null);
+    const [routeDetailTarget, setRouteDetailTarget] = useState<PreparedRoute | null>(null);
 
     /* ============ Data Fetching ============ */
     useEffect(() => { fetchAll(); }, []);
     useEffect(() => { if (mainTab === 'planning') fetchDeliveries(); }, [planningDate, mainTab]);
+    useEffect(() => {
+        if (!newSaleModal) return;
+        const query = customerSearch.trim();
+        if (!query) {
+            setCustomers([]);
+            setCustomerSearching(false);
+            return;
+        }
+
+        const timer = window.setTimeout(async () => {
+            try {
+                setCustomerSearching(true);
+                const res = await customerAPI.list({
+                    starts_with: query,
+                    page_size: 20,
+                    ordering: "first_name",
+                });
+                setCustomers(Array.isArray(res.data) ? res.data : res.data.results || []);
+            } catch {
+                setCustomers([]);
+            } finally {
+                setCustomerSearching(false);
+            }
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [customerSearch, newSaleModal]);
+    useEffect(() => {
+        if (!newSaleModal) return;
+        const query = productSearch.trim();
+        if (!query && !selectedCategoryId) {
+            setProducts([]);
+            setProductSearching(false);
+            return;
+        }
+
+        const timer = window.setTimeout(async () => {
+            try {
+                setProductSearching(true);
+                const res = await productAPI.list({
+                    search: query || undefined,
+                    category: selectedCategoryId || undefined,
+                    page_size: 20,
+                });
+                setProducts(Array.isArray(res.data) ? res.data : res.data.results || []);
+            } catch {
+                setProducts([]);
+            } finally {
+                setProductSearching(false);
+            }
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [productSearch, selectedCategoryId, newSaleModal]);
 
     const fetchAll = async () => {
         try {
             setLoading(true);
-            const [assignRes, statsRes, custRes, prodRes, driverRes] = await Promise.all([
-                assignmentAPI.list(),
+            const [assignRes, statsRes, categoryRes, driverRes, depotRes, routeRes] = await Promise.all([
+                assignmentAPI.list({ status: 'PLANNED', page_size: 1000 }),
                 assignmentAPI.stats(),
-                api.get("/users/?role=customer"),
-                api.get("/products/?page_size=1000"),
+                categoryAPI.list({ page_size: 1000 }),
                 api.get("/users/?role=delivery"),
+                api.get("/depots/"),
+                deliveryRouteAPI.list({ page_size: 50 }),
             ]);
             setAssignments(Array.isArray(assignRes.data) ? assignRes.data : assignRes.data.results || []);
             setStats(statsRes.data);
-            setCustomers(Array.isArray(custRes.data) ? custRes.data : custRes.data.results || []);
-            setProducts(Array.isArray(prodRes.data) ? prodRes.data : prodRes.data.results || []);
+            setCategories(Array.isArray(categoryRes.data) ? categoryRes.data : categoryRes.data.results || []);
             setDrivers(Array.isArray(driverRes.data) ? driverRes.data : driverRes.data.results || []);
-        } catch { showToast("error", "Veriler yüklenirken hata oluştu"); }
+            const depotList = Array.isArray(depotRes.data) ? depotRes.data : depotRes.data.results || [];
+            setDepots(depotList);
+            const defaultDepot = depotList.find((depot: DepotOption) => depot.is_default);
+            if (!selectedDepotId && defaultDepot) setSelectedDepotId(defaultDepot.id);
+            const routeList = Array.isArray(routeRes.data) ? routeRes.data : routeRes.data.results || [];
+            setPreparedRoutes(routeList.sort((a: PreparedRoute, b: PreparedRoute) => {
+                const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+                return dateDiff || b.id - a.id;
+            }));
+        } catch { showToast("error", t('assignments.loadError')); }
         finally { setLoading(false); }
     };
 
@@ -147,6 +260,67 @@ export default function AssignmentsPage() {
         if (!dateStr) return "-";
         return new Date(dateStr).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
     };
+    const formatDuration = (minutes?: number) => {
+        if (!minutes) return "0 dk";
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return hours ? `${hours} saat ${mins} dk` : `${mins} dk`;
+    };
+    const formatCustomerLabel = (customer: Customer) => {
+        const name = customer.full_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || customer.username;
+        return `${name} (${customer.username})`;
+    };
+    const formatProductLabel = (product: Product) => {
+        const model = product.model_code ? ` - ${product.model_code}` : "";
+        return `${product.name}${model}`;
+    };
+    const weekdayOptions = [
+        { id: 0, label: "Pzt" },
+        { id: 1, label: "Sal" },
+        { id: 2, label: "Çar" },
+        { id: 3, label: "Per" },
+        { id: 4, label: "Cum" },
+        { id: 5, label: "Cmt" },
+        { id: 6, label: "Paz" },
+    ];
+    const toggleWeekday = (day: number) => {
+        setSelectedWeekdays(prev =>
+            prev.includes(day) ? prev.filter(item => item !== day) : [...prev, day].sort((a, b) => a - b)
+        );
+    };
+    const toLocalDateInput = (value: Date) => {
+        const copy = new Date(value);
+        copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset());
+        return copy.toISOString().split("T")[0];
+    };
+    const rollingWeekDays = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const currentWeekday = (today.getDay() + 6) % 7;
+        return weekdayOptions.map(day => {
+            const dateValue = new Date(today);
+            const diff = (day.id - currentWeekday + 7) % 7;
+            dateValue.setDate(today.getDate() + diff);
+            const isoDate = toLocalDateInput(dateValue);
+            return {
+                ...day,
+                date: isoDate,
+                displayDate: dateValue.toLocaleDateString("tr-TR", { day: "2-digit", month: "short" }),
+                isToday: diff === 0,
+                isActive: selectedWeekdays.includes(day.id),
+            };
+        });
+    }, [selectedWeekdays]);
+    const routesByDate = useMemo(() => {
+        return preparedRoutes.reduce<Record<string, PreparedRoute[]>>((acc, route) => {
+            acc[route.date] = [...(acc[route.date] || []), route];
+            return acc;
+        }, {});
+    }, [preparedRoutes]);
+    const calendarWeekStart = rollingWeekDays.reduce(
+        (earliest, day) => day.date < earliest ? day.date : earliest,
+        rollingWeekDays[0]?.date || planStartDate
+    );
 
     /* --- Unscheduled assignments (status=PLANNED and no delivery) --- */
     const unscheduledAssignments = useMemo(() => {
@@ -177,26 +351,97 @@ export default function AssignmentsPage() {
 
     /* ============ Actions ============ */
 
+    const rebalanceWeeklyCalendar = async (weekdays = selectedWeekdays, showSuccess = true) => {
+        if (!weekdays.length) {
+            showToast("error", "En az bir teslimat günü aktif olmalı.");
+            return;
+        }
+        setCalendarRebalancing(true);
+        try {
+            const res = await deliveryRouteAPI.rebalanceWeek({
+                week_start: calendarWeekStart,
+                allowed_weekdays: weekdays,
+                max_hours_per_day: maxHoursPerDay,
+                depot_id: selectedDepotId,
+            });
+            if (showSuccess) showToast("success", res.data.message || "Haftalık takvim yeniden dağıtıldı.");
+            await fetchAll();
+            if (mainTab === 'planning') fetchDeliveries();
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || "Haftalık takvim yeniden dağıtılamadı.");
+        } finally {
+            setCalendarRebalancing(false);
+        }
+    };
+
+    const toggleCalendarDay = (day: number) => {
+        const next = selectedWeekdays.includes(day)
+            ? selectedWeekdays.filter(item => item !== day)
+            : [...selectedWeekdays, day].sort((a, b) => a - b);
+        if (!next.length) {
+            showToast("error", "En az bir teslimat günü aktif kalmalı.");
+            return;
+        }
+        setSelectedWeekdays(next);
+        rebalanceWeeklyCalendar(next);
+    };
+
+    const autoPlaceNewAssignment = async (assignmentId: number) => {
+        const planRes = await assignmentAPI.autoPlan({
+            start_date: calendarWeekStart,
+            allowed_weekdays: selectedWeekdays,
+            max_hours_per_day: maxHoursPerDay,
+            depot_id: selectedDepotId,
+            assignment_ids: [assignmentId],
+        });
+        const plan = planRes.data;
+        if (!plan?.days?.length) {
+            throw new Error("Yeni atama için plan oluşturulamadı.");
+        }
+        await assignmentAPI.approvePlan(plan.days, plan.summary);
+    };
+
     /* --- New Sale --- */
     const handleCreateAssignment = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedCustomer) {
+            showToast("error", "Lutfen listeden bir musteri secin.");
+            return;
+        }
+        if (!selectedProduct) {
+            showToast("error", "Lutfen listeden bir urun secin.");
+            return;
+        }
         setSubmitting(true);
         try {
-            await assignmentAPI.create({
+            const createRes = await assignmentAPI.create({
                 customer_id: selectedCustomer, product_id: selectedProduct,
                 assigned_at: assignedAt, quantity, notes, status: 'PLANNED'
             });
-            showToast("success", "Ürün satışı kaydedildi");
+            const assignmentId = createRes.data?.id;
+            if (!assignmentId) {
+                throw new Error("Olusturulan atama kimligi alinamadi.");
+            }
+            await autoPlaceNewAssignment(assignmentId);
+            showToast("success", t('assignments.createSuccess'));
             setNewSaleModal(false);
             resetSaleForm();
-            fetchAll();
+            await fetchAll();
+            showToast("success", "Yeni satış otomatik teslimat takvimine yerleştirildi.");
         } catch (err: any) {
-            showToast("error", err.response?.data?.detail || "Bir hata oluştu");
+            showToast("error", err.response?.data?.detail || err.message || t('assignments.createError'));
         } finally { setSubmitting(false); }
     };
 
     const resetSaleForm = () => {
         setSelectedCustomer(""); setSelectedProduct("");
+        setCustomerSearch("");
+        setCustomers([]);
+        setCustomerDropdownOpen(false);
+        setSelectedCategoryId("");
+        setProductSearch("");
+        setProducts([]);
+        setProductDropdownOpen(false);
         setAssignedAt(new Date().toISOString().split("T")[0]);
         setNotes(""); setQuantity(1);
     };
@@ -213,11 +458,11 @@ export default function AssignmentsPage() {
         setSubmitting(true);
         try {
             await assignmentAPI.scheduleDelivery(scheduleAssignmentId, scheduleDate);
-            showToast("success", "Teslimat tarihi belirlendi");
+            showToast("success", t('assignments.scheduleSuccess'));
             setScheduleModal(false);
             fetchAll();
         } catch (err: any) {
-            showToast("error", err.response?.data?.error || "Tarihleme başarısız");
+            showToast("error", err.response?.data?.error || t('assignments.scheduleError'));
         } finally { setSubmitting(false); }
     };
 
@@ -227,19 +472,19 @@ export default function AssignmentsPage() {
         setSubmitting(true);
         try {
             await assignmentAPI.batchSchedule(selectedUnscheduled, scheduleDate);
-            showToast("success", `${selectedUnscheduled.length} atama planlandı`);
+            showToast("success", t('assignments.batchScheduleSuccess', { count: selectedUnscheduled.length }));
             setBatchScheduleModal(false);
             setSelectedUnscheduled([]);
             fetchAll();
         } catch (err: any) {
-            showToast("error", err.response?.data?.error || "Toplu planlama başarısız");
+            showToast("error", err.response?.data?.error || t('assignments.batchScheduleError'));
         } finally { setSubmitting(false); }
     };
 
     /* --- Optimize Route --- */
     const handleOptimize = async () => {
         if (!selectedDeliveries.length) {
-            showToast("error", "Lütfen en az bir teslimat seçin");
+            showToast("error", t('assignments.optimizeWarning'));
             return;
         }
         setOptimizing(true);
@@ -248,12 +493,12 @@ export default function AssignmentsPage() {
                 delivery_ids: selectedDeliveries, date: planningDate
             });
             setRouteResult(res.data);
-            showToast("success", `Rota optimize edildi: ${res.data.stop_count} durak, ${res.data.total_distance_km} km`);
+            showToast("success", t('assignments.optimizeSuccess', { stops: res.data.stop_count, distance: res.data.total_distance_km }));
             if (res.data.warnings?.no_coordinates?.length) {
-                showToast("error", `${res.data.warnings.no_coordinates.length} teslimatın koordinat bilgisi yok`);
+                showToast("error", t('assignments.optimizeNoCoord', { count: res.data.warnings.no_coordinates.length }));
             }
         } catch (err: any) {
-            showToast("error", err.response?.data?.error || "Rota optimizasyonu başarısız");
+            showToast("error", err.response?.data?.error || t('assignments.optimizeError'));
         } finally { setOptimizing(false); }
     };
 
@@ -263,13 +508,56 @@ export default function AssignmentsPage() {
         setSubmitting(true);
         try {
             const res = await deliveryAPI.assignDriver(selectedDeliveries, Number(selectedDriverId));
-            showToast("success", res.data.message);
+            showToast("success", res.data.message || t('assignments.assignSuccess'));
             setDriverModal(false);
             setSelectedDriverId("");
             fetchDeliveries();
+            fetchAll();
         } catch (err: any) {
-            showToast("error", err.response?.data?.error || "Atama başarısız");
+            showToast("error", err.response?.data?.error || t('assignments.assignError'));
         } finally { setSubmitting(false); }
+    };
+
+    const openPreparedRoute = (route: PreparedRoute) => {
+        setPlanningDate(route.date);
+        setMainTab('planning');
+        setExpandedPreparedRoute(route.id);
+    };
+
+    const openPreparedRouteDriverModal = (route: PreparedRoute) => {
+        setSelectedDeliveries(route.stops.map(stop => stop.delivery.id));
+        setSelectedDriverId(route.assigned_driver || "");
+        setDriverModal(true);
+    };
+
+    const openRouteDetailModal = (route: PreparedRoute) => {
+        setRouteDetailTarget(route);
+        setRouteDetailModal(true);
+    };
+
+    const closeRouteDetailModal = () => {
+        setRouteDetailModal(false);
+        setRouteDetailTarget(null);
+    };
+
+    const handleAssignRouteDriverFromDetail = async () => {
+        if (!routeDetailTarget || !selectedDriverId) return;
+        setSubmitting(true);
+        try {
+            const deliveryIds = routeDetailTarget.stops.map(stop => stop.delivery.id);
+            const res = await deliveryAPI.assignDriver(deliveryIds, Number(selectedDriverId));
+            showToast("success", res.data.message || t('assignments.assignSuccess'));
+            setSelectedDriverId("");
+            closeRouteDetailModal();
+            fetchAll();
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || t('assignments.assignError'));
+        } finally { setSubmitting(false); }
+    };
+
+    const openPreparedRouteDeleteModal = (route: PreparedRoute) => {
+        setRouteDeleteTarget(route);
+        setRouteDeleteModal(true);
     };
 
     /* --- Delete --- */
@@ -278,12 +566,70 @@ export default function AssignmentsPage() {
         setSubmitting(true);
         try {
             await assignmentAPI.delete(deleteId);
-            showToast("success", "Atama silindi");
+            showToast("success", t('assignments.deleteSuccess'));
             setDeleteModal(false);
             setDeleteId(null);
             fetchAll();
-        } catch { showToast("error", "Silme başarısız"); }
+        } catch { showToast("error", t('assignments.deleteError')); }
         finally { setSubmitting(false); }
+    };
+
+    const handleDeletePreparedRoute = async () => {
+        if (!routeDeleteTarget) return;
+        setSubmitting(true);
+        try {
+            await deliveryRouteAPI.delete(routeDeleteTarget.id);
+            showToast("success", "Hazırlanan plan silindi. Teslimatlar tekrar bekleme durumuna alındı.");
+            setRouteDeleteModal(false);
+            setRouteDeleteTarget(null);
+            if (expandedPreparedRoute === routeDeleteTarget.id) setExpandedPreparedRoute(null);
+            fetchAll();
+            if (mainTab === 'planning' && planningDate === routeDeleteTarget.date) fetchDeliveries();
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || "Plan silinemedi");
+        } finally { setSubmitting(false); }
+    };
+
+    /* --- Auto Plan --- */
+    const handleAutoPlan = async () => {
+        setAutoPlanLoading(true);
+        setAutoPlanData(null);
+        setExpandedDay(null);
+        try {
+            const ids = selectedUnscheduled.length ? selectedUnscheduled : unscheduledAssignments.map(item => item.id);
+            const res = await assignmentAPI.autoPlan({
+                start_date: planStartDate,
+                allowed_weekdays: selectedWeekdays,
+                max_hours_per_day: maxHoursPerDay,
+                depot_id: selectedDepotId,
+                assignment_ids: ids,
+            });
+            setAutoPlanData(res.data);
+            setAutoPlanModal(true);
+            if (res.data.warnings?.no_coordinates?.length) {
+                showToast("error", t('assignments.autoPlanWarningNoCoord', { count: res.data.warnings.no_coordinates.length }));
+            }
+            if (res.data.warnings?.over_time_days?.length) {
+                showToast("error", t('assignments.autoPlanWarningOverTime'));
+            }
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || t('assignments.autoPlanEmpty'));
+        } finally { setAutoPlanLoading(false); }
+    };
+
+    const handleApprovePlan = async () => {
+        if (!autoPlanData?.days) return;
+        setAutoPlanApproving(true);
+        try {
+            const res = await assignmentAPI.approvePlan(autoPlanData.days, autoPlanData.summary);
+            showToast("success", t('assignments.autoPlanApproveSuccess', { count: res.data.total_routes }));
+            setAutoPlanModal(false);
+            setAutoPlanData(null);
+            fetchAll();
+            if (mainTab === 'planning') fetchDeliveries();
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || t('assignments.autoPlanApproveError'));
+        } finally { setAutoPlanApproving(false); }
     };
 
     /* --- Selection helpers --- */
@@ -323,15 +669,15 @@ export default function AssignmentsPage() {
                     <div className="px-8 py-5 flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                                <Package className="text-blue-600" /> Satış ve Ürün Atama
+                                <Package className="text-blue-600" /> {t('assignments.title')}
                             </h1>
                             <p className="text-sm text-gray-500 mt-1">
-                                Müşterilere satılan ürünleri yönetin, teslimat planı oluşturun.
+                                {t('assignments.subtitle')}
                             </p>
                         </div>
                         <button onClick={() => setNewSaleModal(true)}
                             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
-                            <Plus size={18} /> Yeni Satış
+                            <Plus size={18} /> {t('assignments.newSale')}
                         </button>
                     </div>
                 </header>
@@ -342,10 +688,10 @@ export default function AssignmentsPage() {
                         {/* ===== KPI CARDS ===== */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             {[
-                                { label: "Tarihi Belirlenmemiş", value: stats.planned, color: "blue", icon: <Calendar size={20} /> },
-                                { label: "Teslimat Planlanmış", value: stats.scheduled, color: "orange", icon: <Truck size={20} /> },
-                                { label: "Yolda", value: stats.out_for_delivery, color: "purple", icon: <Navigation size={20} /> },
-                                { label: "Tamamlanan", value: stats.delivered, color: "green", icon: <CheckCircle size={20} /> },
+                                { label: t('assignments.kpiUnscheduled'), value: stats.planned, color: "blue", icon: <Calendar size={20} /> },
+                                { label: t('assignments.kpiScheduled'), value: stats.scheduled, color: "orange", icon: <Truck size={20} /> },
+                                { label: t('assignments.kpiOutForDelivery'), value: stats.out_for_delivery, color: "purple", icon: <Navigation size={20} /> },
+                                { label: t('assignments.kpiDelivered'), value: stats.delivered, color: "green", icon: <CheckCircle size={20} /> },
                             ].map((card) => (
                                 <div key={card.label} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                     <div className="flex justify-between items-start">
@@ -361,6 +707,297 @@ export default function AssignmentsPage() {
                             ))}
                         </div>
 
+                        {/* ===== WEEKLY PLANNING CONFIG ===== */}
+                        {false && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div className="flex flex-col xl:flex-row xl:items-end gap-5">
+                                <div className="flex-1">
+                                    <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                        <Route size={18} className="text-emerald-600" />
+                                        Haftalık teslimat konfigürasyonu
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Havuzdaki seçili satışları belirlediğiniz gün, depo ve çalışma saatine göre otomatik dağıtın.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-[2]">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Takvim başlangıcı</label>
+                                        <input type="date" value={calendarWeekStart} readOnly
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Maks. saat / gün</label>
+                                        <input type="number" min={1} max={14} step={0.5} value={maxHoursPerDay}
+                                            onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Çıkış deposu</label>
+                                        <select value={selectedDepotId} onChange={(e) => setSelectedDepotId(e.target.value ? Number(e.target.value) : "")}
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+                                            <option value="">Varsayılan depo</option>
+                                            {depots.map(depot => <option key={depot.id} value={depot.id}>{depot.name}{depot.is_default ? " (varsayılan)" : ""}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Teslimat günleri</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {weekdayOptions.map(day => (
+                                                <button key={day.id} type="button" onClick={() => toggleCalendarDay(day.id)}
+                                                    className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-colors ${selectedWeekdays.includes(day.id)
+                                                        ? "bg-emerald-600 text-white border-emerald-600"
+                                                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
+                                                    {day.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+                                <div className="text-sm text-emerald-900">
+                                    <span className="font-semibold">{selectedUnscheduled.length || unscheduledAssignments.length}</span> sipariş plan havuzunda.
+                                    Sistem aynı müşteriyi tek durak gibi değerlendirir, ilçeleri gruplayıp depo çıkışına göre sıraya dizer.
+                                </div>
+                                <button onClick={() => rebalanceWeeklyCalendar()} disabled={calendarRebalancing || selectedWeekdays.length === 0}
+                                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                                    {calendarRebalancing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
+                                    {calendarRebalancing ? "Takvim dağıtılıyor..." : "Takvimi otomatik dağıt"}
+                                </button>
+                            </div>
+                        </div>
+
+                        )}
+
+                        {/* ===== WEEKLY CALENDAR ===== */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                        <Calendar size={18} className="text-blue-600" />
+                                        Haftalık teslimat takvimi
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Günleri pasif yapınca açık teslimatlar otomatik olarak aktif günlere yeniden dağıtılır.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap items-end gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Takvim başlangıcı</label>
+                                        <input type="date" value={calendarWeekStart} readOnly
+                                            className="w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Maks. saat/gün</label>
+                                        <input type="number" min={1} max={14} step={0.5} value={maxHoursPerDay}
+                                            onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
+                                            className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Çıkış deposu</label>
+                                        <select value={selectedDepotId} onChange={(e) => setSelectedDepotId(e.target.value ? Number(e.target.value) : "")}
+                                            className="w-48 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                            <option value="">Varsayılan depo</option>
+                                            {depots.map(depot => <option key={depot.id} value={depot.id}>{depot.name}{depot.is_default ? " (varsayılan)" : ""}</option>)}
+                                        </select>
+                                    </div>
+                                    <button onClick={() => rebalanceWeeklyCalendar()} disabled={calendarRebalancing || selectedWeekdays.length === 0}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                                        {calendarRebalancing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
+                                        {calendarRebalancing ? "Dağıtılıyor..." : "Yeniden dağıt"}
+                                    </button>
+                                </div>
+                                <div className="hidden text-sm text-gray-500">
+                                    Pazartesi-Pazar görünümü; geçmiş günler sonraki haftayı temsil eder
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
+                                {rollingWeekDays.map(day => {
+                                    const dayRoutes = routesByDate[day.date] || [];
+                                    const dayStops = dayRoutes.reduce((sum, route) => sum + (route.stop_count || route.stops?.length || 0), 0);
+                                    const dayMinutes = dayRoutes.reduce((sum, route) => sum + Number(route.total_duration_min || 0), 0);
+                                    return (
+                                        <div key={day.id} className={`min-h-[260px] border-b border-r border-gray-100 p-4 ${day.isActive ? "bg-white" : "bg-gray-50"}`}>
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold text-gray-900">{day.label}</h3>
+                                                        {day.isToday && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">Bugün</span>}
+                                                    </div>
+                                                    <p className="text-xs text-gray-500">{day.displayDate}</p>
+                                                </div>
+                                                <button type="button" onClick={() => toggleCalendarDay(day.id)} disabled={calendarRebalancing}
+                                                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 ${day.isActive
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                        : "bg-white text-gray-500 border-gray-200"}`}>
+                                                    {day.isActive ? "Aktif" : "Pasif"}
+                                                </button>
+                                            </div>
+
+                                            <div className="mt-4 space-y-2">
+                                                {dayRoutes.length > 0 && day.isActive ? dayRoutes.map(route => (
+                                                    <button key={route.id} type="button" onClick={() => openRouteDetailModal(route)}
+                                                        className="w-full rounded-lg border border-blue-100 bg-blue-50/70 p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-sm font-semibold text-gray-900">{route.stop_count || route.stops?.length || 0} durak</span>
+                                                            <span className="text-xs text-gray-500">{formatDuration(route.total_duration_min)}</span>
+                                                        </div>
+                                                        <div className="mt-1 text-xs text-gray-500">{Number(route.total_distance_km || 0)} km • {route.driver_name || "Şoför atanmadı"}</div>
+                                                        <div className="hidden mt-3 space-y-1.5">
+                                                            {(route.stops || []).slice(0, 4).map(stop => (
+                                                                <div key={stop.id} className="rounded-md bg-white px-2 py-1.5 text-xs">
+                                                                    <div className="font-medium text-gray-800 truncate">{stop.delivery?.customer_name || "Müşteri"}</div>
+                                                                    <div className="text-gray-500 truncate">{stop.delivery?.product_name || "Ürün"} • {stop.delivery?.quantity || 1} adet</div>
+                                                                </div>
+                                                            ))}
+                                                            {(route.stops || []).length > 4 && (
+                                                                <div className="text-xs font-medium text-blue-700">+{(route.stops || []).length - 4} teslimat daha</div>
+                                                            )}
+                                                        </div>
+                                                        <span
+                                                            className="hidden mt-3 w-full rounded-lg bg-purple-600 px-3 py-2 text-center text-xs font-semibold text-white">
+                                                            Teslimatçı ata
+                                                        </span>
+                                                        <div className="mt-3 rounded-md bg-white/80 px-2 py-2 text-xs font-medium text-blue-700">
+                                                            Rotayı detaylı gör
+                                                        </div>
+                                                    </button>
+                                                )) : (
+                                                    <div className="rounded-lg border border-dashed border-gray-200 px-3 py-8 text-center text-sm text-gray-400">
+                                                        {day.isActive ? "Plan yok" : "Teslimata kapalı"}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {dayRoutes.length > 0 && (
+                                                <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                                    {dayStops} teslimat • {formatDuration(dayMinutes)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* ===== PREPARED ROUTES ===== */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                        <Navigation size={18} className="text-blue-600" />
+                                        Hazırlanan planlar
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Onaylanmış rotaları, durakları ve şoför durumunu buradan takip edin.
+                                    </p>
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                    {preparedRoutes.length} plan listeleniyor
+                                </div>
+                            </div>
+
+                            {preparedRoutes.length > 0 ? (
+                                <div className="divide-y divide-gray-100">
+                                    {preparedRoutes.slice(0, 8).map(route => {
+                                        const isExpanded = expandedPreparedRoute === route.id;
+                                        const stops = route.stops || [];
+                                        const statusClass = route.status === 'COMPLETED'
+                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                            : route.status === 'IN_PROGRESS'
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : 'bg-amber-50 text-amber-700 border-amber-200';
+                                        const statusLabel = route.status === 'COMPLETED'
+                                            ? 'Tamamlandı'
+                                            : route.status === 'IN_PROGRESS'
+                                                ? 'Devam ediyor'
+                                                : 'Planlandı';
+
+                                        return (
+                                            <div key={route.id} className="px-6 py-4">
+                                                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                                                    <button type="button" onClick={() => setExpandedPreparedRoute(isExpanded ? null : route.id)}
+                                                        className="flex min-w-0 flex-1 items-start gap-3 text-left">
+                                                        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                                            {isExpanded ? <Lucide.ChevronDown size={18} /> : <Route size={18} />}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="font-semibold text-gray-900">{formatDate(route.date)}</span>
+                                                                <span className={`px-2 py-0.5 rounded-full border text-xs font-semibold ${statusClass}`}>
+                                                                    {statusLabel}
+                                                                </span>
+                                                                {!route.driver_name && (
+                                                                    <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 text-xs font-semibold">
+                                                                        Şoför atanmadı
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                                                                <span>{route.stop_count || stops.length} durak</span>
+                                                                <span>{Number(route.total_distance_km || 0)} km</span>
+                                                                <span>{formatDuration(route.total_duration_min)}</span>
+                                                                <span>{route.driver_name || 'Atama bekliyor'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </button>
+
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button type="button" onClick={() => openPreparedRoute(route)}
+                                                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-semibold transition-colors">
+                                                            <Calendar size={16} /> Tarihi aç
+                                                        </button>
+                                                        <button type="button" onClick={() => openPreparedRouteDriverModal(route)} disabled={!stops.length}
+                                                            className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                                                            <UserCheck size={16} /> Şoför ata
+                                                        </button>
+                                                        <button type="button" onClick={() => openPreparedRouteDeleteModal(route)}
+                                                            className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-semibold transition-colors">
+                                                            <Trash2 size={16} /> Sil
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && (
+                                                    <div className="mt-4 grid gap-2">
+                                                        {stops.length > 0 ? stops.map(stop => (
+                                                            <div key={stop.id} className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 md:grid-cols-[auto_1fr_auto] md:items-center">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-blue-700 shadow-sm">
+                                                                    {stop.stop_order}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="font-medium text-gray-900">{stop.delivery?.customer_name || 'Müşteri bilgisi yok'}</div>
+                                                                    <div className="mt-0.5 text-xs text-gray-500 truncate">
+                                                                        {stop.delivery?.product_name || 'Ürün'} • {stop.delivery?.quantity || 1} adet • {stop.delivery?.customer_address || 'Adres yok'}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2 text-xs text-gray-500 md:justify-end">
+                                                                    <span className="rounded-full bg-white px-2 py-1">{Number(stop.distance_from_previous_km || 0)} km</span>
+                                                                    <span className="rounded-full bg-white px-2 py-1">{stop.duration_from_previous_min || 0} dk</span>
+                                                                    <span className="rounded-full bg-white px-2 py-1">{stop.delivery?.status_display || stop.delivery?.status || '-'}</span>
+                                                                </div>
+                                                            </div>
+                                                        )) : (
+                                                            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500">
+                                                                Bu rotada kayıtlı durak görünmüyor.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="px-6 py-10 text-center text-sm text-gray-500">
+                                    Henüz hazırlanmış plan yok. Havuzdaki satışları planlayıp onayladığınızda rotalar burada görünecek.
+                                </div>
+                            )}
+                        </div>
+
+                        {false && (
+                        <>
                         {/* ===== MAIN TABS ===== */}
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             <div className="border-b border-gray-200">
@@ -368,39 +1005,50 @@ export default function AssignmentsPage() {
                                     <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
                                         <button onClick={() => setMainTab('unscheduled')}
                                             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${mainTab === 'unscheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>
-                                            Tarihi Belirlenmemiş ({unscheduledAssignments.length})
+                                            {t('assignments.tabUnscheduled')} ({unscheduledAssignments.length})
                                         </button>
                                         <button onClick={() => setMainTab('planning')}
                                             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${mainTab === 'planning' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>
-                                            Teslimat Planlaması
+                                            {t('assignments.tabPlanning')}
                                         </button>
                                     </div>
 
                                     {/* Search + Actions */}
                                     <div className="flex items-center gap-3">
-                                        {mainTab === 'unscheduled' && selectedUnscheduled.length > 0 && (
-                                            <button onClick={() => { setScheduleDate(new Date().toISOString().split("T")[0]); setBatchScheduleModal(true); }}
-                                                className="flex items-center gap-1.5 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
-                                                <Calendar size={16} /> Seçilenlere Tarih Ata ({selectedUnscheduled.length})
-                                            </button>
+                                        {mainTab === 'unscheduled' && (
+                                            <div className="flex gap-2">
+                                                {selectedUnscheduled.length > 0 && (
+                                                    <button onClick={() => { setScheduleDate(new Date().toISOString().split("T")[0]); setBatchScheduleModal(true); }}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                                        <Calendar size={16} /> {t('assignments.batchScheduleBtn')} ({selectedUnscheduled.length})
+                                                    </button>
+                                                )}
+                                                {unscheduledAssignments.length > 0 && (
+                                                    <button onClick={handleAutoPlan} disabled={autoPlanLoading}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50">
+                                                        {autoPlanLoading ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
+                                                        {autoPlanLoading ? t('assignments.autoPlanLoading') : t('assignments.autoPlanBtn')}
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                         {mainTab === 'planning' && selectedDeliveries.length > 0 && (
                                             <div className="flex gap-2">
                                                 <button onClick={handleOptimize} disabled={optimizing}
                                                     className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                                                     {optimizing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
-                                                    Rota Optimize Et ({selectedDeliveries.length})
+                                                    {t('assignments.optimizeRouteBtn')} ({selectedDeliveries.length})
                                                 </button>
                                                 <button onClick={() => { setSelectedDriverId(""); setDriverModal(true); }}
                                                     className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
-                                                    <UserCheck size={16} /> Teslimatçıya Ata
+                                                    <UserCheck size={16} /> {t('assignments.assignDriverBtn')}
                                                 </button>
                                             </div>
                                         )}
                                         <div className="relative w-64">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                                             <input type="text"
-                                                placeholder="Müşteri veya ürün ara..."
+                                                placeholder={t('assignments.searchPlaceholder')}
                                                 value={mainTab === 'unscheduled' ? searchUnscheduled : searchPlanning}
                                                 onChange={(e) => mainTab === 'unscheduled' ? setSearchUnscheduled(e.target.value) : setSearchPlanning(e.target.value)}
                                                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm" />
@@ -411,11 +1059,11 @@ export default function AssignmentsPage() {
                                 {/* Date picker for planning tab */}
                                 {mainTab === 'planning' && (
                                     <div className="px-6 pb-4 flex items-center gap-4">
-                                        <label className="text-sm font-medium text-gray-600">Teslimat Tarihi:</label>
+                                        <label className="text-sm font-medium text-gray-600">{t('assignments.planningDateLabel')}</label>
                                         <input type="date" value={planningDate} onChange={(e) => setPlanningDate(e.target.value)}
                                             className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
                                         <span className="text-sm text-gray-500">
-                                            {deliveries.length} teslimat bulundu
+                                            {deliveries.length} {t('assignments.deliveriesFound')}
                                         </span>
                                     </div>
                                 )}
@@ -431,11 +1079,11 @@ export default function AssignmentsPage() {
                                                     <input type="checkbox" checked={selectedUnscheduled.length === unscheduledAssignments.length && unscheduledAssignments.length > 0}
                                                         onChange={toggleAllUnscheduled} className="rounded border-gray-300" />
                                                 </th>
-                                                <th className="px-6 py-3">Müşteri</th>
-                                                <th className="px-6 py-3">Ürün</th>
-                                                <th className="px-6 py-3">Satış Tarihi</th>
-                                                <th className="px-6 py-3">Durum</th>
-                                                <th className="px-6 py-3 text-right">İşlemler</th>
+                                                <th className="px-6 py-3">{t('assignments.colCustomer')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colProduct')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colSaleDate')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colStatus')}</th>
+                                                <th className="px-6 py-3 text-right">{t('assignments.colActions')}</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
@@ -451,19 +1099,19 @@ export default function AssignmentsPage() {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="font-medium text-gray-900">{a.product?.name}</div>
-                                                        <div className="text-xs text-gray-500">{a.product?.model_code} • {a.quantity} Adet</div>
+                                                        <div className="text-xs text-gray-500">{a.product?.model_code} • {a.quantity} {t('assignments.saleQuantity')}</div>
                                                     </td>
                                                     <td className="px-6 py-4 text-gray-500">{formatDate(a.assigned_at)}</td>
                                                     <td className="px-6 py-4">
                                                         <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-yellow-50 text-yellow-700 border-yellow-200">
-                                                            Tarih Bekleniyor
+                                                            {t('assignments.statusWaitingDate')}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <button onClick={() => openScheduleModal(a.id)}
                                                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 font-medium text-xs transition-colors">
-                                                                <Calendar size={14} /> Tarih Belirle
+                                                                <Calendar size={14} /> {t('assignments.btnSetDate')}
                                                             </button>
                                                             <button onClick={() => { setDeleteId(a.id); setDeleteModal(true); }}
                                                                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -473,7 +1121,7 @@ export default function AssignmentsPage() {
                                                     </td>
                                                 </tr>
                                             )) : (
-                                                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">Tüm atamalara tarih belirlenmiş 🎉</td></tr>
+                                                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">{t('assignments.allScheduledMsg')}</td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -490,12 +1138,12 @@ export default function AssignmentsPage() {
                                                     <input type="checkbox" checked={selectedDeliveries.length === filteredDeliveries.length && filteredDeliveries.length > 0}
                                                         onChange={toggleAllDeliveries} className="rounded border-gray-300" />
                                                 </th>
-                                                <th className="px-6 py-3">Sıra</th>
-                                                <th className="px-6 py-3">Müşteri</th>
-                                                <th className="px-6 py-3">Ürün</th>
-                                                <th className="px-6 py-3">Adres</th>
-                                                <th className="px-6 py-3">Durum</th>
-                                                <th className="px-6 py-3">Teslimatçı</th>
+                                                <th className="px-6 py-3">{t('assignments.colOrder')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colCustomer')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colProduct')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colAddress')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colStatus')}</th>
+                                                <th className="px-6 py-3">{t('assignments.colDriver')}</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
@@ -516,11 +1164,11 @@ export default function AssignmentsPage() {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="font-medium text-gray-900">{d.product_name}</div>
-                                                        <div className="text-xs text-gray-500">{d.product_model_code} • {d.quantity} Adet</div>
+                                                        <div className="text-xs text-gray-500">{d.product_model_code} • {d.quantity} {t('assignments.saleQuantity')}</div>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="text-sm text-gray-600 max-w-xs truncate" title={d.customer_address}>
-                                                            <MapPin size={12} className="inline mr-1" />{d.customer_address || 'Adres yok'}
+                                                            <MapPin size={12} className="inline mr-1" />{d.customer_address || t('assignments.noAddress')}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4">
@@ -531,12 +1179,12 @@ export default function AssignmentsPage() {
                                                             }`}>{d.status_display}</span>
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-gray-600">
-                                                        {d.driver_name || <span className="text-gray-400">Atanmadı</span>}
+                                                        {d.driver_name || <span className="text-gray-400">{t('assignments.noDriver')}</span>}
                                                     </td>
                                                 </tr>
                                             )) : (
                                                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                                                    Bu tarihte planlanan teslimat bulunmuyor
+                                                    {t('assignments.noDeliveriesMsg')}
                                                 </td></tr>
                                             )}
                                         </tbody>
@@ -550,24 +1198,24 @@ export default function AssignmentsPage() {
                             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                                 <div className="px-6 py-4 border-b border-gray-100 bg-green-50">
                                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                        <Route size={20} className="text-green-600" /> Optimize Edilmiş Rota
+                                        <Route size={20} className="text-green-600" /> {t('assignments.routeTitle')}
                                     </h3>
                                 </div>
                                 <div className="p-6">
                                     {/* KPIs */}
                                     <div className="grid grid-cols-3 gap-4 mb-6">
                                         <div className="bg-blue-50 rounded-xl p-4 text-center">
-                                            <p className="text-sm text-blue-600 font-medium">Toplam Mesafe</p>
+                                            <p className="text-sm text-blue-600 font-medium">{t('assignments.totalDistance')}</p>
                                             <p className="text-2xl font-bold text-blue-800">{routeResult.total_distance_km} km</p>
                                         </div>
                                         <div className="bg-orange-50 rounded-xl p-4 text-center">
-                                            <p className="text-sm text-orange-600 font-medium">Tahmini Süre</p>
+                                            <p className="text-sm text-orange-600 font-medium">{t('assignments.estimatedTime')}</p>
                                             <p className="text-2xl font-bold text-orange-800">
                                                 {Math.floor(routeResult.total_duration_min / 60)} saat {routeResult.total_duration_min % 60} dk
                                             </p>
                                         </div>
                                         <div className="bg-green-50 rounded-xl p-4 text-center">
-                                            <p className="text-sm text-green-600 font-medium">Durak Sayısı</p>
+                                            <p className="text-sm text-green-600 font-medium">{t('assignments.stopCount')}</p>
                                             <p className="text-2xl font-bold text-green-800">{routeResult.stop_count}</p>
                                         </div>
                                     </div>
@@ -593,6 +1241,8 @@ export default function AssignmentsPage() {
                                 </div>
                             </div>
                         )}
+                        </>
+                        )}
                     </div>
                 </main>
 
@@ -603,49 +1253,144 @@ export default function AssignmentsPage() {
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-900">Yeni Satış Kaydı</h3>
+                                <h3 className="font-bold text-gray-900">{t('assignments.newSaleTitle')}</h3>
                                 <button onClick={() => setNewSaleModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                             </div>
                             <form onSubmit={handleCreateAssignment} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Müşteri</label>
-                                    <select value={selectedCustomer} onChange={(e) => setSelectedCustomer(Number(e.target.value))} required
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                                        <option value="">Seçiniz</option>
-                                        {customers.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name} ({c.username})</option>)}
-                                    </select>
+                                <div className="relative">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.saleCustomer')}</label>
+                                    <input
+                                        value={customerSearch}
+                                        onChange={(e) => {
+                                            setCustomerSearch(e.target.value);
+                                            setSelectedCustomer("");
+                                            setCustomerDropdownOpen(true);
+                                        }}
+                                        onFocus={() => setCustomerDropdownOpen(true)}
+                                        placeholder="Müşteri adı yazın..."
+                                        required
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                    />
+                                    {customerDropdownOpen && customerSearch.trim() && (
+                                        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                                            {customerSearching ? (
+                                                <div className="px-3 py-3 text-sm text-gray-500 flex items-center gap-2">
+                                                    <Loader2 className="animate-spin" size={16} /> Aranıyor...
+                                                </div>
+                                            ) : customers.length ? (
+                                                customers.map(c => (
+                                                    <button
+                                                        key={c.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedCustomer(c.id);
+                                                            setCustomerSearch(formatCustomerLabel(c));
+                                                            setCustomerDropdownOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                                    >
+                                                        <div className="font-medium text-gray-900">{c.full_name || `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.username}</div>
+                                                        <div className="text-xs text-gray-500">{c.username}{c.phone_number ? ` • ${c.phone_number}` : ""}</div>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="px-3 py-3 text-sm text-gray-500">Eşleşen müşteri yok.</div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!selectedCustomer && customerSearch.trim() && !customerDropdownOpen && (
+                                        <p className="mt-1 text-xs text-red-600">Listeden bir müşteri seçin.</p>
+                                    )}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Ürün</label>
-                                    <select value={selectedProduct} onChange={(e) => setSelectedProduct(Number(e.target.value))} required
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                                        <option value="">Seçiniz</option>
-                                        {products.map(p => <option key={p.id} value={p.id}>{p.name} - {p.model_code || 'Kodsuz'} (Stok: {p.stock || 0})</option>)}
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.saleProduct')}</label>
+                                    <select
+                                        value={selectedCategoryId}
+                                        onChange={(e) => {
+                                            setSelectedCategoryId(e.target.value ? Number(e.target.value) : "");
+                                            setSelectedProduct("");
+                                            setProductSearch("");
+                                            setProductDropdownOpen(true);
+                                        }}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none bg-white"
+                                    >
+                                        <option value="">Tum kategoriler</option>
+                                        {categories.map(category => (
+                                            <option key={category.id} value={category.id}>
+                                                {category.name}{typeof category.product_count === "number" ? ` (${category.product_count})` : ""}
+                                            </option>
+                                        ))}
                                     </select>
+                                    <div className="relative">
+                                        <input
+                                            value={productSearch}
+                                            onChange={(e) => {
+                                                setProductSearch(e.target.value);
+                                                setSelectedProduct("");
+                                                setProductDropdownOpen(true);
+                                            }}
+                                            onFocus={() => setProductDropdownOpen(true)}
+                                            placeholder="Urun adi veya model kodu yazin..."
+                                            required
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                        />
+                                        {productDropdownOpen && (productSearch.trim() || selectedCategoryId) && (
+                                            <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                                                {productSearching ? (
+                                                    <div className="px-3 py-3 text-sm text-gray-500 flex items-center gap-2">
+                                                        <Loader2 className="animate-spin" size={16} /> Urunler araniyor...
+                                                    </div>
+                                                ) : products.length ? (
+                                                    products.map(product => (
+                                                        <button
+                                                            key={product.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedProduct(product.id);
+                                                                setProductSearch(formatProductLabel(product));
+                                                                setProductDropdownOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                                        >
+                                                            <div className="font-medium text-gray-900">{product.name}</div>
+                                                            <div className="text-xs text-gray-500">
+                                                                {product.model_code || "Model kodu yok"} • {product.category_name || product.category?.name || "Kategori yok"} • Stok: {product.stock ?? 0}
+                                                            </div>
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-3 py-3 text-sm text-gray-500">Eslesen urun yok.</div>
+                                                )}
+                                            </div>
+                                        )}
+                                        {!selectedProduct && productSearch.trim() && !productDropdownOpen && (
+                                            <p className="mt-1 text-xs text-red-600">Listeden bir urun secin.</p>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Satış Tarihi</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.saleDate')}</label>
                                         <input type="date" value={assignedAt} onChange={(e) => setAssignedAt(e.target.value)} required
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Adet</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.saleQuantity')}</label>
                                         <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Notlar</label>
-                                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Varsa notlarınız..."
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.saleNotes')}</label>
+                                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('assignments.saleNotesPlaceholder')}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none min-h-[80px]" />
                                 </div>
                                 <div className="flex gap-3 pt-2">
                                     <button type="button" onClick={() => setNewSaleModal(false)}
-                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
                                     <button type="submit" disabled={submitting}
                                         className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Kaydet"}
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.save')}
                                     </button>
                                 </div>
                             </form>
@@ -658,21 +1403,21 @@ export default function AssignmentsPage() {
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-900">Teslimat Tarihi Belirle</h3>
+                                <h3 className="font-bold text-gray-900">{t('assignments.scheduleTitle')}</h3>
                                 <button onClick={() => setScheduleModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tarih <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.scheduleDate')} <span className="text-red-500">*</span></label>
                                     <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                                 </div>
                                 <div className="flex gap-3">
                                     <button onClick={() => setScheduleModal(false)}
-                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
                                     <button onClick={handleScheduleSingle} disabled={submitting}
                                         className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Planla"}
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.scheduleBtn')}
                                     </button>
                                 </div>
                             </div>
@@ -685,24 +1430,24 @@ export default function AssignmentsPage() {
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-900">Toplu Tarih Atama</h3>
+                                <h3 className="font-bold text-gray-900">{t('assignments.batchScheduleTitle')}</h3>
                                 <button onClick={() => setBatchScheduleModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
-                                    <span className="font-bold">{selectedUnscheduled.length}</span> atama için teslimat tarihi belirlenecek.
+                                    <span className="font-bold">{selectedUnscheduled.length}</span> {t('assignments.batchDesc')}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Teslimat Tarihi <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.scheduleDate')} <span className="text-red-500">*</span></label>
                                     <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                                 </div>
                                 <div className="flex gap-3">
                                     <button onClick={() => setBatchScheduleModal(false)}
-                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
                                     <button onClick={handleBatchSchedule} disabled={submitting}
                                         className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Tümünü Planla"}
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.scheduleAllBtn')}
                                     </button>
                                 </div>
                             </div>
@@ -715,27 +1460,27 @@ export default function AssignmentsPage() {
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-900">Teslimatçıya Ata</h3>
+                                <h3 className="font-bold text-gray-900">{t('assignments.assignTitle')}</h3>
                                 <button onClick={() => setDriverModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-800">
-                                    <span className="font-bold">{selectedDeliveries.length}</span> teslimat atanacak.
+                                    <span className="font-bold">{selectedDeliveries.length}</span> {t('assignments.assignDesc')}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Teslimatçı <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('assignments.assignSelect')} <span className="text-red-500">*</span></label>
                                     <select value={selectedDriverId} onChange={(e) => setSelectedDriverId(Number(e.target.value))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                                        <option value="">Seçiniz</option>
+                                        <option value="">{t('assignments.assignSelectPlaceholder')}</option>
                                         {drivers.map(d => <option key={d.id} value={d.id}>{d.first_name} {d.last_name} ({d.username})</option>)}
                                     </select>
                                 </div>
                                 <div className="flex gap-3">
                                     <button onClick={() => setDriverModal(false)}
-                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
                                     <button onClick={handleAssignDriver} disabled={submitting || !selectedDriverId}
                                         className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Ata"}
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.assignConfirm')}
                                     </button>
                                 </div>
                             </div>
@@ -751,16 +1496,252 @@ export default function AssignmentsPage() {
                                 <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <AlertCircle size={24} />
                                 </div>
-                                <h3 className="text-lg font-bold text-gray-900 mb-2">Atamayı Sil?</h3>
-                                <p className="text-gray-500 text-sm mb-6">Bu işlem geri alınamaz.</p>
+                                <h3 className="text-lg font-bold text-gray-900 mb-2">{t('assignments.deleteTitle')}</h3>
+                                <p className="text-gray-500 text-sm mb-6">{t('assignments.deleteDesc')}</p>
                                 <div className="flex gap-3">
                                     <button onClick={() => setDeleteModal(false)}
-                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">İptal</button>
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
                                     <button onClick={handleDelete} disabled={submitting}
                                         className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Sil"}
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.deleteConfirm')}
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Route Detail Modal */}
+                {routeDetailModal && routeDetailTarget && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl w-full max-w-4xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
+                            <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-gray-50">
+                                <div>
+                                    <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                        <Route size={20} className="text-blue-600" />
+                                        {formatDate(routeDetailTarget.date)} rotası
+                                    </h3>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {routeDetailTarget.stop_count || routeDetailTarget.stops.length} durak • {Number(routeDetailTarget.total_distance_km || 0)} km • {formatDuration(routeDetailTarget.total_duration_min)}
+                                    </p>
+                                </div>
+                                <button onClick={closeRouteDetailModal} className="text-gray-400 hover:text-gray-600 self-end lg:self-auto"><X size={20} /></button>
+                            </div>
+
+                            <div className="p-6 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 overflow-y-auto">
+                                <div className="space-y-3">
+                                    {[...(routeDetailTarget.stops || [])]
+                                        .sort((a, b) => a.stop_order - b.stop_order)
+                                        .map(stop => (
+                                            <div key={stop.id} className="grid grid-cols-[auto_1fr] gap-4 rounded-xl border border-gray-200 bg-white p-4">
+                                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                                                    {stop.stop_order}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div>
+                                                            <h4 className="font-semibold text-gray-900">{stop.delivery?.customer_name || "Müşteri"}</h4>
+                                                            <p className="text-xs text-gray-500">{stop.delivery?.customer_phone || "Telefon yok"}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600 border border-gray-200">
+                                                            {stop.delivery?.status_display || stop.delivery?.status || "-"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                                        <MapPin size={14} className="inline mr-1 text-gray-400" />
+                                                        {stop.delivery?.customer_address || "Adres yok"}
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                                        <div className="rounded-lg bg-blue-50 px-3 py-2">
+                                                            <div className="text-xs text-blue-600 font-semibold">Ürün</div>
+                                                            <div className="font-medium text-gray-900 truncate">{stop.delivery?.product_name || "Ürün"}</div>
+                                                        </div>
+                                                        <div className="rounded-lg bg-gray-50 px-3 py-2">
+                                                            <div className="text-xs text-gray-500 font-semibold">Adet</div>
+                                                            <div className="font-medium text-gray-900">{stop.delivery?.quantity || 1}</div>
+                                                        </div>
+                                                        <div className="rounded-lg bg-gray-50 px-3 py-2">
+                                                            <div className="text-xs text-gray-500 font-semibold">Önceki duraktan</div>
+                                                            <div className="font-medium text-gray-900">{Number(stop.distance_from_previous_km || 0)} km • {stop.duration_from_previous_min || 0} dk</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+
+                                <aside className="rounded-xl border border-gray-200 bg-gray-50 p-4 h-fit">
+                                    <h4 className="font-semibold text-gray-900">Teslimatçı ataması</h4>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Mevcut: {routeDetailTarget.driver_name || "Atanmamış"}
+                                    </p>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase mt-4 mb-1">Teslimatçı</label>
+                                    <select value={selectedDriverId} onChange={(e) => setSelectedDriverId(Number(e.target.value))}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
+                                        <option value="">Seçiniz</option>
+                                        {drivers.map(d => <option key={d.id} value={d.id}>{d.first_name} {d.last_name} ({d.username})</option>)}
+                                    </select>
+                                    <button onClick={handleAssignRouteDriverFromDetail} disabled={submitting || !selectedDriverId}
+                                        className="mt-3 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : <UserCheck size={18} />}
+                                        Ata
+                                    </button>
+                                </aside>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Delete Prepared Route Modal */}
+                {routeDeleteModal && routeDeleteTarget && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
+                            <div className="p-6 text-center">
+                                <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <AlertCircle size={24} />
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-900 mb-2">Hazırlanan plan silinsin mi?</h3>
+                                <p className="text-gray-500 text-sm mb-2">
+                                    {formatDate(routeDeleteTarget.date)} tarihli, {routeDeleteTarget.stop_count || routeDeleteTarget.stops?.length || 0} duraklı plan silinecek.
+                                </p>
+                                <p className="text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-sm mb-6">
+                                    Teslimatlar silinmez; rota kaldırılır ve teslimatlar tekrar bekleme durumuna alınır.
+                                </p>
+                                <div className="flex gap-3">
+                                    <button onClick={() => { setRouteDeleteModal(false); setRouteDeleteTarget(null); }}
+                                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">
+                                        İptal
+                                    </button>
+                                    <button onClick={handleDeletePreparedRoute} disabled={submitting}
+                                        className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : "Planı sil"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ===== AUTO-PLAN PREVIEW MODAL ===== */}
+                {autoPlanModal && autoPlanData && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-teal-50 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                                        <Route size={20} className="text-emerald-600" /> {t('assignments.autoPlanTitle')}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 mt-0.5">{t('assignments.autoPlanSubtitle')}</p>
+                                </div>
+                                <button onClick={() => setAutoPlanModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                            </div>
+
+                            {/* Summary bar */}
+                            <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                                <span className="text-sm font-medium text-gray-700">
+                                    {t('assignments.autoPlanSummary', {
+                                        days: autoPlanData.summary?.total_days || 0,
+                                        count: autoPlanData.summary?.total_deliveries || 0,
+                                        km: autoPlanData.summary?.total_distance_km || 0,
+                                    })}
+                                </span>
+                                {autoPlanData.warnings?.no_coordinates?.length > 0 && (
+                                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                                        ⚠ {t('assignments.autoPlanWarningNoCoord', { count: autoPlanData.warnings.no_coordinates.length })}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Day-by-day plan */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                                {autoPlanData.days?.map((day: any, idx: number) => (
+                                    <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden hover:border-emerald-300 transition-colors">
+                                        {/* Day header — clickable */}
+                                        <button onClick={() => setExpandedDay(expandedDay === idx ? null : idx)}
+                                            className="w-full px-5 py-3.5 flex items-center justify-between bg-white hover:bg-gray-50 transition-colors text-left">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
+                                                    {idx + 1}
+                                                </div>
+                                                <div>
+                                                    <div className="font-semibold text-gray-900">{day.weekday}, {day.date}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {t('assignments.autoPlanDistricts', { districts: day.district_names?.join(', ') || '-' })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-sm">
+                                                <span className="text-gray-600 flex items-center gap-1">
+                                                    <Package size={14} /> {day.delivery_count}
+                                                </span>
+                                                <span className="text-gray-600 flex items-center gap-1">
+                                                    <MapPin size={14} /> {day.total_distance_km || 0} km
+                                                </span>
+                                                <span className={`flex items-center gap-1 ${(day.total_duration_min || 0) > 360 ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                                                    🕐 {day.total_duration_min || 0} dk
+                                                </span>
+                                                <span className="text-gray-400 text-lg">{expandedDay === idx ? '▲' : '▼'}</span>
+                                            </div>
+                                        </button>
+
+                                        {/* Expanded stop list */}
+                                        {expandedDay === idx && (
+                                            <div className="border-t border-gray-100 bg-gray-50">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="text-gray-500 text-xs border-b border-gray-200">
+                                                            <th className="px-5 py-2 text-left">#</th>
+                                                            <th className="px-3 py-2 text-left">{t('assignments.colCustomer')}</th>
+                                                            <th className="px-3 py-2 text-left">{t('assignments.autoPlanStopProducts')}</th>
+                                                            <th className="px-3 py-2 text-left">{t('assignments.colAddress')}</th>
+                                                            <th className="px-3 py-2 text-right">{t('assignments.autoPlanStopDist')}</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {day.stops?.map((stop: any, si: number) => (
+                                                            <tr key={si} className="border-b border-gray-100 last:border-0 hover:bg-white transition-colors">
+                                                                <td className="px-5 py-2.5 font-medium text-emerald-600">{stop.stop_order || si + 1}</td>
+                                                                <td className="px-3 py-2.5">
+                                                                    <div className="font-medium text-gray-900">{stop.customer_name}</div>
+                                                                    {stop.coord_source === 'district_fallback' && (
+                                                                        <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                                                            📍 {t('assignments.autoPlanCoordFallback')}
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-3 py-2.5">
+                                                                    <div className="space-y-0.5">
+                                                                        {stop.products?.map((p: any, pi: number) => (
+                                                                            <div key={pi} className="text-xs text-gray-600">
+                                                                                {p.product_name} {p.quantity > 1 ? `(×${p.quantity})` : ''}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2.5 text-gray-500 text-xs">{stop.district_name}</td>
+                                                                <td className="px-3 py-2.5 text-right text-gray-600">{stop.dist_from_prev} km</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex gap-3">
+                                <button onClick={() => setAutoPlanModal(false)}
+                                    className="flex-1 px-4 py-2.5 text-gray-700 bg-white hover:bg-gray-100 rounded-lg font-medium transition-colors border border-gray-200">
+                                    {t('assignments.autoPlanCancel')}
+                                </button>
+                                <button onClick={handleApprovePlan} disabled={autoPlanApproving}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-medium transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {autoPlanApproving ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                                    {autoPlanApproving ? t('assignments.autoPlanApproving') : t('assignments.autoPlanApprove')}
+                                </button>
                             </div>
                         </div>
                     </div>

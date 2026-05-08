@@ -3,8 +3,10 @@ import { Layers, Plus, Shield, Lock, ChevronRight, Check, X, Save, Search, Users
 import Sidebar from "../components/Sidebar";
 import api from "../services/api";
 import { ToastContainer, type ToastType } from "../components/Toast";
+import { useTranslation } from "react-i18next";
 
 export default function GroupsPage() {
+  const { t } = useTranslation();
   const [roles, setRoles] = useState<any[]>([]);
   const [allPermissions, setAllPermissions] = useState<any[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
@@ -32,7 +34,7 @@ export default function GroupsPage() {
         setAllPermissions(permsRes.data);
       } catch (error) {
         console.error("Veri yükleme hatası:", error);
-        showToast("error", "Roller ve yetkiler yüklenemedi");
+        showToast("error", t('groups.errFetchRoles'));
       } finally {
         setLoading(false);
       }
@@ -65,7 +67,7 @@ export default function GroupsPage() {
       setInitialRolePermissionIds(ids);
     } catch (error) {
       console.error("Rol yetkileri alınamadı:", error);
-      showToast("error", "Rol yetkileri alınamadı");
+      showToast("error", t('groups.errFetchPerms'));
     }
   };
 
@@ -76,10 +78,10 @@ export default function GroupsPage() {
       setRoles([...roles, res.data]);
       setNewRoleName("");
       setShowAddModal(false);
-      showToast("success", "Yeni rol başarıyla oluşturuldu");
+      showToast("success", t('groups.successAddRole'));
     } catch (error) {
       console.error("Rol ekleme hatası:", error);
-      showToast("error", "Rol oluşturulamadı");
+      showToast("error", t('groups.errAddRole'));
     }
   };
 
@@ -102,10 +104,10 @@ export default function GroupsPage() {
         permission_ids: rolePermissionIds
       });
       setInitialRolePermissionIds(rolePermissionIds);
-      showToast("success", "Yetkiler başarıyla güncellendi");
+      showToast("success", t('groups.successSavePerms'));
     } catch (error) {
       console.error("Yetki güncelleme hatası:", error);
-      showToast("error", "Yetkiler güncellenemedi");
+      showToast("error", t('groups.errSavePerms'));
     } finally {
       setSaving(false);
     }
@@ -171,8 +173,8 @@ export default function GroupsPage() {
               <div className="flex items-center space-x-3">
                 <Users size={28} className="text-blue-600" />
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Rol & Yetki Yönetimi</h1>
-                  <p className="text-sm text-gray-500">Kullanıcı rollerini ve erişim yetkilerini yapılandırın</p>
+                  <h1 className="text-2xl font-bold text-gray-900">{t('groups.title')}</h1>
+                  <p className="text-sm text-gray-500">{t('groups.subtitle')}</p>
                 </div>
               </div>
               <button
@@ -180,7 +182,7 @@ export default function GroupsPage() {
                 className="bg-black text-white px-5 py-2.5 rounded-lg hover:bg-gray-800 transition-all font-medium flex items-center space-x-2 shadow-sm"
               >
                 <Plus size={18} />
-                <span>Yeni Rol Ekle</span>
+                <span>{t('groups.btnAddRole')}</span>
               </button>
             </div>
           </div>
@@ -194,7 +196,7 @@ export default function GroupsPage() {
               <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex justify-between items-center">
                 <h2 className="font-bold text-gray-800 flex items-center gap-2">
                   <Layers size={18} />
-                  <span>Roller</span>
+                  <span>{t('groups.rolesTitle')}</span>
                 </h2>
                 <span className="text-xs font-semibold bg-gray-200 px-2 py-1 rounded-full text-gray-600">
                   {roles.length}
@@ -227,7 +229,7 @@ export default function GroupsPage() {
                   ))
                 ) : (
                   <div className="text-center py-12 px-4">
-                    <p className="text-gray-400">Henüz hiç rol tanımlanmamış.</p>
+                    <p className="text-gray-400">{t('groups.noRoles')}</p>
                   </div>
                 )}
               </div>
@@ -240,15 +242,15 @@ export default function GroupsPage() {
                   <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="font-bold text-lg text-gray-900">{selectedRoleName} Yetkileri</h2>
+                        <h2 className="font-bold text-lg text-gray-900">{t('groups.permsTitle', { role: selectedRoleName })}</h2>
                         {isAdmin && (
                           <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 font-medium">
-                            <Lock size={10} /> Full Yetki
+                            <Lock size={10} /> {t('groups.fullAccess')}
                           </span>
                         )}
                       </div>
                       <p className="text-xs text-gray-500">
-                        {isAdmin ? "Admin rolü tüm yetkilere sahiptir ve değiştirilemez." : "Bu rol için aktif yetkileri seçin"}
+                        {isAdmin ? t('groups.adminDesc') : t('groups.selectDesc')}
                       </p>
                     </div>
 
@@ -266,7 +268,7 @@ export default function GroupsPage() {
                         ) : (
                           <Save size={18} />
                         )}
-                        <span>Değişiklikleri Kaydet</span>
+                        <span>{t('groups.btnSave')}</span>
                       </button>
                     )}
                   </div>
@@ -277,7 +279,7 @@ export default function GroupsPage() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
                         type="text"
-                        placeholder="Yetki ara (örn: ürün ekle)..."
+                        placeholder={t('groups.searchPerms')}
                         className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         value={permSearchTerm}
                         onChange={e => setPermSearchTerm(e.target.value)}
@@ -292,12 +294,12 @@ export default function GroupsPage() {
                         {areAllFilteredSelected ? (
                           <>
                             <Square size={16} />
-                            Seçimi Kaldır
+                            {t('groups.deselectAll')}
                           </>
                         ) : (
                           <>
                             <CheckSquare size={16} />
-                            Hepsini Seç
+                            {t('groups.selectAll')}
                           </>
                         )}
                       </button>
@@ -344,7 +346,7 @@ export default function GroupsPage() {
                       </div>
                     ) : (
                       <div className="text-center py-12 text-gray-400">
-                        Aramanızla eşleşen yetki bulunamadı.
+                        {t('groups.noPermsFound')}
                       </div>
                     )}
                   </div>
@@ -354,8 +356,8 @@ export default function GroupsPage() {
                   <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
                     <Shield size={40} className="text-gray-300" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">Rol Seçimi Yapın</h3>
-                  <p className="max-w-md">Yetkileri görüntülemek ve düzenlemek için sol taraftaki listeden bir rol seçiniz.</p>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{t('groups.selectRoleTitle')}</h3>
+                  <p className="max-w-md">{t('groups.selectRoleDesc')}</p>
                 </div>
               )}
             </div>
@@ -367,23 +369,23 @@ export default function GroupsPage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl transform transition-all">
               <div className="border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900">Yeni Rol Oluştur</h2>
+                <h2 className="text-xl font-bold text-gray-900">{t('groups.modalAddTitle')}</h2>
                 <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
                   <X size={24} />
                 </button>
               </div>
               <div className="p-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Rol Adı</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">{t('groups.lblRoleName')}</label>
                 <input
                   type="text"
                   value={newRoleName}
                   onChange={(e) => setNewRoleName(e.target.value)}
-                  placeholder="Örn: Bölge Müdürü"
+                  placeholder={t('groups.plcRoleName')}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-all"
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  Bu rolü oluşturduktan sonra yetkilerini sağ panelden ayarlayabilirsiniz.
+                  {t('groups.descRoleAdd')}
                 </p>
               </div>
               <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl">
@@ -391,14 +393,14 @@ export default function GroupsPage() {
                   onClick={() => setShowAddModal(false)}
                   className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-100 font-medium text-gray-700 transition-colors"
                 >
-                  İptal
+                  {t('groups.btnCancel')}
                 </button>
                 <button
                   onClick={handleAddRole}
                   disabled={!newRoleName.trim()}
                   className="flex-1 bg-black text-white px-4 py-2.5 rounded-lg hover:bg-gray-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  Oluştur
+                  {t('groups.btnCreate')}
                 </button>
               </div>
             </div>
