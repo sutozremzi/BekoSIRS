@@ -54,7 +54,7 @@ export const notificationAPI = {
 // 🔹 RECOMMENDATION API
 // ─────────────────────────────────────────
 export const recommendationAPI = {
-    getRecommendations: (refresh: boolean = false) => 
+    getRecommendations: (refresh: boolean = false) =>
         api.get(`api/v1/recommendations/${refresh ? '?refresh=true' : ''}`),
     generateRecommendations: () => api.post('api/v1/recommendations/generate/'),
     recordClick: (recommendationId: number) =>
@@ -63,6 +63,22 @@ export const recommendationAPI = {
     // yeni istemcide PATCH kullaniyoruz; backend tarafinda POST geriye uyum icin acik.
     dismissRecommendation: (recommendationId: number) =>
         api.patch(`api/v1/recommendations/${recommendationId}/dismiss/`),
+
+    // Birlikte alinanlar (bundle) - urun detay ekraninda karusel olarak kullanilir.
+    // Backend co-purchase tablosundan en sik beraber satin alinan urunleri dondurur.
+    getBundleProducts: (productId: number, limit: number = 5) =>
+        api.get(`api/v1/recommendations/bundle/${productId}/?limit=${limit}`),
+
+    // Onboarding kategori tercihleri - cold-start tohumu olarak saklanir.
+    // GET / POST / DELETE ayni endpoint uzerinden tek bir TS yuzeyi sunar.
+    getOnboardingPreferences: () =>
+        api.get('api/v1/recommendations/onboarding/preferences/'),
+    saveOnboardingPreferences: (categoryIds: number[]) =>
+        api.post('api/v1/recommendations/onboarding/preferences/', {
+            category_ids: categoryIds,
+        }),
+    clearOnboardingPreferences: () =>
+        api.delete('api/v1/recommendations/onboarding/preferences/'),
 };
 
 // ─────────────────────────────────────────
