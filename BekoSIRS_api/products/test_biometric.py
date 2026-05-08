@@ -49,7 +49,7 @@ class BiometricAPITest(APITestCase):
         response = self.client.post(self.enable_url, {'face_image': self.test_image})
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('products.views.biometric_views._check_liveness', return_value=(True, 0.92, None))
+    @patch('products.views.biometric_views._check_liveness_frames', return_value=(True, 0.92, None))
     @patch('products.views.biometric_views.cv2.imdecode')
     @patch('deepface.DeepFace.represent')
     def test_enable_biometric_success(self, mock_represent, mock_imdecode, mock_liveness):
@@ -75,7 +75,7 @@ class BiometricAPITest(APITestCase):
         # face_encoding should now be an encrypted string, NOT a plain list
         self.assertIsNotNone(self.customer_user.face_encoding)
 
-    @patch('products.views.biometric_views._check_liveness', return_value=(True, 0.92, None))
+    @patch('products.views.biometric_views._check_liveness_frames', return_value=(True, 0.92, None))
     @patch('products.views.biometric_views.cv2.imdecode')
     @patch('deepface.DeepFace.represent')
     def test_face_encoding_stored_encrypted(self, mock_represent, mock_imdecode, mock_liveness):
@@ -131,7 +131,7 @@ class BiometricAPITest(APITestCase):
         self.assertIn('biometric_enabled', response.data)
         self.assertIn('has_encoding', response.data)
 
-    @patch('products.views.biometric_views._check_liveness', return_value=(True, 0.92, None))
+    @patch('products.views.biometric_views._check_liveness_frames', return_value=(True, 0.92, None))
     @patch('products.views.biometric_views.cv2.imdecode')
     @patch('deepface.modules.verification.find_threshold')
     @patch('deepface.modules.verification.find_distance')
@@ -170,7 +170,7 @@ class BiometricAPITest(APITestCase):
         response = self.client.post(self.login_url, {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @patch('products.views.biometric_views._check_liveness', return_value=(True, 0.92, None))
+    @patch('products.views.biometric_views._check_liveness_frames', return_value=(True, 0.92, None))
     @patch('products.views.biometric_views.cv2.imdecode')
     @patch('deepface.modules.verification.find_threshold')
     @patch('deepface.modules.verification.find_distance')
@@ -216,7 +216,7 @@ class BiometricAPITest(APITestCase):
     # Issue #30 — Liveness Detection Tests
     # ---------------------------------------------------------------
 
-    @patch('products.views.biometric_views._check_liveness')
+    @patch('products.views.biometric_views._check_liveness_frames')
     @patch('products.views.biometric_views.cv2.imdecode')
     def test_enable_rejects_spoof(self, mock_imdecode, mock_liveness):
         """Issue #30: biometric_enable must reject spoofed (printed/screen) faces."""
@@ -235,20 +235,25 @@ class BiometricAPITest(APITestCase):
         
         response = self.client.post(
             self.enable_url,
-            {'face_image': self.test_image},
+            {
+                'face_image': self.test_image,
+                'frame_left': self._make_test_image('left.jpg'),
+                'frame_center': self._make_test_image('center.jpg'),
+                'frame_right': self._make_test_image('right.jpg'),
+            },
             format='multipart'
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data['success'])
         self.assertIn('Canlılık doğrulaması', response.data['error'])
-        self.assertIn('antispoof_score', response.data)
+        self.assertIn('liveness_score', response.data)
         
         # User's biometric should NOT be enabled
         self.customer_user.refresh_from_db()
         self.assertFalse(self.customer_user.biometric_enabled)
 
-    @patch('products.views.biometric_views._check_liveness')
+    @patch('products.views.biometric_views._check_liveness_frames')
     @patch('products.views.biometric_views.cv2.imdecode')
     def test_login_rejects_spoof(self, mock_imdecode, mock_liveness):
         """Issue #30: biometric_login must reject spoofed faces with 403."""
@@ -273,14 +278,17 @@ class BiometricAPITest(APITestCase):
         response = self.client.post(self.login_url, {
             'username': self.customer_user.username,
             'face_image': self.test_image,
+            'frame_left': self._make_test_image('left.jpg'),
+            'frame_center': self._make_test_image('center.jpg'),
+            'frame_right': self._make_test_image('right.jpg'),
         }, format='multipart')
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(response.data['success'])
         self.assertIn('Canlılık doğrulaması', response.data['error'])
-        self.assertIn('antispoof_score', response.data)
+        self.assertIn('liveness_score', response.data)
 
-    @patch('products.views.biometric_views._check_liveness', return_value=(True, 0.95, None))
+    @patch('products.views.biometric_views._check_liveness_frames', return_value=(True, 0.95, None))
     @patch('products.views.biometric_views.cv2.imdecode')
     @patch('deepface.modules.verification.find_threshold')
     @patch('deepface.modules.verification.find_distance')
