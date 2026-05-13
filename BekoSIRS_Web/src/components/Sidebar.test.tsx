@@ -31,7 +31,7 @@ describe('Sidebar', () => {
     it('renders BEKO logo', () => {
         renderWithRouter(<Sidebar />);
 
-        expect(screen.getByText('BEKO')).toBeInTheDocument();
+        expect(screen.getByText('BEKO SIRS')).toBeInTheDocument();
         expect(screen.getByText('Admin Panel')).toBeInTheDocument();
     });
 

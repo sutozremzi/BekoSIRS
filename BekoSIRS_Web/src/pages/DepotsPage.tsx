@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import * as Lucide from "lucide-react";
 import Sidebar from "../components/Sidebar";
+import MapLocationPicker from "../components/MapLocationPicker";
 import Toast, { type ToastType } from "../components/Toast";
 import { depotAPI } from "../services/api";
 import type { DepotLocation } from "../types/location";
@@ -25,6 +26,7 @@ export default function DepotsPage() {
     const [modalOpen, setModalOpen] = useState(false);
     const [mapModalOpen, setMapModalOpen] = useState(false);
     const [editingDepot, setEditingDepot] = useState<DepotLocation | null>(null);
+    const [selectedMapLocation, setSelectedMapLocation] = useState<{ lat: number; lng: number } | null>(null);
 
     // Form state
     const [name, setName] = useState("");
@@ -93,10 +95,28 @@ export default function DepotsPage() {
     };
 
     const handleOpenMapModal = () => {
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+
+        setSelectedMapLocation(
+            Number.isFinite(lat) && Number.isFinite(lng)
+                ? { lat, lng }
+                : null
+        );
         setMapModalOpen(true);
     };
 
     const handleSelectLocation = (lat: number, lng: number) => {
+        setSelectedMapLocation({ lat, lng });
+    };
+
+    const handleUseSelectedLocation = () => {
+        if (!selectedMapLocation) {
+            showToast(t('depots.valLocReq'), "error");
+            return;
+        }
+
+        const { lat, lng } = selectedMapLocation;
         setLatitude(lat.toFixed(7));
         setLongitude(lng.toFixed(7));
         setMapModalOpen(false);
@@ -412,10 +432,10 @@ export default function DepotsPage() {
                     </div>
                 )}
 
-                {/* Map Modal - Placeholder for now */}
+                {/* Map Modal */}
                 {mapModalOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4 h-[600px] flex flex-col">
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4 flex flex-col">
                             <div className="flex items-center justify-between p-4 border-b">
                                 <h2 className="text-lg font-bold">{t('depots.mapTitle')}</h2>
                                 <button
@@ -426,27 +446,47 @@ export default function DepotsPage() {
                                 </button>
                             </div>
 
-                            <div className="flex-1 p-4 bg-gray-100 flex items-center justify-center">
-                                <div className="text-center">
-                                    <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                                    <p className="text-gray-600 mb-4">
-                                        {t('depots.mapKeyReq')}
-                                    </p>
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        {t('depots.mapManualInfo')}
-                                    </p>
-                                    <div className="space-y-2">
+                            <div className="space-y-4 p-4">
+                                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                                    Haritada depo konumuna tıklayın. Seçilen koordinatları formda kullanmak için onaylayın.
+                                </div>
+
+                                <MapLocationPicker
+                                    initialLat={selectedMapLocation?.lat ?? null}
+                                    initialLng={selectedMapLocation?.lng ?? null}
+                                    focusPoint={selectedMapLocation ? { ...selectedMapLocation, zoom: 15 } : null}
+                                    onLocationSelect={handleSelectLocation}
+                                />
+
+                                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="text-sm text-gray-600">
+                                        {selectedMapLocation ? (
+                                            <>
+                                                Seçili konum:{" "}
+                                                <span className="font-mono text-gray-900">
+                                                    {selectedMapLocation.lat.toFixed(7)}, {selectedMapLocation.lng.toFixed(7)}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            "Henüz konum seçilmedi"
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-2">
                                         <button
-                                            onClick={() => handleSelectLocation(35.1856, 33.3823)}
-                                            className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                            type="button"
+                                            onClick={() => setMapModalOpen(false)}
+                                            className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 transition hover:bg-gray-50"
                                         >
-                                            {t('depots.mapExLefkosa')}
+                                            {t('depots.btnCancel')}
                                         </button>
                                         <button
-                                            onClick={() => handleSelectLocation(35.3387, 33.3176)}
-                                            className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                            type="button"
+                                            onClick={handleUseSelectedLocation}
+                                            disabled={!selectedMapLocation}
+                                            className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            {t('depots.mapExGirne')}
+                                            Konumu Kullan
                                         </button>
                                     </div>
                                 </div>

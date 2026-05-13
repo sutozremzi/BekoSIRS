@@ -2,6 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand-navy-950: #020817;
+  --brand-navy-900: #071a33;
+  --brand-navy-800: #0b2747;
+  --brand-navy-700: #12355b;
+  --brand-navy-600: #1f4e79;
+  --brand-navy-100: #dce8f5;
+  --brand-navy-50: #edf4fb;
+}
+
+/* Central brand color bridge for legacy Tailwind classes used across pages. */
+.bg-black,
+.bg-blue-700,
+.bg-blue-600,
+.bg-blue-500 {
+  background-color: var(--brand-navy-700) !important;
+}
+
+.bg-blue-400 {
+  background-color: var(--brand-navy-600) !important;
+}
+
+.bg-blue-200 {
+  background-color: var(--brand-navy-100) !important;
+}
+
+.bg-blue-100 {
+  background-color: #e5eef8 !important;
+}
+
+.bg-blue-50 {
+  background-color: var(--brand-navy-50) !important;
+}
+
+.text-black,
+.text-blue-900,
+.text-blue-800,
+.text-blue-700,
+.text-blue-600,
+.text-blue-500 {
+  color: var(--brand-navy-700) !important;
+}
+
+.border-black,
+.border-blue-600,
+.border-blue-500,
+.border-blue-300,
+.border-blue-200,
+.border-blue-100 {
+  border-color: rgba(18, 53, 91, 0.28) !important;
+}
+
+.ring-black,
+.ring-blue-500 {
+  --tw-ring-color: rgba(18, 53, 91, 0.35) !important;
+}
+
+.focus\:ring-blue-500:focus,
+.focus\:ring-blue-500\/20:focus {
+  --tw-ring-color: rgba(18, 53, 91, 0.22) !important;
+}
+
+.focus\:border-blue-500:focus,
+.focus\:border-transparent:focus {
+  border-color: var(--brand-navy-600) !important;
+}
+
+.hover\:bg-black:hover,
+.hover\:bg-gray-800:hover,
+.hover\:bg-blue-700:hover,
+.hover\:bg-blue-600:hover {
+  background-color: var(--brand-navy-800) !important;
+}
+
+.hover\:bg-blue-100:hover,
+.hover\:bg-blue-50:hover {
+  background-color: #dce8f5 !important;
+}
+
+.hover\:text-black:hover,
+.hover\:text-blue-700:hover,
+.hover\:text-blue-600:hover {
+  color: var(--brand-navy-800) !important;
+}
+
+.from-blue-500,
+.from-blue-600 {
+  --tw-gradient-from: var(--brand-navy-700) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(18 53 91 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+.to-blue-600,
+.to-blue-500,
+.to-purple-500 {
+  --tw-gradient-to: var(--brand-navy-600) var(--tw-gradient-to-position) !important;
+}
+
 @layer utilities {
   .animate-slide-in-right {
     animation: slideInRight 0.3s ease-out;

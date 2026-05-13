@@ -13,6 +13,7 @@ from ..serializers import (
     ProductAssignmentSerializer
 )
 from ..permissions import IsAdminOrReadOnly, IsDeliveryPerson, IsAdmin
+from ..services.routing_provider import get_route_matrix
 
 
 def _assignment_status_filter(status_value):
@@ -109,6 +110,60 @@ def nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords):
         route.append((nearest[0], nearest[1], nearest[2], nearest_dist))
         current_lat, current_lng = float(nearest[1]), float(nearest[2])
     
+    return route
+
+
+def road_aware_nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords):
+    """
+    Nearest-Neighbor route ordering. Uses road distance/duration matrix when
+    available, and falls back to Haversine when the routing API is unavailable.
+    """
+    if not deliveries_with_coords:
+        return []
+
+    matrix = get_route_matrix(
+        [(float(depot_lat), float(depot_lng))]
+        + [(float(lat), float(lng)) for _, lat, lng in deliveries_with_coords]
+    )
+    unvisited = [
+        (idx + 1, delivery, float(lat), float(lng))
+        for idx, (delivery, lat, lng) in enumerate(deliveries_with_coords)
+    ]
+    route = []
+    current_lat, current_lng = float(depot_lat), float(depot_lng)
+    current_idx = 0
+
+    while unvisited:
+        nearest = None
+        nearest_dist = float('inf')
+        for item in unvisited:
+            item_idx, d_obj, lat, lng = item
+            dist = None
+            if matrix:
+                try:
+                    dist = matrix.distances_km[current_idx][item_idx]
+                except (IndexError, TypeError):
+                    dist = None
+            if dist is None:
+                dist = haversine_km(current_lat, current_lng, lat, lng)
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest = item
+
+        unvisited.remove(nearest)
+        nearest_idx, delivery, lat, lng = nearest
+        duration_min = None
+        if matrix:
+            try:
+                duration_min = matrix.durations_min[current_idx][nearest_idx]
+            except (IndexError, TypeError):
+                duration_min = None
+        if duration_min is None:
+            duration_min = (nearest_dist / 40) * 60
+        route.append((delivery, lat, lng, nearest_dist, duration_min, matrix.source if matrix else 'haversine'))
+        current_lat, current_lng = lat, lng
+        current_idx = nearest_idx
+
     return route
 
 
@@ -646,12 +701,12 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
             )
         
         # Nearest Neighbor ile rota optimize et
-        optimized_route = nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords)
+        optimized_route = road_aware_nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords)
         
         # Toplam mesafe ve süre hesapla
         total_distance = sum(item[3] for item in optimized_route)
         avg_speed_kmh = 40  # KKTC koşullarında ortalama hız
-        total_duration_min = int((total_distance / avg_speed_kmh) * 60) + len(optimized_route) * 5  # +5dk her durak
+        total_duration_min = int(sum(item[4] for item in optimized_route)) + len(optimized_route) * 5  # +5dk her durak
 
         # DeliveryRoute kaydı oluştur
         route = DeliveryRoute.objects.create(
@@ -668,13 +723,13 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         
         # DeliveryRouteStop kayıtları oluştur ve teslimat sırasını güncelle
         stops_data = []
-        for order, (delivery, lat, lng, dist_from_prev) in enumerate(optimized_route, 1):
+        for order, (delivery, lat, lng, dist_from_prev, duration_from_prev, routing_source) in enumerate(optimized_route, 1):
             stop = DeliveryRouteStop.objects.create(
                 route=route,
                 delivery=delivery,
                 stop_order=order,
                 distance_from_previous_km=round(dist_from_prev, 2),
-                duration_from_previous_min=int((dist_from_prev / avg_speed_kmh) * 60) + 5,
+                duration_from_previous_min=int(duration_from_prev) + 5,
             )
             # Teslimat sırası güncelle
             delivery.delivery_order = order
@@ -689,7 +744,8 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
                 'lat': lat,
                 'lng': lng,
                 'distance_from_previous_km': round(dist_from_prev, 2),
-                'duration_from_previous_min': int((dist_from_prev / avg_speed_kmh) * 60) + 5,
+                'duration_from_previous_min': int(duration_from_prev) + 5,
+                'routing_source': routing_source,
             })
         
         return Response({

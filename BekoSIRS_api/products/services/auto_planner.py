@@ -22,6 +22,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from ..models import (
     ProductAssignment, Delivery, CustomerAddress, DepotLocation, District
 )
+from .routing_provider import RouteMatrix, get_route_matrix
 
 
 # ── Config ──────────────────────────────────────────────────────────
@@ -48,7 +49,76 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # ════════════════════════════════════════════════════════════════════
 # 2. Nearest-Neighbor + 2-opt
 # ════════════════════════════════════════════════════════════════════
-def _nn_route(depot: Tuple[float, float], stops: List[dict]) -> List[dict]:
+def _matrix_distance(matrix: Optional[RouteMatrix], from_idx: int, to_idx: int) -> Optional[float]:
+    if not matrix:
+        return None
+    try:
+        return matrix.distances_km[from_idx][to_idx]
+    except (IndexError, TypeError):
+        return None
+
+
+def _matrix_duration(matrix: Optional[RouteMatrix], from_idx: int, to_idx: int) -> Optional[float]:
+    if not matrix:
+        return None
+    try:
+        return matrix.durations_min[from_idx][to_idx]
+    except (IndexError, TypeError):
+        return None
+
+
+def _leg_distance(
+    depot: Tuple[float, float],
+    from_stop: Optional[dict],
+    to_stop: dict,
+    matrix: Optional[RouteMatrix],
+) -> float:
+    from_idx = from_stop.get('_matrix_index') if from_stop else 0
+    to_idx = to_stop.get('_matrix_index')
+    matrix_distance = _matrix_distance(matrix, from_idx, to_idx)
+    if matrix_distance is not None:
+        return float(matrix_distance)
+
+    from_lat, from_lng = (from_stop['lat'], from_stop['lng']) if from_stop else depot
+    return haversine_km(float(from_lat), float(from_lng), float(to_stop['lat']), float(to_stop['lng']))
+
+
+def _leg_duration_min(
+    from_stop: Optional[dict],
+    to_stop: dict,
+    matrix: Optional[RouteMatrix],
+    distance_km: float,
+) -> float:
+    from_idx = from_stop.get('_matrix_index') if from_stop else 0
+    to_idx = to_stop.get('_matrix_index')
+    matrix_duration = _matrix_duration(matrix, from_idx, to_idx)
+    if matrix_duration is not None:
+        return float(matrix_duration)
+    return (distance_km / AVG_SPEED_KMH) * 60
+
+
+def _recalculate_route_legs(
+    route: List[dict],
+    depot: Tuple[float, float],
+    matrix: Optional[RouteMatrix],
+) -> List[dict]:
+    prev_stop = None
+    for stop in route:
+        distance = _leg_distance(depot, prev_stop, stop, matrix)
+        drive_duration = _leg_duration_min(prev_stop, stop, matrix, distance)
+        stop['dist_from_prev'] = round(distance, 2)
+        stop['drive_duration_from_prev_min'] = round(drive_duration, 1)
+        stop['duration_from_prev_min'] = int(drive_duration + STOP_DURATION_MIN)
+        stop['routing_source'] = matrix.source if matrix else 'haversine'
+        prev_stop = stop
+    return route
+
+
+def _nn_route(
+    depot: Tuple[float, float],
+    stops: List[dict],
+    matrix: Optional[RouteMatrix] = None,
+) -> List[dict]:
     """
     Nearest-Neighbor ordering.
     Each stop dict must have 'lat' and 'lng' keys.
@@ -59,33 +129,37 @@ def _nn_route(depot: Tuple[float, float], stops: List[dict]) -> List[dict]:
 
     unvisited = list(stops)
     route: List[dict] = []
-    cur_lat, cur_lng = depot
-
+    current_stop = None
+    
     while unvisited:
         best, best_dist = None, float('inf')
         for s in unvisited:
-            d = haversine_km(cur_lat, cur_lng, s['lat'], s['lng'])
+            d = _leg_distance(depot, current_stop, s, matrix)
             if d < best_dist:
                 best_dist = d
                 best = s
         unvisited.remove(best)
         best['dist_from_prev'] = round(best_dist, 2)
         route.append(best)
-        cur_lat, cur_lng = best['lat'], best['lng']
+        current_stop = best
 
-    return route
+    return _recalculate_route_legs(route, depot, matrix)
 
 
-def _two_opt(route: List[dict], depot: Tuple[float, float]) -> List[dict]:
+def _two_opt(
+    route: List[dict],
+    depot: Tuple[float, float],
+    matrix: Optional[RouteMatrix] = None,
+) -> List[dict]:
     """Improve route with 2-opt swaps until no improvement is found."""
     if len(route) < 3:
         return route
 
     def total_dist(r: List[dict]) -> float:
-        d = haversine_km(depot[0], depot[1], r[0]['lat'], r[0]['lng'])
-        for i in range(len(r) - 1):
-            d += haversine_km(r[i]['lat'], r[i]['lng'], r[i + 1]['lat'], r[i + 1]['lng'])
-        return d
+        distance = _leg_distance(depot, None, r[0], matrix)
+        for idx in range(len(r) - 1):
+            distance += _leg_distance(depot, r[idx], r[idx + 1], matrix)
+        return distance
 
     improved = True
     while improved:
@@ -103,19 +177,18 @@ def _two_opt(route: List[dict], depot: Tuple[float, float]) -> List[dict]:
             if improved:
                 break
 
-    # Recalculate dist_from_prev after 2-opt
-    prev_lat, prev_lng = depot
-    for s in route:
-        s['dist_from_prev'] = round(haversine_km(prev_lat, prev_lng, s['lat'], s['lng']), 2)
-        prev_lat, prev_lng = s['lat'], s['lng']
-
-    return route
+    return _recalculate_route_legs(route, depot, matrix)
 
 
 def optimize_route(depot: Tuple[float, float], stops: List[dict]) -> List[dict]:
-    """NN followed by 2-opt."""
-    route = _nn_route(depot, stops)
-    return _two_opt(route, depot)
+    """NN followed by 2-opt, using road matrix when the routing API is available."""
+    indexed_stops = [{**stop, '_matrix_index': idx + 1} for idx, stop in enumerate(stops)]
+    matrix = get_route_matrix([depot] + [(float(stop['lat']), float(stop['lng'])) for stop in indexed_stops])
+    route = _nn_route(depot, indexed_stops, matrix)
+    optimized = _two_opt(route, depot, matrix)
+    for stop in optimized:
+        stop.pop('_matrix_index', None)
+    return optimized
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -426,9 +499,7 @@ def generate_auto_plan(
 
         # Calculate totals
         total_dist = sum(s['dist_from_prev'] for s in optimized)
-        driving_min = (total_dist / AVG_SPEED_KMH) * 60
-        stop_min = len(optimized) * STOP_DURATION_MIN
-        total_min = int(driving_min + stop_min)
+        total_min = sum(int(s.get('duration_from_prev_min', 0)) for s in optimized)
 
         day['total_distance_km'] = round(total_dist, 2)
         day['total_duration_min'] = total_min
@@ -476,29 +547,41 @@ def recalculate_route_metrics(route) -> None:
     depot_lat = float(route.store_lat or 35.1856)
     depot_lng = float(route.store_lng or 33.3823)
     prev_lat, prev_lng = depot_lat, depot_lng
+    prev_matrix_idx = 0
     total_distance = 0.0
     stop_count = 0
 
-    stops = route.stops.select_related('delivery').order_by('stop_order', 'id')
-    for stop in stops:
+    stops = list(route.stops.select_related('delivery').order_by('stop_order', 'id'))
+    matrix = None
+    if all(stop.delivery and stop.delivery.address_lat is not None and stop.delivery.address_lng is not None for stop in stops):
+        matrix = get_route_matrix(
+            [(depot_lat, depot_lng)]
+            + [(float(stop.delivery.address_lat), float(stop.delivery.address_lng)) for stop in stops]
+        )
+
+    for idx, stop in enumerate(stops, 1):
         stop_count += 1
         delivery = stop.delivery
         if delivery.address_lat is None or delivery.address_lng is None:
             distance = float(stop.distance_from_previous_km or 0)
+            duration = int((distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN
         else:
             cur_lat = float(delivery.address_lat)
             cur_lng = float(delivery.address_lng)
-            distance = haversine_km(prev_lat, prev_lng, cur_lat, cur_lng)
+            matrix_distance = _matrix_distance(matrix, prev_matrix_idx, idx)
+            matrix_duration = _matrix_duration(matrix, prev_matrix_idx, idx)
+            distance = float(matrix_distance) if matrix_distance is not None else haversine_km(prev_lat, prev_lng, cur_lat, cur_lng)
+            duration = int(matrix_duration if matrix_duration is not None else (distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN
             prev_lat, prev_lng = cur_lat, cur_lng
+            prev_matrix_idx = idx
 
-        duration = int((distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN
         stop.distance_from_previous_km = round(distance, 2)
         stop.duration_from_previous_min = duration
         stop.save(update_fields=['distance_from_previous_km', 'duration_from_previous_min'])
         total_distance += distance
 
     route.total_distance_km = round(total_distance, 2)
-    route.total_duration_min = int((total_distance / AVG_SPEED_KMH) * 60) + (stop_count * STOP_DURATION_MIN)
+    route.total_duration_min = sum(stop.duration_from_previous_min or 0 for stop in stops)
     route.is_optimized = True
     route.optimized_at = timezone.now()
     route.save(update_fields=['total_distance_km', 'total_duration_min', 'is_optimized', 'optimized_at'])
@@ -676,7 +759,7 @@ def approve_plan(plan_data: Dict[str, Any]) -> Dict[str, Any]:
                     delivery=delivery,
                     stop_order=stop_order,
                     distance_from_previous_km=stop.get('dist_from_prev', 0),
-                    duration_from_previous_min=int((stop.get('dist_from_prev', 0) / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN,
+                    duration_from_previous_min=stop.get('duration_from_prev_min') or int((stop.get('dist_from_prev', 0) / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN,
                 )
 
                 # Update assignment status

@@ -78,7 +78,7 @@ export default function Sidebar() {
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div className={`flex items-center space-x-3 ${!open && "justify-center w-full"}`}>
-            <div className="bg-black text-white px-3 py-2 rounded-lg font-bold text-lg">BEKO</div>
+            <div className="bg-black text-white px-3 py-2 rounded-lg font-bold text-lg">BEKO SIRS</div>
             {open && (
               <div>
                 <p className="text-sm font-semibold text-gray-900">{t('sidebar.adminPanel')}</p>
