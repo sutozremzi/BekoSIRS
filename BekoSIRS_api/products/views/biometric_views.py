@@ -12,6 +12,7 @@ Endpoints:
 """
 
 import logging
+from django.core.cache import cache
 
 import cv2
 import numpy as np
@@ -35,6 +36,71 @@ from products.liveness_detection import (
 
 logger = logging.getLogger(__name__)
 
+import time
+
+def _get_lockout_remaining(username):
+    """
+    Returns remaining lockout time in seconds, or 0 if not locked out.
+    """
+    lockout_expires = cache.get(f"bio_lockout_{username}")
+    if lockout_expires:
+        now = time.time()
+        remaining = int(lockout_expires - now)
+        if remaining > 0:
+            return remaining
+        else:
+            cache.delete(f"bio_lockout_{username}")
+    return 0
+
+def _handle_biometric_failure(user):
+    """
+    Increments consecutive failed biometric attempts.
+    If it reaches 5, locks out biometric login for 5 minutes.
+    Returns (attempts_left, locked_out, lockout_duration_sec)
+    """
+    username = user.username
+    cache_key = f"failed_bio_attempts_{username}"
+    attempts = cache.get(cache_key, 0) + 1
+    cache.set(cache_key, attempts, timeout=86400)
+    
+    if attempts >= 5:
+        # Lockout for 5 minutes (300 seconds)
+        lockout_duration = 300
+        expires_at = time.time() + lockout_duration
+        cache.set(f"bio_lockout_{username}", expires_at, timeout=lockout_duration)
+        cache.delete(cache_key)
+        return 0, True, lockout_duration
+    
+    return 5 - attempts, False, 0
+
+def _reset_biometric_failures(username):
+    """Resets the failure counter and lockout on successful login."""
+    cache.delete(f"failed_bio_attempts_{username}")
+    cache.delete(f"bio_lockout_{username}")
+
+def _format_biometric_error(tr_header, tr_bullets, en_header, en_bullets, left_attempts=None):
+    """
+    Formats a clean, bilingual error message with bullet points.
+    All Turkish content is presented first, followed by all English content.
+    """
+    tr_lines = [tr_header]
+    if tr_bullets:
+        tr_lines.append("Olası Şüpheler:")
+        for b in tr_bullets:
+            tr_lines.append(f"• {b}")
+    if left_attempts is not None:
+        tr_lines.append(f"• Kalan deneme hakkı: {left_attempts}")
+        
+    en_lines = [en_header]
+    if en_bullets:
+        en_lines.append("Potential Suspicions:")
+        for b in en_bullets:
+            en_lines.append(f"• {b}")
+    if left_attempts is not None:
+        en_lines.append(f"• Remaining attempts: {left_attempts}")
+        
+    return "\n".join(tr_lines) + "\n\n" + "\n".join(en_lines)
+
 
 # ---------------------------------------------------------------------------
 # Liveness detection helper (Issue #30) — frame-subtraction tabanlı
@@ -57,18 +123,14 @@ def _check_liveness_frames(
         right_bytes  : Sağ  açı görüntüsünün ham byte içeriği.
 
     Returns:
-        (is_real: bool, score: float, error_msg: str | None)
+        (is_real: bool, score: float, result: LivenessResult)
     """
     result: LivenessResult = run_liveness_check(left_bytes, center_bytes, right_bytes)
 
     if result.is_live:
-        return True, result.score, None
+        return True, result.score, result
     else:
-        return False, result.score, (
-            f"Canlılık doğrulaması başarısız. "
-            f"Lütfen başınızı yavaşça sola ve sağa çevirerek "
-            f"kameraya bakın. ({result.reason})"
-        )
+        return False, result.score, result
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +179,7 @@ def biometric_enable(request):
     
     face_image = request.FILES.get('face_image')
     if not face_image:
-        return Response({'success': False, 'error': 'Yüz fotoğrafı gerekli.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'Yüz fotoğrafı gerekli. Lütfen bir fotoğraf çekin. / A face photo is required. Please take a photo.'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         from deepface import DeepFace
@@ -149,7 +211,7 @@ def biometric_enable(request):
         objs = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=True)
         
         if len(objs) == 0:
-            return Response({'success': False, 'error': 'Yüz algılanamadı.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'error': 'Yüz algılanamadı. Lütfen yüzünüzün net göründüğünden emin olun ve tekrar deneyin. / Face could not be detected. Please make sure your face is clearly visible and try again.'}, status=status.HTTP_400_BAD_REQUEST)
             
         embedding = objs[0]["embedding"]
         user = request.user
@@ -157,17 +219,18 @@ def biometric_enable(request):
         user.face_encoding = encrypt_face_encoding(embedding)
         user.biometric_enabled = True
         user.save()
+        _reset_biometric_failures(user.username)
         
         return Response({
             'success': True,
-            'message': 'Biyometrik yüz doğrulama başarıyla aktifleştirildi.',
+            'message': 'Yüz tanıma başarıyla etkinleştirildi! Artık yüzünüzle giriş yapabilirsiniz. / Face recognition has been successfully enabled! You can now log in with your face.',
             'biometric_enabled': True
         })
     except ValueError as ve:
-        return Response({'success': False, 'error': f'Yüz bulunamadı veya fotoğraf geçersiz: {str(ve)}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'Yüz bulunamadı veya fotoğraf uygun değil. Lütfen iyi aydınlatılmış bir ortamda net bir fotoğraf çekin. / Face not found or photo is not suitable. Please take a clear photo in a well-lit environment.'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         import traceback
-        return Response({'success': False, 'error': str(e), 'trace': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'success': False, 'error': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -189,8 +252,35 @@ def biometric_login(request):
     
     try:
         user = CustomUser.objects.get(username=username)
+        
+        # Check if currently locked out
+        remaining_lockout = _get_lockout_remaining(username)
+        if remaining_lockout > 0:
+            minutes = (remaining_lockout + 59) // 60
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız\nÇok fazla başarısız deneme nedeniyle yüz tanıma kilitlendi.",
+                ["Lütfen şifrenizle giriş yapın.", f"{minutes} dakika sonra tekrar deneyebilirsiniz."],
+                "Login Failed\nFace recognition has been locked due to too many failed attempts.",
+                ["Please log in with your password.", f"You can try again after {minutes} minutes."]
+            )
+            return Response(
+                {
+                    'success': False,
+                    'error': error_msg,
+                    'locked_out': True,
+                    'lockout_remaining': remaining_lockout
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if not user.biometric_enabled or not user.face_encoding:
-            return Response({'success': False, 'error': 'Biyometrik giriş bu hesap için açık değil.'}, status=status.HTTP_400_BAD_REQUEST)
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız\nYüz tanıma bu hesap için henüz etkinleştirilmemiş.",
+                ["Lütfen önce ayarlardan yüz tanımayı açın."],
+                "Login Failed\nFace recognition is not enabled for this account.",
+                ["Please enable face recognition from settings first."]
+            )
+            return Response({'success': False, 'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
             
         from deepface import DeepFace
         from deepface.modules import verification
@@ -211,8 +301,47 @@ def biometric_login(request):
                     "Spoof attempt detected for user '%s' (liveness_score=%.4f)",
                     username, liveness_score,
                 )
+                left_attempts, locked, _ = _handle_biometric_failure(user)
+                if locked:
+                    error_msg = _format_biometric_error(
+                        "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                        ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                        "Login Failed\nFace recognition has been locked for 5 minutes.",
+                        ["Too many failed attempts were detected.", "Please log in with your password."]
+                    )
+                    return Response(
+                        {
+                            'success': False,
+                            'error': error_msg,
+                            'liveness_score': liveness_score
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                
+                tr_bullets = []
+                en_bullets = []
+                if hasattr(liveness_error, 'details') and isinstance(liveness_error.details, dict):
+                    fail_list = liveness_error.details.get("fail_reasons_list", [])
+                    for tr_r, en_r in fail_list:
+                        tr_bullets.append(tr_r)
+                        en_bullets.append(en_r)
+                if not tr_bullets:
+                    tr_bullets = ["Canlılık doğrulaması başarısız oldu."]
+                    en_bullets = ["Liveness verification failed."]
+                
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız",
+                    tr_bullets,
+                    "Login Failed",
+                    en_bullets,
+                    left_attempts=left_attempts
+                )
                 return Response(
-                    {'success': False, 'error': liveness_error, 'liveness_score': liveness_score},
+                    {
+                        'success': False,
+                        'error': error_msg,
+                        'liveness_score': liveness_score
+                    },
                     status=status.HTTP_403_FORBIDDEN,
                 )
         else:
@@ -224,7 +353,29 @@ def biometric_login(request):
         # Extract current face embedding
         objs = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=False)
         if len(objs) == 0:
-            return Response({'success': False, 'error': 'Gelen fotoğrafta yüz bulunamadı.'}, status=status.HTTP_400_BAD_REQUEST)
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                ["Gönderilen fotoğrafta yüz bulunamadı.", "Lütfen yüzünüzün net göründüğünden emin olun."],
+                "Login Failed",
+                ["No face found in the photo.", "Please make sure your face is clearly visible."],
+                left_attempts=left_attempts
+            )
+            return Response({'success': False, 'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
             
         incoming_embedding = objs[0]["embedding"]
         # Decrypt stored embedding (Issue #29)
@@ -234,25 +385,49 @@ def biometric_login(request):
         distance = verification.find_distance(stored_embedding, incoming_embedding, distance_metric='cosine')
         threshold = verification.find_threshold(model_name="Facenet", distance_metric="cosine")
         
+        # We allow a slightly lenient threshold for general usage (+0.04)
         lenient_threshold = threshold + 0.04
         
         if distance <= lenient_threshold:
+            _reset_biometric_failures(username)
             tokens = get_tokens_for_user(user)
             return Response({
                 'success': True,
-                'message': 'Giriş başarılı!',
+                'message': 'Giriş başarılı! / Login successful!',
                 'tokens': tokens,
                 'user_id': user.id,
                 'username': user.username,
                 'role': user.role
             })
         else:
-            return Response({'success': False, 'error': 'Yüz eşleşmedi (Mesafe çok uzak). Lütfen tekrar deneyin.'}, status=status.HTTP_401_UNAUTHORIZED)
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                ["Yüz eşleşmedi.", "Kayıtlı yüzünüzle giriş yapmayı tekrar deneyin."],
+                "Login Failed",
+                ["Face did not match.", "Please try again with your registered face."],
+                left_attempts=left_attempts
+            )
+            return Response({'success': False, 'error': error_msg}, status=status.HTTP_401_UNAUTHORIZED)
 
     except CustomUser.DoesNotExist:
-        return Response({'success': False, 'error': 'Kullanıcı bulunamadı.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'success': False, 'error': 'Kullanıcı bulunamadı. Lütfen kullanıcı adınızı kontrol edin. / User not found. Please check your username.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'success': False, 'error': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -268,7 +443,7 @@ def biometric_disable(request):
     
     return Response({
         'success': True,
-        'message': 'Biyometrik giriş devre dışı bırakıldı.',
+        'message': 'Yüz tanıma devre dışı bırakıldı. / Face recognition has been disabled.',
         'biometric_enabled': False
     })
 
@@ -284,6 +459,24 @@ def biometric_status(request):
         'biometric_enabled': user.biometric_enabled,
         'has_encoding': bool(user.face_encoding)
     })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def biometric_status_public(request):
+    """
+    GET /api/biometric/status-public/?username=xxx
+    """
+    username = request.query_params.get('username')
+    if not username:
+        return Response({'biometric_enabled': False}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user = CustomUser.objects.get(username=username)
+        return Response({
+            'biometric_enabled': user.biometric_enabled and bool(user.face_encoding)
+        })
+    except CustomUser.DoesNotExist:
+        return Response({'biometric_enabled': False})
 
 
 # ---------------------------------------------------------------------------
@@ -330,8 +523,10 @@ def liveness_check(request):
                 'is_live': False,
                 'score': 0.0,
                 'reason': (
-                    "3 frame gerekli: 'frame_left', 'frame_center', 'frame_right'. "
-                    "Lütfen başınızı yavaşça sola ve sağa çevirerek kameraya bakın."
+                    "3 farklı açıdan fotoğraf gerekli. "
+                    "Lütfen başınızı yavaşça sola ve sağa çevirerek kameraya bakın. "
+                    "/ 3 photos from different angles are required. "
+                    "Please slowly turn your head left and right while looking at the camera."
                 ),
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -364,7 +559,7 @@ def liveness_check(request):
         import traceback
         logger.error("liveness_check hatası: %s", traceback.format_exc())
         return Response(
-            {'is_live': False, 'score': 0.0, 'reason': f'Sunucu hatası: {str(e)}'},
+            {'is_live': False, 'score': 0.0, 'reason': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -396,7 +591,7 @@ def liveness_check_video(request):
     video_file = request.FILES.get('video')
     if not video_file:
         return Response(
-            {'is_live': False, 'score': 0.0, 'reason': "'video' alanı gerekli."},
+            {'is_live': False, 'score': 0.0, 'reason': "Video dosyası gerekli. Lütfen kameranızla kısa bir video çekin. / A video file is required. Please record a short video with your camera."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -424,7 +619,7 @@ def liveness_check_video(request):
         import traceback
         logger.error("liveness_check_video hatası: %s", traceback.format_exc())
         return Response(
-            {'is_live': False, 'score': 0.0, 'reason': f'Sunucu hatası: {str(e)}'},
+            {'is_live': False, 'score': 0.0, 'reason': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -465,7 +660,7 @@ def biometric_login_with_liveness(request):
     username = request.data.get('username')
     if not username:
         return Response(
-            {'success': False, 'error': 'Kullanıcı adı (username) gerekli.'},
+            {'success': False, 'error': 'Kullanıcı adı gerekli. / Username is required.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -488,12 +683,53 @@ def biometric_login_with_liveness(request):
         return Response(
             {
                 'success': False,
-                'error': f"Yetersiz frame ({len(frame_bytes_list)}). En az 3 frame gönderilmeli.",
+                'error': "Yeterli sayıda fotoğraf alınamadı. Lütfen kameranın önünde biraz daha bekleyin. / Not enough photos were captured. Please wait a bit longer in front of the camera.",
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     try:
+        # Kullanıcıyı bul ve biyometrik kontrol açık mı doğrula (Önceden buluyoruz ki başarısız denemeleri takip edebilelim)
+        try:
+            user = CustomUser.objects.get(username=username)
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'success': False, 'error': 'Kullanıcı bulunamadı. Lütfen kullanıcı adınızı kontrol edin. / User not found. Please check your username.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if currently locked out
+        remaining_lockout = _get_lockout_remaining(username)
+        if remaining_lockout > 0:
+            minutes = (remaining_lockout + 59) // 60
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız\nÇok fazla başarısız deneme nedeniyle yüz tanıma kilitlendi.",
+                ["Lütfen şifrenizle giriş yapın.", f"{minutes} dakika sonra tekrar deneyebilirsiniz."],
+                "Login Failed\nFace recognition has been locked due to too many failed attempts.",
+                ["Please log in with your password.", f"You can try again after {minutes} minutes."]
+            )
+            return Response(
+                {
+                    'success': False,
+                    'error': error_msg,
+                    'locked_out': True,
+                    'lockout_remaining': remaining_lockout
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not user.biometric_enabled or not user.face_encoding:
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız\nYüz tanıma bu hesap için henüz etkinleştirilmemiş.",
+                ["Lütfen önce ayarlardan yüz tanımayı açın."],
+                "Login Failed\nFace recognition is not enabled for this account.",
+                ["Please enable face recognition from settings first."]
+            )
+            return Response(
+                {'success': False, 'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # ── Adım 1: Liveness kontrolü (frame subtraction) ──────────────
         liveness_result = run_liveness_check_multiframe(frame_bytes_list)
 
@@ -502,10 +738,45 @@ def biometric_login_with_liveness(request):
                 "Liveness başarısız — user='%s', score=%.4f, reason=%s",
                 username, liveness_result.score, liveness_result.reason,
             )
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                        'liveness_score': liveness_result.score,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            
+            tr_bullets = []
+            en_bullets = []
+            if hasattr(liveness_result, 'details') and isinstance(liveness_result.details, dict):
+                fail_list = liveness_result.details.get("fail_reasons_list", [])
+                for tr_r, en_r in fail_list:
+                    tr_bullets.append(tr_r)
+                    en_bullets.append(en_r)
+            if not tr_bullets:
+                tr_bullets = ["Canlılık doğrulaması başarısız oldu."]
+                en_bullets = ["Liveness verification failed."]
+
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                tr_bullets,
+                "Login Failed",
+                en_bullets,
+                left_attempts=left_attempts
+            )
             return Response(
                 {
                     'success': False,
-                    'error': liveness_result.reason,
+                    'error': error_msg,
                     'liveness_score': liveness_result.score,
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -516,21 +787,6 @@ def biometric_login_with_liveness(request):
         mid_idx = len(frame_bytes_list) // 2
         face_bytes = frame_bytes_list[mid_idx]
 
-        # Kullanıcıyı bul
-        try:
-            user = CustomUser.objects.get(username=username)
-        except CustomUser.DoesNotExist:
-            return Response(
-                {'success': False, 'error': 'Kullanıcı bulunamadı.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if not user.biometric_enabled or not user.face_encoding:
-            return Response(
-                {'success': False, 'error': 'Biyometrik giriş bu hesap için açık değil.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         from deepface import DeepFace
         from deepface.modules import verification
 
@@ -538,15 +794,69 @@ def biometric_login_with_liveness(request):
         face_arr = np.frombuffer(face_bytes, dtype=np.uint8)
         face_img = cv2.imdecode(face_arr, cv2.IMREAD_COLOR)
         if face_img is None:
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                        'liveness_score': liveness_result.score,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                ["Fotoğraf işlenemedi. Lütfen tekrar deneyin."],
+                "Login Failed",
+                ["Photo could not be processed. Please try again."],
+                left_attempts=left_attempts
+            )
             return Response(
-                {'success': False, 'error': 'Yüz frame decode edilemedi.'},
+                {
+                    'success': False,
+                    'error': error_msg,
+                    'liveness_score': liveness_result.score,
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         objs = DeepFace.represent(img_path=face_img, model_name="Facenet", enforce_detection=False)
         if len(objs) == 0:
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                        'liveness_score': liveness_result.score,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                ["Fotoğraflarda yüz bulunamadı. Lütfen yüzünüzün net göründüğünden emin olun."],
+                "Login Failed",
+                ["No face found in the photos. Please make sure your face is clearly visible."],
+                left_attempts=left_attempts
+            )
             return Response(
-                {'success': False, 'error': 'Frame\'lerde yüz bulunamadı.'},
+                {
+                    'success': False,
+                    'error': error_msg,
+                    'liveness_score': liveness_result.score,
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -563,20 +873,44 @@ def biometric_login_with_liveness(request):
         )
 
         if distance > lenient_threshold:
+            left_attempts, locked, _ = _handle_biometric_failure(user)
+            if locked:
+                error_msg = _format_biometric_error(
+                    "Giriş Başarısız\nYüz tanıma 5 dakika süreyle kilitlendi.",
+                    ["Çok fazla başarısız deneme gerçekleştirildi.", "Lütfen şifrenizle giriş yapın."],
+                    "Login Failed\nFace recognition has been locked for 5 minutes.",
+                    ["Too many failed attempts were detected.", "Please log in with your password."]
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                        'liveness_score': liveness_result.score,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            error_msg = _format_biometric_error(
+                "Giriş Başarısız",
+                ["Canlılık doğrulandı ancak yüz eşleşmedi. Lütfen kayıtlı yüzünüzle tekrar deneyin."],
+                "Login Failed",
+                ["Liveness verified but face did not match. Please try again with your registered face."],
+                left_attempts=left_attempts
+            )
             return Response(
                 {
                     'success': False,
-                    'error': 'Canlılık doğrulandı ancak yüz eşleşmedi. Lütfen tekrar deneyin.',
+                    'error': error_msg,
                     'liveness_score': liveness_result.score,
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
         # ── Her iki kontrol de geçti → token üret ──────────────────────
+        _reset_biometric_failures(username)
         tokens = get_tokens_for_user(user)
         return Response({
             'success': True,
-            'message': 'Giriş başarılı!',
+            'message': 'Giriş başarılı! / Login successful!',
             'tokens': tokens,
             'user_id': user.id,
             'username': user.username,
@@ -588,7 +922,7 @@ def biometric_login_with_liveness(request):
         import traceback
         logger.error("biometric_login_with_liveness hatası: %s", traceback.format_exc())
         return Response(
-            {'success': False, 'error': f'Sunucu hatası: {str(e)}'},
+            {'success': False, 'error': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -630,7 +964,7 @@ def liveness_check_multi(request):
         return Response(
             {
                 'is_live': False, 'score': 0.0,
-                'reason': f"Yetersiz frame ({len(frame_bytes_list)}). En az 3 frame gönderilmeli.",
+                'reason': "Yeterli sayıda fotoğraf alınamadı. Lütfen kameranın önünde biraz daha bekleyin. / Not enough photos were captured. Please wait a bit longer in front of the camera.",
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
@@ -658,6 +992,6 @@ def liveness_check_multi(request):
         import traceback
         logger.error("liveness_check_multi hatası: %s", traceback.format_exc())
         return Response(
-            {'is_live': False, 'score': 0.0, 'reason': f'Sunucu hatası: {str(e)}'},
+            {'is_live': False, 'score': 0.0, 'reason': 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin. / An unexpected error occurred. Please try again.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

@@ -207,36 +207,32 @@ def compute_liveness_score(
 
         # Merkez frame'de kesinlikle yüz bulunabilmeli
         if ar_center < 0.3:
-            fail_reasons.append(
-                "Merkez frame'de yüz tespit edilemedi. "
-                "Lütfen orta adımda kameraya düz bakın."
-            )
+            fail_reasons.append((
+                "Yüzünüz algılanamadı. Lütfen kameraya doğrudan bakın ve yüzünüzün iyi aydınlatıldığından emin olun.",
+                "Your face could not be detected. Please look directly at the camera and ensure your face is well-lit."
+            ))
         else:
             # Merkez, sol ve sağdan daha geniş olmalı
             # (sola/sağa dönünce Haar bulamazsa ar=0 → zaten merkez kazanır)
             MARGIN = 0.04  # En az %4 daha geniş olmalı — çok küçük hareket geçmesin
 
             if ar_center < ar_left + MARGIN and ar_left > 0.1:
-                fail_reasons.append(
-                    f"Merkez frame sol frame'den daha geniş değil "
-                    f"(merkez AR={ar_center:.3f}, sol AR={ar_left:.3f}). "
-                    f"Sol adımda başınızı daha belirgin çevirin, "
-                    f"merkez adımda düz öne bakın."
-                )
+                fail_reasons.append((
+                    "Baş hareketi yeterince algılanamadı. Lütfen sola dönerken başınızı daha belirgin şekilde çevirin.",
+                    "Head movement was not detected clearly. Please turn your head more noticeably to the left."
+                ))
             if ar_center < ar_right + MARGIN and ar_right > 0.1:
-                fail_reasons.append(
-                    f"Merkez frame sağ frame'den daha geniş değil "
-                    f"(merkez AR={ar_center:.3f}, sağ AR={ar_right:.3f}). "
-                    f"Sağ adımda başınızı daha belirgin çevirin, "
-                    f"merkez adımda düz öne bakın."
-                )
+                fail_reasons.append((
+                    "Baş hareketi yeterince algılanamadı. Lütfen sağa dönerken başınızı daha belirgin şekilde çevirin.",
+                    "Head movement was not detected clearly. Please turn your head more noticeably to the right."
+                ))
 
     # Eğer yön hataları varsa hemen dön
     if fail_reasons:
         return LivenessResult(
             is_live=False,
             score=0.0,
-            reason="Canlılık doğrulaması başarısız: " + "; ".join(fail_reasons),
+            reason="Doğrulama başarısız / Verification failed: " + " | ".join(fail_reasons),
             details={},
         )
 
@@ -279,33 +275,32 @@ def compute_liveness_score(
     # 6. Eşik kontrolleri
     # ------------------------------------------------------------------ #
     if weighted_mean_diff < score_threshold:
-        fail_reasons.append(
-            f"Ortalama piksel farkı çok düşük ({weighted_mean_diff:.2f} < {score_threshold}) — "
-            f"daha belirgin bir baş hareketi yapın."
-        )
+        fail_reasons.append((
+            "Yeterli hareket algılanamadı. Lütfen başınızı daha belirgin şekilde sola ve sağa çevirin.",
+            "Not enough movement detected. Please turn your head more noticeably to the left and right."
+        ))
 
     if weighted_active_ratio < ACTIVE_PIXEL_RATIO_MIN:
-        fail_reasons.append(
-            f"Aktif piksel oranı çok düşük ({weighted_active_ratio*100:.1f}% < {ACTIVE_PIXEL_RATIO_MIN*100:.0f}%)."
-        )
+        fail_reasons.append((
+            "Hareket alanı çok dar. Lütfen yüzünüzü kameraya daha yakın tutun ve başınızı daha geniş açıyla çevirin.",
+            "Movement area too narrow. Please hold your face closer to the camera and turn your head at a wider angle."
+        ))
 
     if weighted_entropy < ENTROPY_THRESHOLD:
-        fail_reasons.append(
-            f"Fark haritası entropisi çok düşük ({weighted_entropy:.2f} < {ENTROPY_THRESHOLD}) — "
-            f"fotoğraf veya ekran saldırısı şüphesi."
-        )
+        fail_reasons.append((
+            "Doğal hareket algılanamadı. Fotoğraf veya ekran görüntüsü kullanıldığı tespit edildi. Lütfen gerçek yüzünüzle tekrar deneyin.",
+            "Natural movement not detected. A photo or screen image was detected. Please try again with your real face."
+        ))
 
     is_live = len(fail_reasons) == 0
 
     if is_live:
         reason = (
-            f"Canlılık doğrulandı. "
-            f"Ortalama Δpiksel={weighted_mean_diff:.2f}, "
-            f"Aktif piksel=%{weighted_active_ratio*100:.1f}, "
-            f"Entropi={weighted_entropy:.2f}"
+            "Canlılık doğrulandı. Gerçek kişi olduğunuz onaylandı. "
+            "/ Liveness verified. You have been confirmed as a real person."
         )
     else:
-        reason = "Canlılık doğrulaması başarısız: " + "; ".join(fail_reasons)
+        reason = "Doğrulama başarısız / Verification failed: " + " | ".join([f"{r[0]} / {r[1]}" for r in fail_reasons])
 
     logger.info(
         "LivenessScore → score=%.3f, mean_diff=%.2f, active=%.2f%%, entropy=%.2f, is_live=%s",
@@ -317,6 +312,7 @@ def compute_liveness_score(
         score=round(score, 4),
         reason=reason,
         details={
+            "fail_reasons_list": fail_reasons,
             "pairs": {
                 "left_center":  {"mean_diff": round(r_lc.mean_diff, 2), "active_ratio": round(r_lc.active_ratio, 4), "entropy": round(r_lc.entropy, 3)},
                 "center_right": {"mean_diff": round(r_cr.mean_diff, 2), "active_ratio": round(r_cr.active_ratio, 4), "entropy": round(r_cr.entropy, 3)},
@@ -509,10 +505,13 @@ def run_liveness_check(
     for name, raw in [("left", left_bytes), ("center", center_bytes), ("right", right_bytes)]:
         img = decode_image_bytes(raw)
         if img is None:
+            reason_tr = "Görüntü okunamadı. Lütfen net bir fotoğraf çekin ve tekrar deneyin."
+            reason_en = "Image could not be read. Please take a clear photo and try again."
             return LivenessResult(
                 is_live=False,
                 score=0.0,
-                reason=f"'{name}' frame decode edilemedi. Geçerli bir görüntü dosyası gönderin.",
+                reason=f"{reason_tr} / {reason_en}",
+                details={"fail_reasons_list": [(reason_tr, reason_en)]}
             )
         frames[name] = img
 
@@ -552,9 +551,12 @@ def run_liveness_check_multiframe(
         LivenessResult
     """
     if len(frame_bytes_list) < 3:
+        reason_tr = "Yeterli sayıda fotoğraf alınamadı. Lütfen kameranın önünde biraz daha bekleyin ve tekrar deneyin."
+        reason_en = "Not enough photos were captured. Please wait a bit longer in front of the camera and try again."
         return LivenessResult(
             is_live=False, score=0.0,
-            reason=f"Yetersiz frame ({len(frame_bytes_list)}). En az 3 frame gönderilmeli.",
+            reason=f"{reason_tr} / {reason_en}",
+            details={"fail_reasons_list": [(reason_tr, reason_en)]}
         )
 
     # Frame'leri decode et
@@ -567,9 +569,12 @@ def run_liveness_check_multiframe(
         decoded.append(_preprocess(img))
 
     if len(decoded) < 3:
+        reason_tr = "Fotoğraflar işlenemedi. Lütfen iyi aydınlatılmış bir ortamda tekrar deneyin."
+        reason_en = "Photos could not be processed. Please try again in a well-lit environment."
         return LivenessResult(
             is_live=False, score=0.0,
-            reason="Yeterli sayıda frame decode edilemedi. Lütfen tekrar deneyin.",
+            reason=f"{reason_tr} / {reason_en}",
+            details={"fail_reasons_list": [(reason_tr, reason_en)]}
         )
 
     # Ardışık frame çiftleri arasındaki fark metrikleri
@@ -601,22 +606,22 @@ def run_liveness_check_multiframe(
     # Karar
     fail_reasons = []
     if median_diff < min_motion_score:
-        fail_reasons.append(
-            f"Hareket yeterli değil (Δpiksel={median_diff:.2f} < {min_motion_score}). "
-            f"Başınızı daha belirgin şekilde hareket ettirin."
-        )
+        fail_reasons.append((
+            "Yeterli hareket algılanamadı. Lütfen başınızı yavaşça sola ve sağa çevirin.",
+            "Not enough movement detected. Please slowly turn your head left and right."
+        ))
     if median_entropy < min_entropy:
-        fail_reasons.append(
-            f"Hareket entropisi düşük ({median_entropy:.2f} < {min_entropy}) — "
-            f"fotoğraf/ekran saldırısı şüphesi."
-        )
+        fail_reasons.append((
+            "Doğal hareket algılanamadı. Fotoğraf veya ekran görüntüsü kullanıldığı tespit edildi. Lütfen gerçek yüzünüzle tekrar deneyin.",
+            "Natural movement not detected. A photo or screen image was detected. Please try again with your real face."
+        ))
 
     is_live = len(fail_reasons) == 0
     reason = (
-        f"Canlılık doğrulandı — Δpiksel={median_diff:.2f}, "
-        f"aktif=%{median_active*100:.1f}, entropi={median_entropy:.2f}"
+        "Canlılık doğrulandı. Gerçek kişi olduğunuz onaylandı. "
+        "/ Liveness verified. You have been confirmed as a real person."
         if is_live
-        else "Canlılık doğrulaması başarısız: " + "; ".join(fail_reasons)
+        else "Doğrulama başarısız / Verification failed: " + " | ".join([f"{r[0]} / {r[1]}" for r in fail_reasons])
     )
 
     return LivenessResult(
@@ -624,6 +629,7 @@ def run_liveness_check_multiframe(
         score=round(score, 4),
         reason=reason,
         details={
+            "fail_reasons_list": fail_reasons,
             "frames_analyzed": len(decoded),
             "median_diff":    round(median_diff,    2),
             "median_active":  round(median_active,  4),
@@ -683,7 +689,7 @@ def run_liveness_check_from_video(
         if not cap.isOpened():
             return LivenessResult(
                 is_live=False, score=0.0,
-                reason="Video açılamadı. Desteklenen format: mp4, mov.",
+                reason="Video açılamadı. Lütfen mp4 veya mov formatında bir video gönderin. / Video could not be opened. Please send a video in mp4 or mov format.",
             )
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -691,7 +697,7 @@ def run_liveness_check_from_video(
             cap.release()
             return LivenessResult(
                 is_live=False, score=0.0,
-                reason=f"Video çok kısa ({total_frames} frame). En az 2 saniyelik video gönderin.",
+                reason="Video çok kısa. Lütfen en az 2 saniyelik bir video çekin ve tekrar deneyin. / Video is too short. Please record at least a 2-second video and try again.",
             )
 
         # 3. Eşit aralıklı frame indisleri
@@ -707,7 +713,7 @@ def run_liveness_check_from_video(
         if len(extracted) < 4:
             return LivenessResult(
                 is_live=False, score=0.0,
-                reason="Videodan yeterli frame çıkarılamadı. Daha iyi aydınlatılmış bir ortamda deneyin.",
+                reason="Video işlenemedi. Lütfen iyi aydınlatılmış bir ortamda tekrar deneyin. / Video could not be processed. Please try again in a well-lit environment.",
             )
 
         # 4. Ardışık frame çiftleri arasındaki fark metrikleri
@@ -739,32 +745,31 @@ def run_liveness_check_from_video(
         # 6. Karar
         fail_reasons = []
         if median_diff < min_motion_score:
-            fail_reasons.append(
-                f"Hareket yeterli değil (ort. Δpiksel={median_diff:.2f} < {min_motion_score}). "
-                f"Lütfen başınızı belirgin şekilde çevirin."
-            )
+            fail_reasons.append((
+                "Yeterli hareket algılanamadı. Lütfen başınızı yavaşça sola ve sağa çevirin.",
+                "Not enough movement detected. Please slowly turn your head left and right."
+            ))
         if median_entropy < min_entropy:
-            fail_reasons.append(
-                f"Hareket düzensizliği düşük (entropi={median_entropy:.2f} < {min_entropy}) — "
-                f"fotoğraf veya ekran saldırısı şüphesi."
-            )
+            fail_reasons.append((
+                "Doğal hareket algılanamadı. Fotoğraf veya ekran görüntüsü kullanıldığı tespit edildi. Lütfen gerçek yüzünüzle tekrar deneyin.",
+                "Natural movement not detected. A photo or screen image was detected. Please try again with your real face."
+            ))
 
         is_live = len(fail_reasons) == 0
         if is_live:
             reason = (
-                f"Canlılık doğrulandı. "
-                f"Ort. Δpiksel={median_diff:.2f}, "
-                f"Aktif piksel=%{median_active*100:.1f}, "
-                f"Entropi={median_entropy:.2f}"
+                "Canlılık doğrulandı. Gerçek kişi olduğunuz onaylandı. "
+                "/ Liveness verified. You have been confirmed as a real person."
             )
         else:
-            reason = "Canlılık doğrulaması başarısız: " + "; ".join(fail_reasons)
+            reason = "Doğrulama başarısız / Verification failed: " + " | ".join([f"{r[0]} / {r[1]}" for r in fail_reasons])
 
         return LivenessResult(
             is_live=is_live,
             score=round(score, 4),
             reason=reason,
             details={
+                "fail_reasons_list": fail_reasons,
                 "video_frames_analyzed": len(extracted),
                 "median_diff":    round(median_diff,    2),
                 "median_active":  round(median_active,  4),

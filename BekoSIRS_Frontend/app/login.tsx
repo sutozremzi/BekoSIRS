@@ -43,7 +43,7 @@ const LoginScreen = () => {
     const frameIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const { login, loading: authLoading } = useAuth();
-    const { loginWithLivenessUnified, loading: bioLoading } = useBiometric();
+    const { loginWithLivenessUnified, checkBiometricStatusPublic, loading: bioLoading } = useBiometric();
     const { language } = useLanguage();
 
     const handleLogin = async () => {
@@ -63,6 +63,24 @@ const LoginScreen = () => {
                 Alert.alert(t('common.error'), t('login.faceIdInfo'));
                 return;
             }
+        }
+
+        // Check if biometric is enabled on backend before opening camera
+        const statusObj = await checkBiometricStatusPublic(currentUsername);
+        if (statusObj.lockedOut) {
+            const minutes = Math.ceil(statusObj.remaining / 60);
+            Alert.alert(
+                t('common.error'),
+                `Çok fazla başarısız deneme nedeniyle yüz tanıma geçici olarak kilitlendi. Lütfen şifrenizle giriş yapın veya ${minutes} dakika sonra tekrar deneyin. / Face recognition has been locked due to too many failed attempts. Please log in with your password or try again in ${minutes} minutes.`
+            );
+            return;
+        }
+        if (!statusObj.enabled) {
+            Alert.alert(
+                t('common.error'),
+                'Yüz tanıma bu hesap için etkin değil. Lütfen önce ayarlardan yüz tanımayı etkinleştirin. / Face recognition is not enabled for this account. Please enable it in settings first.'
+            );
+            return;
         }
 
         if (!permission?.granted) {
