@@ -39,13 +39,13 @@ export const useBiometric = () => {
                 await SecureStore.setItemAsync(BIOMETRIC_REFRESH_TOKEN, refreshToken);
             }
 
-            Alert.alert('Başarılı', 'Yüzünüz sisteme güvenle kaydedildi (Özellik Vektörü olarak).');
+            Alert.alert('Başarılı / Success', 'Yüz tanıma başarıyla etkinleştirildi! Artık yüzünüzle giriş yapabilirsiniz. / Face recognition enabled! You can now log in with your face.');
             return true;
         } catch (error: any) {
             const msg =
                 error.response?.data?.error ||
-                'Yüz kaydedilemedi. Lütfen net bir fotoğraf çekin.';
-            Alert.alert('Hata', msg);
+                'Yüz kaydedilemedi. Lütfen iyi aydınlatılmış bir ortamda net bir fotoğraf çekin. / Face could not be registered. Please take a clear photo in a well-lit environment.';
+            Alert.alert('Hata / Error', msg);
             return false;
         } finally {
             setLoading(false);
@@ -82,7 +82,7 @@ export const useBiometric = () => {
             if (!verifyResponse.data.success) {
                 return {
                     success: false,
-                    error: verifyResponse.data.error || 'Yüz eşleşmedi.',
+                    error: verifyResponse.data.error || 'Yüz eşleşmedi. Lütfen tekrar deneyin. / Face did not match. Please try again.',
                 };
             }
 
@@ -97,7 +97,7 @@ export const useBiometric = () => {
                 error.response?.data?.error || error.response?.data?.detail;
             return {
                 success: false,
-                error: errorMsg || 'Giriş işlemi başarısız oldu.',
+                error: errorMsg || 'Giriş işlemi başarısız oldu. Lütfen tekrar deneyin. / Login failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -155,7 +155,7 @@ export const useBiometric = () => {
             const reason =
                 error.response?.data?.reason ||
                 error.response?.data?.error ||
-                'Canlılık kontrolü başarısız oldu.';
+                'Canlılık kontrolü başarısız oldu. Lütfen tekrar deneyin. / Liveness check failed. Please try again.';
             return { is_live: false, score: 0, reason };
         }
     };
@@ -196,7 +196,7 @@ export const useBiometric = () => {
             if (!liveness.is_live) {
                 return {
                     success: false,
-                    error: `Canlılık doğrulaması başarısız (skor: ${(liveness.score * 100).toFixed(0)}%). Lütfen başınızı yavaşça çevirerek tekrar deneyin.`,
+                    error: `Canlılık doğrulaması başarısız. Lütfen başınızı yavaşça çevirerek tekrar deneyin. / Liveness verification failed. Please slowly turn your head and try again.`,
                 };
             }
 
@@ -235,7 +235,7 @@ export const useBiometric = () => {
             if (!verifyResponse.data.success) {
                 return {
                     success: false,
-                    error: verifyResponse.data.error || 'Yüz eşleşmedi.',
+                    error: verifyResponse.data.error || 'Yüz eşleşmedi. Lütfen tekrar deneyin. / Face did not match. Please try again.',
                 };
             }
 
@@ -251,7 +251,7 @@ export const useBiometric = () => {
                 error.response?.data?.detail;
             return {
                 success: false,
-                error: errorMsg || 'Giriş işlemi başarısız oldu.',
+                error: errorMsg || 'Giriş işlemi başarısız oldu. Lütfen tekrar deneyin. / Login failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -267,7 +267,7 @@ export const useBiometric = () => {
         try {
             await api.post('/api/v1/biometric/disable/');
             await SecureStore.deleteItemAsync(BIOMETRIC_REFRESH_TOKEN);
-            Alert.alert('Başarılı', 'Yüz kaydınız başarıyla silindi.');
+            Alert.alert('Başarılı / Success', 'Yüz tanıma devre dışı bırakıldı. / Face recognition has been disabled.');
             return true;
         } catch (error) {
             return false;
@@ -320,13 +320,13 @@ export const useBiometric = () => {
                 if (!livenessOk) {
                     livenessError =
                         liveRes.data.reason ||
-                        'Canlılık doğrulanamadı. Başınızı belirgin şekilde çevirerek tekrar deneyin.';
+                        'Canlılık doğrulanamadı. Lütfen başınızı belirgin şekilde çevirerek tekrar deneyin. / Liveness could not be verified. Please turn your head more noticeably and try again.';
                 }
             } catch (e: any) {
                 livenessError =
                     e.response?.data?.reason ||
                     e.response?.data?.error ||
-                    'Canlılık kontrolü başarısız oldu.';
+                    'Canlılık kontrolü başarısız oldu. Lütfen tekrar deneyin. / Liveness check failed. Please try again.';
             }
 
             if (!livenessOk) {
@@ -351,7 +351,7 @@ export const useBiometric = () => {
             if (!verifyResponse.data.success) {
                 return {
                     success: false,
-                    error: verifyResponse.data.error || 'Yüz eşleşmedi.',
+                    error: verifyResponse.data.error || 'Yüz eşleşmedi. Lütfen tekrar deneyin. / Face did not match. Please try again.',
                 };
             }
 
@@ -363,7 +363,7 @@ export const useBiometric = () => {
         } catch (error: any) {
             return {
                 success: false,
-                error: error.response?.data?.error || error.response?.data?.detail || 'Giriş başarısız.',
+                error: error.response?.data?.error || error.response?.data?.detail || 'Giriş başarısız. Lütfen tekrar deneyin. / Login failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -413,12 +413,12 @@ export const useBiometric = () => {
                     { headers: { 'Content-Type': 'multipart/form-data' } },
                 );
                 livenessOk = liveRes.data.is_live ?? false;
-                livenessError = liveRes.data.reason || 'Canlılık doğrulanamadı.';
+                livenessError = liveRes.data.reason || 'Canlılık doğrulanamadı. Lütfen tekrar deneyin. / Liveness could not be verified. Please try again.';
             } catch (e: any) {
                 livenessError =
                     e.response?.data?.reason ||
                     e.response?.data?.error ||
-                    `Canlılık isteği başarısız (${e.message}).`;
+                    'Canlılık kontrolü başarısız oldu. Lütfen tekrar deneyin. / Liveness check failed. Please try again.';
             }
 
             if (!livenessOk) {
@@ -441,7 +441,7 @@ export const useBiometric = () => {
             );
 
             if (!verifyResponse.data.success) {
-                return { success: false, error: verifyResponse.data.error || 'Yüz eşleşmedi.' };
+                return { success: false, error: verifyResponse.data.error || 'Yüz eşleşmedi. Lütfen tekrar deneyin. / Face did not match. Please try again.' };
             }
 
             const { access, refresh } = verifyResponse.data.tokens;
@@ -452,7 +452,7 @@ export const useBiometric = () => {
         } catch (error: any) {
             return {
                 success: false,
-                error: error.response?.data?.error || 'Giriş başarısız.',
+                error: error.response?.data?.error || 'Giriş başarısız. Lütfen tekrar deneyin. / Login failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -494,7 +494,7 @@ export const useBiometric = () => {
                 isLive: false,
                 reason: e.response?.data?.reason
                     || e.response?.data?.error
-                    || `Liveness isteği başarısız (${e.message}).`,
+                    || 'Canlılık kontrolü başarısız oldu. Lütfen tekrar deneyin. / Liveness check failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -529,7 +529,7 @@ export const useBiometric = () => {
             );
 
             if (!res.data.success) {
-                return { success: false, error: res.data.error || 'Yüz eşleşmedi.' };
+                return { success: false, error: res.data.error || 'Yüz eşleşmedi. Lütfen tekrar deneyin. / Face did not match. Please try again.' };
             }
 
             const { access, refresh } = res.data.tokens;
@@ -540,7 +540,7 @@ export const useBiometric = () => {
         } catch (error: any) {
             return {
                 success: false,
-                error: error.response?.data?.error || 'Yüz doğrulama başarısız.',
+                error: error.response?.data?.error || 'Yüz doğrulama başarısız. Lütfen tekrar deneyin. / Face verification failed. Please try again.',
             };
         } finally {
             setLoading(false);
@@ -593,7 +593,7 @@ export const useBiometric = () => {
             if (!res.data.success) {
                 return {
                     success: false,
-                    error: res.data.error || 'Giriş başarısız.',
+                    error: res.data.error || 'Giriş başarısız. Lütfen tekrar deneyin. / Login failed. Please try again.',
                 };
             }
 
@@ -606,10 +606,28 @@ export const useBiometric = () => {
             const errorMsg =
                 error.response?.data?.error ||
                 error.response?.data?.detail ||
-                `Giriş başarısız (${error.message}).`;
+                `Giriş başarısız. Lütfen tekrar deneyin. / Login failed. Please try again.`;
             return { success: false, error: errorMsg };
         } finally {
             setLoading(false);
+        }
+    };
+
+    /** Yüz tanıma durumunu herkese açık endpoint'ten kontrol eder. */
+    const checkBiometricStatusPublic = async (
+        username: string,
+    ): Promise<{ enabled: boolean; lockedOut: boolean; remaining: number }> => {
+        try {
+            const response = await api.get(`/api/v1/biometric/status-public/`, {
+                params: { username }
+            });
+            return {
+                enabled: response.data.biometric_enabled ?? false,
+                lockedOut: response.data.locked_out ?? false,
+                remaining: response.data.lockout_remaining ?? 0,
+            };
+        } catch {
+            return { enabled: false, lockedOut: false, remaining: 0 };
         }
     };
 
@@ -625,5 +643,6 @@ export const useBiometric = () => {
         verifyFaceOnly,
         loginWithLivenessUnified,
         performLivenessCheck,
+        checkBiometricStatusPublic,
     };
 };

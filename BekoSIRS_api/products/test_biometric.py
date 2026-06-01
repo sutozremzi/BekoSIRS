@@ -335,7 +335,7 @@ class BiometricAPITest(APITestCase):
             'frame_0': img,
         }, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Yetersiz frame', response.data.get('error', ''))
+        self.assertIn('Yeterli sayıda fotoğraf alınamadı', response.data.get('error', ''))
 
     @patch('products.views.biometric_views.run_liveness_check_multiframe')
     def test_login_with_liveness_fails_when_not_live(self, mock_liveness):
