@@ -24,6 +24,10 @@ const {
     FileText = () => <span>📄</span>,
     Pencil = () => <span>✏</span>,
     Save = () => <span>💾</span>,
+    User = () => <span>👤</span>,
+    X = () => <span>✕</span>,
+    MapPin = () => <span>📍</span>,
+    Calendar = () => <span>📅</span>,
 } = Lucide as any;
 
 interface InstallmentPlan {
@@ -51,6 +55,11 @@ interface CustomerDetail {
     last_name: string;
     email: string;
     phone_number?: string;
+    address?: string;
+    city?: string;
+    district?: string;
+    date_joined?: string;
+    username?: string;
 }
 
 interface Installment {
@@ -89,6 +98,7 @@ export default function InstallmentPlansPage() {
     const [editingNotes, setEditingNotes] = useState(false);
     const [notesValue, setNotesValue] = useState("");
     const [savingNotes, setSavingNotes] = useState(false);
+    const [customerPopupOpen, setCustomerPopupOpen] = useState(false);
 
     // Taksit düzenleme state'i
     const [editingInstallmentId, setEditingInstallmentId] = useState<number | null>(null);
@@ -421,7 +431,15 @@ export default function InstallmentPlansPage() {
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900">{selectedPlan.product_name}</h1>
                                 <div className="flex items-center gap-4 mt-1 flex-wrap">
-                                    <p className="text-gray-600">{t('installments.lblCustomer')}<span className="font-medium">{selectedPlan.customer_name}</span></p>
+                                    <p className="text-gray-600">
+                                        {t('installments.lblCustomer')}
+                                        <button
+                                            onClick={() => setCustomerPopupOpen(true)}
+                                            className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors cursor-pointer"
+                                        >
+                                            {selectedPlan.customer_name}
+                                        </button>
+                                    </p>
                                     {customerDetail?.phone_number && (
                                         <span className="flex items-center gap-1 text-sm text-gray-500">
                                             <Phone className="w-3 h-3" />
@@ -682,6 +700,99 @@ export default function InstallmentPlansPage() {
                             </table>
                         )}
                     </div>
+
+                    {/* Müşteri Detay Popup */}
+                    {customerPopupOpen && customerDetail && (
+                        <div
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                            onClick={() => setCustomerPopupOpen(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-100">
+                                    <div className="flex items-center gap-2">
+                                        <User className="w-5 h-5 text-gray-600" />
+                                        <h3 className="font-bold text-gray-900 text-lg">Müşteri Bilgileri</h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setCustomerPopupOpen(false)}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Avatar + İsim */}
+                                <div className="flex items-center gap-4 px-6 py-5 border-b border-gray-100">
+                                    <div className="w-14 h-14 rounded-full bg-gray-900 flex items-center justify-center text-white text-xl font-bold select-none">
+                                        {customerDetail.first_name?.[0]?.toUpperCase()}{customerDetail.last_name?.[0]?.toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <div className="text-xl font-bold text-gray-900">
+                                            {customerDetail.first_name} {customerDetail.last_name}
+                                        </div>
+                                        {customerDetail.username && (
+                                            <div className="text-sm text-gray-400">@{customerDetail.username}</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Bilgiler */}
+                                <div className="px-6 py-4 space-y-3">
+                                    {customerDetail.email && (
+                                        <div className="flex items-center gap-3">
+                                            <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                                            <a
+                                                href={`mailto:${customerDetail.email}`}
+                                                className="text-sm text-blue-600 hover:underline"
+                                            >
+                                                {customerDetail.email}
+                                            </a>
+                                        </div>
+                                    )}
+                                    {customerDetail.phone_number && (
+                                        <div className="flex items-center gap-3">
+                                            <Phone className="w-4 h-4 text-gray-400 shrink-0" />
+                                            <a
+                                                href={`tel:${customerDetail.phone_number}`}
+                                                className="text-sm text-gray-700 hover:text-blue-600"
+                                            >
+                                                {customerDetail.phone_number}
+                                            </a>
+                                        </div>
+                                    )}
+                                    {(customerDetail.address || customerDetail.city || customerDetail.district) && (
+                                        <div className="flex items-start gap-3">
+                                            <MapPin className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                                            <span className="text-sm text-gray-700">
+                                                {[customerDetail.address, customerDetail.district, customerDetail.city].filter(Boolean).join(', ')}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {customerDetail.date_joined && (
+                                        <div className="flex items-center gap-3">
+                                            <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
+                                            <span className="text-sm text-gray-700">
+                                                Kayıt: {new Date(customerDetail.date_joined).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="px-6 pb-5">
+                                    <button
+                                        onClick={() => setCustomerPopupOpen(false)}
+                                        className="w-full py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-700 font-medium text-sm transition-colors"
+                                    >
+                                        Kapat
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* İptal Onay Modalı */}
                     {cancelConfirmOpen && (

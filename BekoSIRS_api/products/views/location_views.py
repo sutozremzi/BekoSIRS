@@ -16,6 +16,7 @@ class DistrictViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = District.objects.all().order_by('name')
     serializer_class = DistrictSerializer
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
 
 class AreaViewSet(viewsets.ReadOnlyModelViewSet):
@@ -26,6 +27,7 @@ class AreaViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = AreaSerializer
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
     
     def get_queryset(self):
         queryset = Area.objects.all().select_related('district').order_by('district__name', 'name')
