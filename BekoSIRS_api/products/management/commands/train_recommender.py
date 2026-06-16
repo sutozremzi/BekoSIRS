@@ -36,13 +36,21 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.WARNING("  - Content model skipped or failed"))
 
-                ncf = metrics.get('ncf')
-                if ncf:
-                    self.stdout.write(f"  - NCF Hit Rate @10: {ncf.get('hit_rate_at_10')}")
-                    self.stdout.write(f"  - NCF Train R2: {ncf.get('train_r2')}")
+                # 'ncf' anahtarı geriye dönük uyumluluk için korunur; artık MF metriklerini taşır.
+                mf = metrics.get('mf') or metrics.get('ncf')
+                if mf:
+                    self.stdout.write(f"  - MF Algorithm:         {mf.get('algorithm', 'TruncatedSVD')}")
+                    self.stdout.write(f"  - MF Latent Components: {mf.get('n_components')}")
+                    self.stdout.write(f"  - MF Explained Var.:    {mf.get('explained_variance')}")
+                    self.stdout.write(f"  - Recall@K:             {mf.get('recall_at_k')}")
+                    self.stdout.write(f"  - NDCG@K:               {mf.get('ndcg_at_k')}")
+                    self.stdout.write(f"  - MAP@K:                {mf.get('map_at_k')}")
+                    self.stdout.write(f"  - Eval Users:           {mf.get('eval_users')}")
+                    self.stdout.write(f"  - n_interactions:       {mf.get('n_interactions')}")
+                    self.stdout.write(f"  - Trained at:           {mf.get('trained_at')}")
                 else:
                     self.stdout.write(
-                        self.style.WARNING("  - NCF model skipped (insufficient interaction data)")
+                        self.style.WARNING("  - MF model skipped (insufficient interaction data)")
                     )
             else:
                 self.stdout.write(

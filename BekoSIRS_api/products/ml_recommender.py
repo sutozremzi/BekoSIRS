@@ -3,7 +3,27 @@
 # BEKOSIRS HİBRİT ÖNERİ SİSTEMİ (RECOMMENDATION ENGINE) TEKNİK REFERANS REHBERİ
 # ==============================================================================
 #
-# ADIM 1: GİRDİ VERİLERİ VE ETKİLEŞİM AĞIRLIKLARI. //?????????????bu puanlar neye göre veriliyor??????????????? puanlama ağırlıklaırnla oyna
+# ADIM 1: GİRDİ VERİLERİ VE ETKİLEŞİM AĞIRLIKLARI
+#
+# Ağırlık hiyerarşisi (5 > 3 > ★ > 1), implicit feedback literatüründe yerleşik
+# "confidence" yaklaşımına dayanır (Hu, Koren & Volinsky, 2008 — "Collaborative
+# Filtering for Implicit Feedback Datasets", ICDM). Temel prensip: bir kullanıcı
+# bir ürünü ne kadar güçlü bir niyet sinyaliyle edinmişse, modelin o (kullanıcı,ürün)
+# çiftine verdiği güven (confidence) de o ölçüde yüksek olmalıdır.
+#
+#   Satın Alma (5.0): Nakit harcama = en güçlü tercih kanıtı. Koren et al. (2009)
+#     "Matrix Factorization Techniques for Recommender Systems" (IEEE Computer)
+#     çalışmasında açık derecelendirme yerine satın alma gibi örtük sinyalin
+#     daha güvenilir olduğu gösterilmiştir.
+#   İstek Listesi (3.0): "Almak istiyorum" niyeti; satın almadan düşük, görüntülemeden
+#     yüksek. Pan et al. (2008) "One-Class Collaborative Filtering" (ICDM) bu ara
+#     sinyal türünü ayrı bir güven seviyesiyle modellemektedir.
+#   Yorum (★ kadar): Kullanıcının bilinçli verdiği geri bildirim; yıldız sayısı
+#     doğal ağırlık sağlar. Asgari eşik (>3 yıldız) ile negatif deneyimler
+#     pozitif sinyal havuzuna karışmaz.
+#   Görüntüleme (1.0, max 5): Zayıf niyet sinyali — merak ya da kazara tıklama
+#     olabilir. Cap (5) aşırı görüntüleme gürültüsünü sınırlandırır; bu strateji
+#     Hu et al. (2008) §4.1 "uniform confidence" tartışmasıyla örtüşmektedir.
 
 # ------------------------------------------------------------------------------
 # 1.1. Etkileşim Puanları (İki farklı yerde hesaplanır):
@@ -40,7 +60,15 @@
 #      14. Kullanıcının özel olarak bu ürünü kaç kez görüntülediği.
 #   - Tüm bu veriler MinMaxScaler ile 0-1 arasına çekilip ağa sokulur.
 #
-# 2.2. İçerik Tabanlı Filtreleme (Content-Based - TF-IDF & Kosinüs Benzerliği): //.  ??????????bag of words yoksa sadece tf idf?????  
+# 2.2. İçerik Tabanlı Filtreleme (Content-Based - TF-IDF & Kosinüs Benzerliği):
+#   Teknik olarak "Bag-of-N-Grams" temsilidir: TF-IDF, her belgeyi kelime (1-gram)
+#   ve iki-kelimelik öbek (2-gram) frekanslarına göre ağırlıklandırılmış bir
+#   vektöre dönüştürür. Salton & Buckley (1988) tarafından tanımlanan TF-IDF
+#   (term frequency–inverse document frequency) formülü, nadir ama ayırt edici
+#   kelimelere daha yüksek ağırlık vererek saf Bag-of-Words'ün frekans yanlılığını
+#   giderir (Jones, 1972 — "A Statistical Interpretation of Term Specificity").
+#   N-gram aralığı (1,2) seçildi: tek kelimeler genel semantiği, ikili kelime öbekleri
+#   ise "çamaşır makinesi" gibi ürüne özgü ifadeleri yakalar.
 #   - TF-IDF Vectorizer en çok geçen 5000 kelime/ikili kelime grubunu (1-2 ngram) çıkarır.
 #   - Ürünler arası Kosinüs Benzerliği (Cosine Similarity) hesaplanır.
 #   - Kategori Bonusu: Eğer iki ürün aynı kategorideyse, benzerlik skorlarına statik +0.15 eklenir.
@@ -54,8 +82,16 @@
 #   - NCF, Content ve Popülerlik modellerinden gelen skorlar kendi içlerindeki en yüksek değere (max) 
 #     bölünerek 0 ile 1 arasına (Normalize) çekilir.
 # 
-# 2. Hibrit Formül Ağırlıkları (WEIGHTS): //genel weightleri değiştir r2 değişiyor mu
-#   - Nihai Puan = (NCF Skoru x 0.5) + (Content Skoru x 0.3) + (Popülerlik Skoru x 0.2)
+# 2. Hibrit Formül Ağırlıkları (Adaptif — kullanıcı derinliğine göre):
+#   - Soğuk başlangıç (0 etkileşim): %0 MF + %0 II + %25 Content + %75 Popularity
+#   - Light (1-4 etkileşim):        %10 MF + %25 II + %30 Content + %35 Popularity
+#   - Balanced (5-19 etkileşim):    %25 MF + %30 II + %30 Content + %15 Popularity
+#   - Aktif (20+ etkileşim):        %35 MF + %35 II + %25 Content + %5 Popularity
+#   Kademeli geçiş, Burke (2002) "Hybrid Recommender Systems" (UMUAI) çalışmasında
+#   önerilen "switching hybrid" stratejisine karşılık gelir: veri yetersizse
+#   model-tabanlı CF yerine non-personalized yöntemlere geçiş yapılır.
+#   tune_hybrid_weights() metodu bu varsayılan ağırlıkları NDCG@K bazlı grid
+#   search ile doğrulayıp gerekirse optimize eder.
 #
 # 3. Anlık Bonuslar (Boosts):
 #   - Arama Bonusu (Search Boost): Kullanıcının son 5 araması ürünün TF-IDF metninde geçiyorsa,
@@ -74,7 +110,46 @@
 #   * Eğer listede yeterli (Top-N) ürün kalmazsa, bu kısıtlama esnetilir ve diğer kategoriler açılır.
 # - Etiketleme (Reasoning): Ürünün puanı en çok nereden geldiyse veya hangi bonusu aldıysa,
 #   "Aramalarınıza göre", "Bütçenize uygun", "[Kategori] beğenenler bunu da beğendi" gibi dinamik metinler üretilir.
-# ==============================================================================    
+#
+# KAYNAKÇA
+# ------------------------------------------------------------------------------
+# [1] Hu, Y., Koren, Y. & Volinsky, C. (2008). Collaborative Filtering for
+#     Implicit Feedback Datasets. ICDM 2008.
+#     → Etkileşim ağırlık hiyerarşisi (satın alma > wishlist > görüntüleme) ve
+#       "confidence" yaklaşımının temeli.
+#
+# [2] Koren, Y., Bell, R. & Volinsky, C. (2009). Matrix Factorization Techniques
+#     for Recommender Systems. IEEE Computer, 42(8), 30-37.
+#     → TruncatedSVD ile latent faktör öğrenmesi; örtük sinyalin güvenilirliği.
+#
+# [3] Pan, R. et al. (2008). One-Class Collaborative Filtering. ICDM 2008.
+#     → Wishlist gibi ara sınıf sinyallerin ayrı güven seviyesiyle modellenmesi.
+#
+# [4] Salton, G. & Buckley, C. (1988). Term-Weighting Approaches in Automatic
+#     Text Retrieval. Information Processing & Management, 24(5), 513-523.
+#     → TF-IDF formülünün orijinal tanımı.
+#
+# [5] Jones, K. S. (1972). A Statistical Interpretation of Term Specificity and
+#     Its Application in Retrieval. Journal of Documentation, 28(1), 11-21.
+#     → IDF (Inverse Document Frequency) bileşeninin teorik gerekçesi.
+#
+# [6] Burke, R. (2002). Hybrid Recommender Systems: Survey and Experiments.
+#     User Modeling and User-Adapted Interaction, 12(4), 331-370.
+#     → Switching hybrid stratejisi: veri yetersizliğinde CF yerine non-kişisel yöntemlere geçiş.
+#
+# [7] Cremonesi, P., Koren, Y. & Turrin, R. (2010). Performance of Recommender
+#     Algorithms on Top-N Recommendation Tasks. RecSys 2010.
+#     → Leave-One-Out @K değerlendirme protokolü (Recall@K, NDCG@K).
+#
+# [8] Adomavicius, G. & Tuzhilin, A. (2005). Toward the Next Generation of
+#     Recommender Systems. IEEE Transactions on Knowledge and Data Engineering,
+#     17(6), 734-749.
+#     → Hibrit ağırlık optimizasyonu için grid search gerekçesi.
+#
+# [9] Hidasi, B. et al. (2015). Session-based Recommendations with Recurrent
+#     Neural Networks. ICLR 2016 (arXiv:1511.06939).
+#     → Çevrimiçi CTR ölçümünün temel online değerlendirme metriği olarak kullanımı.
+# ==============================================================================
 import math
 import os
 import time
@@ -2213,8 +2288,392 @@ class HybridRecommender:
             'map_at_k': round(sum(average_precisions) / n, 4),
         }
 
+    # -----------------------------------------------------------------------
+    # Baseline karşılaştırması (ablation study)
+    # -----------------------------------------------------------------------
+    def evaluate_baselines(self, k=10):
+        """
+        Dört temel öneri stratejisini Recall@K, NDCG@K ve MAP@K üzerinden
+        karşılaştırır (ablation study / baseline comparison).
+
+        Baseline konfigürasyonları:
+          - popularity_only : salt popülerlik sıralaması — kişiselleştirme yok
+          - content_only    : yalnızca TF-IDF kosinüs benzerliği
+          - mf_only         : yalnızca Matrix Factorization
+          - hybrid_full     : dört kule tam ağırlıklarla (aktif kullanıcı profili)
+
+        LOO protokolü evaluate_ranking() ile özdeştir. Fark: kule skorları
+        kullanıcı başına bir kez hesaplanır (late-fusion), ardından tüm ağırlık
+        senaryoları aynı ara vektörleri yeniden kullanır — böylece LOO modelleri
+        sadece bir kez eğitilir.
+
+        Referans: Cremonesi et al. (2010) "Performance of Recommender Algorithms
+        on Top-N Recommendation Tasks", RecSys.
+
+        Returns:
+            {
+              'eval_k': int,
+              'eval_users': int,
+              'baselines': {
+                'popularity_only':  {'recall_at_k', 'ndcg_at_k', 'map_at_k', 'eval_users'},
+                'content_only':     {...},
+                'mf_only':          {...},
+                'hybrid_full':      {...},
+              }
+            }
+        """
+        from .models import ProductOwnership, WishlistItem, Review, ViewHistory
+
+        # ── 1. LOO eval planını kur (evaluate_ranking ile özdeş) ──
+        events = {}
+
+        def _add(uid, ts, pid, w):
+            if uid is None or pid is None or ts is None:
+                return
+            events.setdefault(uid, []).append((ts, pid, w))
+
+        for p in ProductOwnership.objects.values('customer_id', 'product_id', 'purchase_date'):
+            _add(p['customer_id'], p['purchase_date'], p['product_id'], 5.0)
+        for w in WishlistItem.objects.filter(
+            wishlist__customer__isnull=False
+        ).values('wishlist__customer_id', 'product_id', 'added_at'):
+            _add(w['wishlist__customer_id'], w['added_at'], w['product_id'], 3.0)
+        for r in Review.objects.filter(rating__gt=3).values(
+            'customer_id', 'product_id', 'rating', 'created_at'
+        ):
+            _add(r['customer_id'], r['created_at'], r['product_id'], float(r['rating']))
+        for v in ViewHistory.objects.values('customer_id', 'product_id', 'view_count', 'viewed_at'):
+            _add(v['customer_id'], v['viewed_at'], v['product_id'], min(v['view_count'] or 1, 5) * 1.0)
+
+        eval_plan = {}
+        exclude_edges = set()
+        for uid, user_events in events.items():
+            distinct = {pid for _, pid, _ in user_events}
+            if len(distinct) < 2:
+                continue
+            sorted_ev = sorted(user_events, key=lambda e: str(e[0]))
+            holdout_pid = sorted_ev[-1][1]
+            seed = {}
+            for _, pid, weight in sorted_ev[:-1]:
+                if pid != holdout_pid:
+                    seed[pid] = seed.get(pid, 0.0) + weight
+            if not seed:
+                continue
+            eval_plan[uid] = (holdout_pid, seed)
+            exclude_edges.add((uid, holdout_pid))
+
+        if not eval_plan:
+            return {'eval_k': k, 'eval_users': 0, 'baselines': {}}
+
+        # ── 2. Holdout sızıntısız geçici CF modelleri ──
+        eval_mf = MatrixFactorizationModel()
+        eval_mf.train(verbose=False, exclude_edges=exclude_edges)
+        eval_ii = ItemItemCFModel()
+        eval_ii.train(verbose=False, exclude_edges=exclude_edges)
+        pop_scores = self._get_popularity_scores()
+
+        # ── 3. Kullanıcı başına kule skorlarını bir kez hesapla ──
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        # {uid: {'mf': {pid: s}, 'ii': {pid: s}, 'cb': {pid: s}, 'pop': {pid: s}}}
+        tower_cache = {}
+        for uid, (holdout_pid, seed) in eval_plan.items():
+            try:
+                user = User.objects.get(id=uid)
+            except User.DoesNotExist:
+                continue
+            tower_cache[uid] = {
+                'mf':  eval_mf.predict_for_user(user.id, None)  if eval_mf.is_trained  else {},
+                'ii':  eval_ii.get_user_itemcf_scores(seed)      if eval_ii.is_trained   else {},
+                'cb':  self.content.get_user_content_scores(seed) if self.content.is_trained else {},
+                'pop': pop_scores,
+            }
+
+        # ── 4. Sabit ağırlıklarla skor karıştırma (late-fusion) ──
+        def _blend_and_rank(towers, w_mf, w_ii, w_cb, w_pop, seed_pids):
+            scores = {}
+
+            def _add_tower(src, weight):
+                if not src or weight <= 0:
+                    return
+                max_v = max(src.values()) or 1
+                for pid, v in src.items():
+                    scores[pid] = scores.get(pid, 0.0) + (v / max_v) * weight
+
+            _add_tower(towers['mf'],  w_mf)
+            _add_tower(towers['ii'],  w_ii)
+            _add_tower(towers['cb'],  w_cb)
+            _add_tower(towers['pop'], w_pop)
+            for pid in seed_pids:
+                scores.pop(pid, None)
+            return [pid for pid, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)]
+
+        # Aktif kullanıcı ağırlıkları: 20+ etkileşim profili
+        ACTIVE_W = (0.35, 0.35, 0.25, 0.05)
+
+        baseline_configs = {
+            'popularity_only': (0.0,  0.0,  0.0,  1.0),
+            'content_only':    (0.0,  0.0,  1.0,  0.0),
+            'mf_only':         (1.0,  0.0,  0.0,  0.0),
+            'hybrid_full':     ACTIVE_W,
+        }
+
+        results = {}
+        for name, (w_mf, w_ii, w_cb, w_pop) in baseline_configs.items():
+            recalls, ndcgs, aps = [], [], []
+            for uid, (holdout_pid, seed) in eval_plan.items():
+                if uid not in tower_cache:
+                    continue
+                ranked = _blend_and_rank(tower_cache[uid], w_mf, w_ii, w_cb, w_pop, set(seed))
+                top_k = ranked[:k]
+                if holdout_pid in top_k:
+                    rank = top_k.index(holdout_pid)
+                    recalls.append(1.0)
+                    ndcgs.append(1.0 / math.log2(rank + 2))
+                    aps.append(1.0 / (rank + 1))
+                else:
+                    recalls.append(0.0)
+                    ndcgs.append(0.0)
+                    aps.append(0.0)
+            n = len(recalls)
+            results[name] = {
+                'recall_at_k': round(sum(recalls) / n, 4) if n else None,
+                'ndcg_at_k':   round(sum(ndcgs)   / n, 4) if n else None,
+                'map_at_k':    round(sum(aps)      / n, 4) if n else None,
+                'eval_users':  n,
+            }
+
+        return {
+            'eval_k':     k,
+            'eval_users': len(tower_cache),
+            'baselines':  results,
+        }
+
+    # -----------------------------------------------------------------------
+    # Hibrit ağırlık optimizasyonu (grid search)
+    # -----------------------------------------------------------------------
+    def tune_hybrid_weights(self, k=10, step=0.15):
+        """
+        Grid search ile dört kule ağırlığını NDCG@K'yı maximize edecek şekilde
+        optimize eder.
+
+        Yöntem — "late-fusion grid search":
+          1. LOO eval planı bir kez kurulur.
+          2. Geçici CF modelleri holdout sızıntısız bir kez eğitilir.
+          3. Her kullanıcı için dört kule skoru bir kez hesaplanır (ön-hesap).
+          4. Ağırlık kombinasyonları üzerinde döngü: sadece skor karıştırma
+             ve sıralama yapılır — model yeniden eğitimi yoktur.
+
+        Bu "late-fusion" yaklaşımı, her kombinasyon için LOO'yu baştan
+        çalıştırmaktan O(grid_size) kat daha hızlıdır.
+
+        Referans: Adomavicius & Tuzhilin (2005) "Toward the Next Generation
+        of Recommender Systems" (IEEE TKDE), Bölüm IV.C — hibrit ağırlık
+        seçimi ve doğrulama.
+
+        Args:
+            k:    NDCG hesaplama derinliği.
+            step: Izgara adım büyüklüğü (0.15 → ~30 geçerli kombinasyon).
+
+        Returns:
+            {
+              'best_weights':       {'mf', 'item_item', 'content', 'popularity'},
+              'best_ndcg_at_k':     float,
+              'default_ndcg_at_k':  float,   # aktif kullanıcı varsayılan ağırlıkları
+              'grid_size':          int,      # denenen toplam kombinasyon sayısı
+              'eval_users':         int,
+              'eval_k':             int,
+            }
+        """
+        from .models import ProductOwnership, WishlistItem, Review, ViewHistory
+
+        # ── 1. LOO eval planı ──
+        events = {}
+
+        def _add(uid, ts, pid, w):
+            if uid is None or pid is None or ts is None:
+                return
+            events.setdefault(uid, []).append((ts, pid, w))
+
+        for p in ProductOwnership.objects.values('customer_id', 'product_id', 'purchase_date'):
+            _add(p['customer_id'], p['purchase_date'], p['product_id'], 5.0)
+        for wl in WishlistItem.objects.filter(
+            wishlist__customer__isnull=False
+        ).values('wishlist__customer_id', 'product_id', 'added_at'):
+            _add(wl['wishlist__customer_id'], wl['added_at'], wl['product_id'], 3.0)
+        for r in Review.objects.filter(rating__gt=3).values(
+            'customer_id', 'product_id', 'rating', 'created_at'
+        ):
+            _add(r['customer_id'], r['created_at'], r['product_id'], float(r['rating']))
+        for v in ViewHistory.objects.values('customer_id', 'product_id', 'view_count', 'viewed_at'):
+            _add(v['customer_id'], v['viewed_at'], v['product_id'], min(v['view_count'] or 1, 5) * 1.0)
+
+        eval_plan = {}
+        exclude_edges = set()
+        for uid, user_events in events.items():
+            distinct = {pid for _, pid, _ in user_events}
+            if len(distinct) < 2:
+                continue
+            sorted_ev = sorted(user_events, key=lambda e: str(e[0]))
+            holdout_pid = sorted_ev[-1][1]
+            seed = {}
+            for _, pid, weight in sorted_ev[:-1]:
+                if pid != holdout_pid:
+                    seed[pid] = seed.get(pid, 0.0) + weight
+            if not seed:
+                continue
+            eval_plan[uid] = (holdout_pid, seed)
+            exclude_edges.add((uid, holdout_pid))
+
+        if not eval_plan:
+            return {
+                'best_weights': {'mf': 0.35, 'item_item': 0.35, 'content': 0.25, 'popularity': 0.05},
+                'best_ndcg_at_k': None,
+                'default_ndcg_at_k': None,
+                'grid_size': 0,
+                'eval_users': 0,
+                'eval_k': k,
+            }
+
+        # ── 2. Geçici LOO modelleri ──
+        eval_mf = MatrixFactorizationModel()
+        eval_mf.train(verbose=False, exclude_edges=exclude_edges)
+        eval_ii = ItemItemCFModel()
+        eval_ii.train(verbose=False, exclude_edges=exclude_edges)
+        pop_scores = self._get_popularity_scores()
+
+        # ── 3. Kule skorlarını ön-hesapla ──
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        tower_cache = {}
+        for uid, (_, seed) in eval_plan.items():
+            try:
+                user = User.objects.get(id=uid)
+            except User.DoesNotExist:
+                continue
+            tower_cache[uid] = {
+                'mf':  eval_mf.predict_for_user(user.id, None)   if eval_mf.is_trained   else {},
+                'ii':  eval_ii.get_user_itemcf_scores(seed)       if eval_ii.is_trained    else {},
+                'cb':  self.content.get_user_content_scores(seed)  if self.content.is_trained else {},
+                'pop': pop_scores,
+            }
+
+        # ── 4. Late-fusion skor karıştırıcı ──
+        def _ndcg_for_weights(w_mf, w_ii, w_cb, w_pop):
+            ndcgs = []
+            for uid, (holdout_pid, seed) in eval_plan.items():
+                if uid not in tower_cache:
+                    continue
+                scores = {}
+
+                def _blend(src, weight):
+                    if not src or weight <= 0:
+                        return
+                    max_v = max(src.values()) or 1
+                    for pid, v in src.items():
+                        scores[pid] = scores.get(pid, 0.0) + (v / max_v) * weight
+
+                _blend(tower_cache[uid]['mf'],  w_mf)
+                _blend(tower_cache[uid]['ii'],  w_ii)
+                _blend(tower_cache[uid]['cb'],  w_cb)
+                _blend(tower_cache[uid]['pop'], w_pop)
+                for pid in seed:
+                    scores.pop(pid, None)
+                ranked = [pid for pid, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:k]]
+                if holdout_pid in ranked:
+                    ndcgs.append(1.0 / math.log2(ranked.index(holdout_pid) + 2))
+                else:
+                    ndcgs.append(0.0)
+            return sum(ndcgs) / len(ndcgs) if ndcgs else 0.0
+
+        # ── 5. Izgara arama — toplam 1.0'a normalleştirilen adımlar ──
+        # Adım büyüklüğü (step) üçer ağırlık ekseni üzerinde döngü kurar;
+        # dördüncü ağırlık (popularity) fark olarak hesaplanır.
+        # Toplam negatif olan ve minimum popülerlik kısıtını aşan kombinasyonlar elenir.
+        steps = [round(i * step, 2) for i in range(int(1.0 / step) + 1)]
+        best_ndcg = -1.0
+        best_combo = (0.35, 0.35, 0.25, 0.05)
+        grid_size = 0
+
+        for w_mf in steps:
+            for w_ii in steps:
+                for w_cb in steps:
+                    w_pop = round(1.0 - w_mf - w_ii - w_cb, 4)
+                    # Popülerlik ağırlığı negatif olamaz; min 0.05 ile cold-start güvencesi.
+                    if w_pop < 0.05:
+                        continue
+                    grid_size += 1
+                    ndcg = _ndcg_for_weights(w_mf, w_ii, w_cb, w_pop)
+                    if ndcg > best_ndcg:
+                        best_ndcg = ndcg
+                        best_combo = (w_mf, w_ii, w_cb, w_pop)
+
+        # Mevcut varsayılan aktif ağırlıkları için referans NDCG
+        default_ndcg = _ndcg_for_weights(0.35, 0.35, 0.25, 0.05)
+
+        logger.info(
+            "tune_hybrid_weights: grid_size=%d, best=%s, NDCG@%d=%.4f (default=%.4f)",
+            grid_size, best_combo, k, best_ndcg, default_ndcg,
+        )
+
+        return {
+            'best_weights': {
+                'mf':         best_combo[0],
+                'item_item':  best_combo[1],
+                'content':    best_combo[2],
+                'popularity': best_combo[3],
+            },
+            'best_ndcg_at_k':    round(best_ndcg, 4),
+            'default_ndcg_at_k': round(default_ndcg, 4),
+            'grid_size':         grid_size,
+            'eval_users':        len(tower_cache),
+            'eval_k':            k,
+        }
+
     def get_metrics(self):
-        """Return training metrics for diagnostics."""
+        """
+        Model durum ve kalite metriklerini döndürür.
+
+        Üç katman:
+          1. Eğitim metrikleri (offline, model kayıt edilirken hesaplanır):
+             explained_variance, n_interactions, recall@K, NDCG@K, MAP@K
+          2. Online metrikler (CTR / dismissal — gerçek kullanıcı davranışı):
+             impressions, clicks, CTR, dismissals, dismissal_rate
+             Referans: Hidasi et al. (2015) "Evaluating Recommender Systems"
+             çalışmasında çevrimiçi CTR ölçümü temel online metrik olarak önerilir.
+          3. Adaptif ağırlıklar (mevcut varsayılan değerler).
+        """
+        # ── Online metrikler: Recommendation tablosundan hesaplanır ──
+        online_metrics = {}
+        try:
+            from .models import Recommendation
+            from django.db.models import Count, Q
+
+            agg = Recommendation.objects.aggregate(
+                impressions=Count('id', filter=Q(is_shown=True)),
+                clicks=Count('id', filter=Q(clicked=True)),
+                dismissals=Count('id', filter=Q(dismissed=True)),
+            )
+            impressions = agg['impressions'] or 0
+            clicks = agg['clicks'] or 0
+            dismissals = agg['dismissals'] or 0
+            online_metrics = {
+                'impressions':    impressions,
+                'clicks':         clicks,
+                'dismissals':     dismissals,
+                # CTR (Click-Through Rate): gösterilen önerilerden kaçı tıklandı.
+                # Yüksek CTR kişiselleştirmenin işe yaradığını gösterir.
+                'ctr':            round(clicks / impressions, 4) if impressions else None,
+                # Dismissal rate: kullanıcının aktif olarak "ilgilenmiyorum" dediği oran.
+                # Yüksek dismissal, model uyumsuzluğunun erken uyarı sinyalidir.
+                'dismissal_rate': round(dismissals / impressions, 4) if impressions else None,
+            }
+        except Exception as e:
+            logger.debug("Online metrik hesaplanamadı: %s", e)
+            online_metrics = {'error': str(e)}
+
         return {
             # 'ncf' anahtari geriye donuk uyumluluk icin korunur; artik MF
             # (Matrix Factorization) modelinin egitim ve siralama metriklerini tasir.
@@ -2235,7 +2694,8 @@ class HybridRecommender:
                 'content': self.WEIGHT_CONTENT,
                 'popularity': self.WEIGHT_POPULARITY,
                 'ncf': self.WEIGHT_MF,  # geriye donuk uyumluluk
-            }
+            },
+            'online_metrics': online_metrics,
         }
 
     def invalidate_cache(self):

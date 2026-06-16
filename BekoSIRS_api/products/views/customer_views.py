@@ -420,6 +420,16 @@ class RecommendationViewSet(viewsets.ModelViewSet):
 
         serialized_recommendations = RecommendationSerializer(recommendations, many=True).data
 
+        # Öneri listesi kullanıcıya ulaştı — impression tracking (CTR paydasını güncelle).
+        # Bulk update ile N+1 sorgusu önlenir; is_shown zaten False'tı, tekrar yazma ucuz.
+        try:
+            shown_ids = [r.id for r in (recommendations if isinstance(recommendations, list)
+                         else list(recommendations))]
+            if shown_ids:
+                Recommendation.objects.filter(id__in=shown_ids).update(is_shown=True)
+        except Exception:
+            pass
+
         # Fetch ml metrics from memory (no DB call)
         ml_metrics = {
             'diversity_score': 0.0,
@@ -438,22 +448,29 @@ class RecommendationViewSet(viewsets.ModelViewSet):
             advanced_metrics = recommender.get_advanced_metrics(serialized_recommendations)
             if hasattr(recommender, '_loaded') and recommender._loaded:
                 metrics = recommender.get_metrics()
-                ncf_metrics = metrics.get('ncf', {})
+                # 'ncf' anahtarı geriye dönük uyumluluk için korunur; içerik
+                # artık MatrixFactorizationModel (TruncatedSVD) metriklerini taşır.
+                mf_metrics = metrics.get('mf') or metrics.get('ncf') or {}
                 content_metrics = metrics.get('content', {})
                 ml_metrics = {
-                    'train_r2': ncf_metrics.get('train_r2') if ncf_metrics else None,
-                    'test_r2': ncf_metrics.get('test_r2') if ncf_metrics else None,
-                    'hit_rate_at_10': ncf_metrics.get('hit_rate_at_10') if ncf_metrics else None,
-                    'n_interactions': ncf_metrics.get('n_interactions') if ncf_metrics else None,
-                    'n_users': ncf_metrics.get('n_users') if ncf_metrics else None,
-                    'n_products': ncf_metrics.get('n_products') if ncf_metrics else None,
-                    'n_epochs': ncf_metrics.get('n_epochs') if ncf_metrics else None,
-                    'final_loss': ncf_metrics.get('final_loss') if ncf_metrics else None,
-                    'trained_at': ncf_metrics.get('trained_at') if ncf_metrics else None,
-                    'content_products': content_metrics.get('n_products') if content_metrics else 0,
-                    'weights': metrics.get('weights', {}),
-                    'weights_used': runtime_weights,
-                    'user_tier': runtime_weights.get('user_tier'),
+                    # Eski NCF metrikleri kaldırıldı (train_r2, test_r2, hit_rate_at_10,
+                    # n_epochs, final_loss); MF modelinin gerçek metriklerine geçildi.
+                    'algorithm':          mf_metrics.get('algorithm'),
+                    'explained_variance': mf_metrics.get('explained_variance'),
+                    'n_components':       mf_metrics.get('n_components'),
+                    'recall_at_k':        mf_metrics.get('recall_at_k'),
+                    'ndcg_at_k':          mf_metrics.get('ndcg_at_k'),
+                    'map_at_k':           mf_metrics.get('map_at_k'),
+                    'eval_k':             mf_metrics.get('eval_k'),
+                    'n_interactions':     mf_metrics.get('n_interactions'),
+                    'n_users':            mf_metrics.get('n_users'),
+                    'n_products':         mf_metrics.get('n_products'),
+                    'trained_at':         mf_metrics.get('trained_at'),
+                    'content_products':   content_metrics.get('n_products', 0),
+                    'weights':            metrics.get('weights', {}),
+                    'weights_used':       runtime_weights,
+                    'user_tier':          runtime_weights.get('user_tier'),
+                    'online_metrics':     metrics.get('online_metrics', {}),
                 }
             else:
                 ml_metrics = {
