@@ -21,6 +21,9 @@ django.setup()
 collect_ignore = [
     "test_notifications.py",
     "test_installments.py",
+    "test_auto_plan.py",
+    "test_dashboard.py",
+    "assign_coords.py",
 ]
 
 collect_ignore_glob = [

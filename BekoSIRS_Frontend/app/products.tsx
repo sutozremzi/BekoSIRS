@@ -133,7 +133,7 @@ export default function ProductsScreen() {
           </View>
           <Text style={styles.emptyTitle}>Sonuç Bulunamadı</Text>
           <Text style={styles.emptySubtitle}>
-            {searchQuery} aramanıza uygun ürün bulunamadı.
+            "{searchQuery}" aramanıza uygun ürün bulunamadı.
           </Text>
         </View>
       )}
