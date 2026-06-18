@@ -28,6 +28,8 @@ interface Customer {
     id: number; username: string; email: string;
     first_name: string; last_name: string;
     full_name?: string; formatted_address?: string; phone_number?: string;
+    address_lat?: number | string | null;
+    address_lng?: number | string | null;
 }
 interface Product {
     id: number; name: string; brand: string;
@@ -85,6 +87,7 @@ interface PreparedRoute {
 /* ============ Component ============ */
 export default function AssignmentsPage() {
     const { t } = useTranslation();
+
     /* --- Main Tab --- */
     const [mainTab, setMainTab] = useState<'unscheduled' | 'planning'>('unscheduled');
 
@@ -119,11 +122,15 @@ export default function AssignmentsPage() {
     const [autoPlanData, setAutoPlanData] = useState<any>(null);
     const [autoPlanApproving, setAutoPlanApproving] = useState(false);
     const [expandedDay, setExpandedDay] = useState<number | null>(null);
-    const [planStartDate, setPlanStartDate] = useState(new Date().toISOString().split("T")[0]);
     const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([2, 3, 6]);
     const [maxHoursPerDay, setMaxHoursPerDay] = useState(8);
     const [selectedDepotId, setSelectedDepotId] = useState<number | "">("");
     const [calendarRebalancing, setCalendarRebalancing] = useState(false);
+
+    /* --- Drag & Drop --- */
+    const [draggingRoute, setDraggingRoute] = useState<{ route: PreparedRoute; fromDate: string } | null>(null);
+    const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+    const [dragMoving, setDragMoving] = useState(false);
 
     /* --- Modals --- */
     const [newSaleModal, setNewSaleModal] = useState(false);
@@ -137,6 +144,7 @@ export default function AssignmentsPage() {
 
     /* --- Form State --- */
     const [selectedCustomer, setSelectedCustomer] = useState<number | "">("");
+    const [selectedCustomerObj, setSelectedCustomerObj] = useState<Customer | null>(null);
     const [customerSearch, setCustomerSearch] = useState("");
     const [customerSearching, setCustomerSearching] = useState(false);
     const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
@@ -319,7 +327,7 @@ export default function AssignmentsPage() {
     }, [preparedRoutes]);
     const calendarWeekStart = rollingWeekDays.reduce(
         (earliest, day) => day.date < earliest ? day.date : earliest,
-        rollingWeekDays[0]?.date || planStartDate
+        rollingWeekDays[0]?.date || new Date().toISOString().split("T")[0]
     );
 
     /* --- Unscheduled assignments (status=PLANNED and no delivery) --- */
@@ -386,6 +394,77 @@ export default function AssignmentsPage() {
         rebalanceWeeklyCalendar(next);
     };
 
+    /* --- Drag & Drop handlers --- */
+    const handleDragStart = (route: PreparedRoute, fromDate: string) => {
+        setDraggingRoute({ route, fromDate });
+    };
+    const handleDragEnd = () => {
+        setDraggingRoute(null);
+        setDragOverDate(null);
+    };
+    const handleCalendarDrop = async (toDate: string, toDateIsActive: boolean) => {
+        if (!draggingRoute) return;
+        setDraggingRoute(null);
+        setDragOverDate(null);
+
+        if (!toDateIsActive) {
+            showToast("error", "Bu gün teslimata kapalı. Önce günü aktif yapın.");
+            return;
+        }
+        if (draggingRoute.fromDate === toDate) return;
+
+        const { route, fromDate } = draggingRoute;
+
+        // Sürüklenen rotanın teslimat ID'leri
+        const movedDeliveryIds = route.stops
+            .map(s => s.delivery?.id)
+            .filter((id): id is number => Boolean(id));
+
+        if (!movedDeliveryIds.length) {
+            showToast("error", "Bu rotada teslimat bilgisi bulunamadı.");
+            return;
+        }
+
+        // Hedef günde mevcut rota(lar) varsa bunları da birleştireceğiz
+        const existingTargetRoutes = routesByDate[toDate] || [];
+        const existingDeliveryIds = existingTargetRoutes
+            .flatMap(r => r.stops?.map(s => s.delivery?.id).filter((id): id is number => Boolean(id)) || []);
+        const existingRouteIds = existingTargetRoutes.map(r => r.id);
+
+        setDragMoving(true);
+        try {
+            // 1. Sürüklenen rotayı sil (teslimatlar → WAITING)
+            await deliveryRouteAPI.delete(route.id);
+
+            // 2. Hedef günün mevcut rotalarını sil (birleştirmek için)
+            if (existingRouteIds.length) {
+                await Promise.all(existingRouteIds.map(id => deliveryRouteAPI.delete(id)));
+            }
+
+            // 3. Taşınan teslimatların tarihini güncelle
+            await Promise.all(movedDeliveryIds.map(id => deliveryAPI.update(id, { scheduled_date: toDate })));
+
+            // 4. Hedef günün TÜM teslimatlarını (taşınan + mevcut) birlikte optimize et
+            const allDeliveryIds = [...movedDeliveryIds, ...existingDeliveryIds];
+            await deliveryRouteAPI.optimize({
+                date: toDate,
+                delivery_ids: allDeliveryIds,
+                depot_id: selectedDepotId || undefined,
+            } as any);
+
+            const movedCount = movedDeliveryIds.length;
+            const mergedCount = existingDeliveryIds.length;
+            const mergeNote = mergedCount > 0 ? ` (mevcut ${mergedCount} teslimatla birleştirildi)` : "";
+            showToast("success", `${movedCount} teslimat ${formatDate(fromDate)} → ${formatDate(toDate)} tarihine taşındı${mergeNote}.`);
+            fetchAll();
+        } catch (err: any) {
+            showToast("error", err.response?.data?.error || "Teslimat taşınırken hata oluştu.");
+            fetchAll();
+        } finally {
+            setDragMoving(false);
+        }
+    };
+
     const autoPlaceNewAssignment = async (assignmentId: number) => {
         if (!selectedDepotId) {
             return;
@@ -436,6 +515,7 @@ export default function AssignmentsPage() {
 
     const resetSaleForm = () => {
         setSelectedCustomer(""); setSelectedProduct("");
+        setSelectedCustomerObj(null);
         setCustomerSearch("");
         setCustomers([]);
         setCustomerDropdownOpen(false);
@@ -599,7 +679,7 @@ export default function AssignmentsPage() {
         try {
             const ids = selectedUnscheduled.length ? selectedUnscheduled : unscheduledAssignments.map(item => item.id);
             const res = await assignmentAPI.autoPlan({
-                start_date: planStartDate,
+                start_date: calendarWeekStart,
                 allowed_weekdays: selectedWeekdays,
                 max_hours_per_day: maxHoursPerDay,
                 depot_id: selectedDepotId,
@@ -614,7 +694,13 @@ export default function AssignmentsPage() {
                 showToast("error", t('assignments.autoPlanWarningOverTime'));
             }
         } catch (err: any) {
-            showToast("error", err.response?.data?.error || t('assignments.autoPlanEmpty'));
+            const errData = err.response?.data;
+            const noCoords = errData?.warnings?.no_coordinates?.length ?? 0;
+            if (noCoords > 0) {
+                showToast("error", errData?.error || `${noCoords} siparişin müşteri koordinatı eksik.`);
+            } else {
+                showToast("error", errData?.error || t('assignments.autoPlanEmpty'));
+            }
         } finally { setAutoPlanLoading(false); }
     };
 
@@ -664,6 +750,16 @@ export default function AssignmentsPage() {
             <Sidebar />
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
+            {/* Drag-move loading overlay */}
+            {dragMoving && (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-xl px-8 py-6 shadow-2xl flex items-center gap-4">
+                        <Loader2 className="animate-spin text-blue-600" size={28} />
+                        <span className="text-base font-semibold text-gray-800">Teslimat taşınıyor...</span>
+                    </div>
+                </div>
+            )}
+
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* ===== HEADER ===== */}
                 <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
@@ -708,118 +804,142 @@ export default function AssignmentsPage() {
                             ))}
                         </div>
 
-                        {/* ===== WEEKLY PLANNING CONFIG ===== */}
-                        {false && (
+                        {/* ===== PLANNING CENTER ===== */}
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                            <div className="flex flex-col xl:flex-row xl:items-end gap-5">
-                                <div className="flex-1">
+                            <div className="flex flex-col xl:flex-row xl:items-start gap-6">
+
+                                {/* Pool stat */}
+                                <div className="min-w-[200px]">
                                     <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
                                         <Route size={18} className="text-emerald-600" />
-                                        Haftalık teslimat konfigürasyonu
+                                        Planlama Merkezi
                                     </h2>
                                     <p className="text-sm text-gray-500 mt-1">
-                                        Havuzdaki seçili satışları belirlediğiniz gün, depo ve çalışma saatine göre otomatik dağıtın.
+                                        Yeni satışlar otomatik olarak takvime eklenir. Teslimat günlerini
+                                        değiştirince planı yeniden dağıtabilirsiniz.
                                     </p>
+                                    <div className="mt-4">
+                                        {unscheduledAssignments.length > 0 ? (
+                                            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                                <AlertCircle size={18} className="shrink-0 text-amber-500" />
+                                                <div>
+                                                    <p className="text-lg font-bold text-amber-700 leading-tight">{unscheduledAssignments.length} planlanmamış sipariş</p>
+                                                    <p className="text-xs text-amber-600">Otomatik yerleştirilemedi — aşağıdaki butonla planlayın.</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                                                <CheckCircle size={18} className="shrink-0 text-emerald-500" />
+                                                <p className="text-sm font-medium text-emerald-700">Tüm siparişler planlandı</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-[2]">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Takvim başlangıcı</label>
-                                        <input type="date" value={calendarWeekStart} readOnly
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" />
+
+                                <div className="border-l border-gray-100 self-stretch hidden xl:block" />
+
+                                {/* Config + actions */}
+                                <div className="flex-1">
+                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Maks. saat/gün</label>
+                                            <input type="number" min={1} max={14} step={0.5} value={maxHoursPerDay}
+                                                onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Çıkış deposu</label>
+                                            <select value={selectedDepotId}
+                                                onChange={(e) => setSelectedDepotId(e.target.value ? Number(e.target.value) : "")}
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+                                                <option value="">Varsayılan depo</option>
+                                                {depots.map(depot => <option key={depot.id} value={depot.id}>{depot.name}{depot.is_default ? " (varsayılan)" : ""}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Teslimat günleri</label>
+                                            <div className="flex flex-wrap gap-1">
+                                                {weekdayOptions.map(day => (
+                                                    <button key={day.id} type="button" onClick={() => toggleCalendarDay(day.id)}
+                                                        disabled={calendarRebalancing}
+                                                        className={`px-2 py-1.5 rounded-md text-xs font-semibold border transition-colors disabled:opacity-50 ${selectedWeekdays.includes(day.id)
+                                                            ? "bg-emerald-600 text-white border-emerald-600"
+                                                            : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
+                                                        {day.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Maks. saat / gün</label>
-                                        <input type="number" min={1} max={14} step={0.5} value={maxHoursPerDay}
-                                            onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Çıkış deposu</label>
-                                        <select value={selectedDepotId} onChange={(e) => setSelectedDepotId(e.target.value ? Number(e.target.value) : "")}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
-                                            <option value="">Varsayılan depo</option>
-                                            {depots.map(depot => <option key={depot.id} value={depot.id}>{depot.name}{depot.is_default ? " (varsayılan)" : ""}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Teslimat günleri</label>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {weekdayOptions.map(day => (
-                                                <button key={day.id} type="button" onClick={() => toggleCalendarDay(day.id)}
-                                                    className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-colors ${selectedWeekdays.includes(day.id)
-                                                        ? "bg-emerald-600 text-white border-emerald-600"
-                                                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
-                                                    {day.label}
-                                                </button>
-                                            ))}
+
+                                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                                        {/* Güvenlik ağı: yalnızca otomatik yerleştirilemeyen sipariş varsa görünür */}
+                                        {unscheduledAssignments.length > 0 && (
+                                            <button onClick={handleAutoPlan}
+                                                disabled={autoPlanLoading}
+                                                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm">
+                                                {autoPlanLoading ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
+                                                {autoPlanLoading
+                                                    ? "Plan oluşturuluyor..."
+                                                    : `Bekleyenleri Planla (${unscheduledAssignments.length})`}
+                                            </button>
+                                        )}
+                                        <div className="flex flex-col">
+                                            <button onClick={() => rebalanceWeeklyCalendar()}
+                                                disabled={calendarRebalancing || !selectedWeekdays.length}
+                                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                                                {calendarRebalancing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
+                                                {calendarRebalancing ? "Dağıtılıyor..." : "Mevcut Planı Yeniden Dağıt"}
+                                            </button>
+                                            <span className="mt-1 text-xs text-gray-400 max-w-[260px]">
+                                                Açık (teslimata çıkmamış) tüm rotaları, seçili teslimat günlerine ve günlük süre bütçesine göre yeniden optimize eder.
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
-                                <div className="text-sm text-emerald-900">
-                                    <span className="font-semibold">{selectedUnscheduled.length || unscheduledAssignments.length}</span> sipariş plan havuzunda.
-                                    Sistem aynı müşteriyi tek durak gibi değerlendirir, ilçeleri gruplayıp depo çıkışına göre sıraya dizer.
-                                </div>
-                                <button onClick={() => rebalanceWeeklyCalendar()} disabled={calendarRebalancing || selectedWeekdays.length === 0}
-                                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
-                                    {calendarRebalancing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
-                                    {calendarRebalancing ? "Takvim dağıtılıyor..." : "Takvimi otomatik dağıt"}
-                                </button>
+
                             </div>
                         </div>
 
-                        )}
-
                         {/* ===== WEEKLY CALENDAR ===== */}
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                                 <div>
                                     <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
                                         <Calendar size={18} className="text-blue-600" />
-                                        Haftalık teslimat takvimi
+                                        Haftalık Teslimat Takvimi
                                     </h2>
                                     <p className="text-sm text-gray-500 mt-1">
-                                        Günleri pasif yapınca açık teslimatlar otomatik olarak aktif günlere yeniden dağıtılır.
+                                        Aktif/Pasif düğmesiyle günü kapatın — o güne düşen teslimatlar açık günlere taşınır.
                                     </p>
                                 </div>
-                                <div className="flex flex-wrap items-end gap-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Takvim başlangıcı</label>
-                                        <input type="date" value={calendarWeekStart} readOnly
-                                            className="w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Maks. saat/gün</label>
-                                        <input type="number" min={1} max={14} step={0.5} value={maxHoursPerDay}
-                                            onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
-                                            className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Çıkış deposu</label>
-                                        <select value={selectedDepotId} onChange={(e) => setSelectedDepotId(e.target.value ? Number(e.target.value) : "")}
-                                            className="w-48 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                                            <option value="">Varsayılan depo</option>
-                                            {depots.map(depot => <option key={depot.id} value={depot.id}>{depot.name}{depot.is_default ? " (varsayılan)" : ""}</option>)}
-                                        </select>
-                                    </div>
-                                    <button onClick={() => rebalanceWeeklyCalendar()} disabled={calendarRebalancing || selectedWeekdays.length === 0}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
-                                        {calendarRebalancing ? <Loader2 className="animate-spin" size={16} /> : <Route size={16} />}
-                                        {calendarRebalancing ? "Dağıtılıyor..." : "Yeniden dağıt"}
-                                    </button>
-                                </div>
-                                <div className="hidden text-sm text-gray-500">
-                                    Pazartesi-Pazar görünümü; geçmiş günler sonraki haftayı temsil eder
-                                </div>
+                                <p className="text-sm text-gray-400 hidden lg:block">{calendarWeekStart} haftası</p>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
                                 {rollingWeekDays.map(day => {
                                     const dayRoutes = routesByDate[day.date] || [];
                                     const dayStops = dayRoutes.reduce((sum, route) => sum + (route.stop_count || route.stops?.length || 0), 0);
                                     const dayMinutes = dayRoutes.reduce((sum, route) => sum + Number(route.total_duration_min || 0), 0);
+                                    const isDragOver = dragOverDate === day.date;
                                     return (
-                                        <div key={day.id} className={`min-h-[260px] border-b border-r border-gray-100 p-4 ${day.isActive ? "bg-white" : "bg-gray-50"}`}>
+                                        <div
+                                            key={day.id}
+                                            className={`min-h-[260px] border-b border-r border-gray-100 p-4 transition-colors
+                                                ${day.isActive ? "bg-white" : "bg-gray-50"}
+                                                ${isDragOver ? "ring-2 ring-inset ring-blue-400 bg-blue-50/40" : ""}`}
+                                            onDragOver={(e) => {
+                                                if (draggingRoute && day.isActive) {
+                                                    e.preventDefault();
+                                                    setDragOverDate(day.date);
+                                                }
+                                            }}
+                                            onDragLeave={(e) => {
+                                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                                    setDragOverDate(null);
+                                                }
+                                            }}
+                                            onDrop={(e) => { e.preventDefault(); handleCalendarDrop(day.date, day.isActive); }}
+                                        >
                                             <div className="flex items-start justify-between gap-2">
                                                 <div>
                                                     <div className="flex items-center gap-2">
@@ -837,38 +957,41 @@ export default function AssignmentsPage() {
                                             </div>
 
                                             <div className="mt-4 space-y-2">
+                                                {isDragOver && (
+                                                    <div className={`rounded-lg border-2 border-dashed px-3 py-6 text-center text-xs font-semibold
+                                                        ${dayRoutes.length > 0
+                                                            ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                                                            : "border-blue-400 bg-blue-50 text-blue-600"}`}>
+                                                        {dayRoutes.length > 0 ? `↓ Mevcut rotaya ekle (${dayRoutes.reduce((s, r) => s + (r.stop_count || r.stops?.length || 0), 0)} durak)` : "↓ Buraya bırak"}
+                                                    </div>
+                                                )}
                                                 {dayRoutes.length > 0 && day.isActive ? dayRoutes.map(route => (
-                                                    <button key={route.id} type="button" onClick={() => openRouteDetailModal(route)}
-                                                        className="w-full rounded-lg border border-blue-100 bg-blue-50/70 p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50">
+                                                    <div
+                                                        key={route.id}
+                                                        draggable
+                                                        onDragStart={(e) => { e.stopPropagation(); handleDragStart(route, day.date); }}
+                                                        onDragEnd={handleDragEnd}
+                                                        onClick={() => openRouteDetailModal(route)}
+                                                        className="w-full rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 cursor-grab active:cursor-grabbing select-none"
+                                                    >
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="text-sm font-semibold text-gray-900">{route.stop_count || route.stops?.length || 0} durak</span>
+                                                            <span className="text-sm font-semibold text-gray-900">
+                                                                {route.stop_count || route.stops?.length || 0} durak
+                                                            </span>
                                                             <span className="text-xs text-gray-500">{formatDuration(route.total_duration_min)}</span>
                                                         </div>
-                                                        <div className="mt-1 text-xs text-gray-500">{Number(route.total_distance_km || 0)} km • {route.driver_name || "Şoför atanmadı"}</div>
-                                                        <div className="hidden mt-3 space-y-1.5">
-                                                            {(route.stops || []).slice(0, 4).map(stop => (
-                                                                <div key={stop.id} className="rounded-md bg-white px-2 py-1.5 text-xs">
-                                                                    <div className="font-medium text-gray-800 truncate">{stop.delivery?.customer_name || "Müşteri"}</div>
-                                                                    <div className="text-gray-500 truncate">{stop.delivery?.product_name || "Ürün"} • {stop.delivery?.quantity || 1} adet</div>
-                                                                </div>
-                                                            ))}
-                                                            {(route.stops || []).length > 4 && (
-                                                                <div className="text-xs font-medium text-blue-700">+{(route.stops || []).length - 4} teslimat daha</div>
-                                                            )}
+                                                        <div className="mt-1 text-xs text-gray-500">
+                                                            {Number(route.total_distance_km || 0)} km
                                                         </div>
-                                                        <span
-                                                            className="hidden mt-3 w-full rounded-lg bg-purple-600 px-3 py-2 text-center text-xs font-semibold text-white">
-                                                            Teslimatçı ata
-                                                        </span>
-                                                        <div className="mt-3 rounded-md bg-white/80 px-2 py-2 text-xs font-medium text-blue-700">
-                                                            Rotayı detaylı gör
+                                                        <div className={`mt-1.5 text-xs font-medium ${route.driver_name ? "text-emerald-700" : "text-amber-600"}`}>
+                                                            {route.driver_name || "Şoför atanmadı"}
                                                         </div>
-                                                    </button>
-                                                )) : (
+                                                    </div>
+                                                )) : !isDragOver ? (
                                                     <div className="rounded-lg border border-dashed border-gray-200 px-3 py-8 text-center text-sm text-gray-400">
                                                         {day.isActive ? "Plan yok" : "Teslimata kapalı"}
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </div>
 
                                             {dayRoutes.length > 0 && (
@@ -1265,6 +1388,7 @@ export default function AssignmentsPage() {
                                         onChange={(e) => {
                                             setCustomerSearch(e.target.value);
                                             setSelectedCustomer("");
+                                            setSelectedCustomerObj(null);
                                             setCustomerDropdownOpen(true);
                                         }}
                                         onFocus={() => setCustomerDropdownOpen(true)}
@@ -1285,6 +1409,7 @@ export default function AssignmentsPage() {
                                                         type="button"
                                                         onClick={() => {
                                                             setSelectedCustomer(c.id);
+                                                            setSelectedCustomerObj(c);
                                                             setCustomerSearch(formatCustomerLabel(c));
                                                             setCustomerDropdownOpen(false);
                                                         }}
@@ -1301,6 +1426,14 @@ export default function AssignmentsPage() {
                                     )}
                                     {!selectedCustomer && customerSearch.trim() && !customerDropdownOpen && (
                                         <p className="mt-1 text-xs text-red-600">Listeden bir müşteri seçin.</p>
+                                    )}
+                                    {selectedCustomerObj && !selectedCustomerObj.address_lat && (
+                                        <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                            <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-500" />
+                                            <span>
+                                                Bu müşterinin harita koordinatı eksik. Müşteri profilinden adres konumunu belirleyin; koordinat olmadan sipariş teslimata dahil edilemez.
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
                                 <div className="space-y-2">
@@ -1389,7 +1522,7 @@ export default function AssignmentsPage() {
                                 <div className="flex gap-3 pt-2">
                                     <button type="button" onClick={() => setNewSaleModal(false)}
                                         className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('assignments.cancel')}</button>
-                                    <button type="submit" disabled={submitting}
+                                    <button type="submit" disabled={submitting || !!(selectedCustomerObj && !selectedCustomerObj.address_lat)}
                                         className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                                         {submitting ? <Loader2 className="animate-spin" size={18} /> : t('assignments.save')}
                                     </button>

@@ -308,7 +308,7 @@ export default function ProductsPage() {
 
   const handleDuplicate = (product: Product) => {
     const copy = { ...product };
-    // @ts-ignore
+    // @ts-expect-error id is removed before using the object as a create payload.
     delete copy.id;
     copy.name = `${copy.name} ${t('products.copySuffix')}`;
     setEditingProduct(copy as Product);

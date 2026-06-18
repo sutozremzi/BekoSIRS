@@ -102,6 +102,19 @@ class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subcategories')
 
+    # Teslimat planlaması: bu kategorideki ürünlerin kurulumunu teslimat ekibi yapar mı
+    # ve bir adet için ortalama ne kadar sürer? Süre, günlük zaman bütçesi hesabında kullanılır.
+    requires_installation = models.BooleanField(
+        default=False,
+        verbose_name="Kurulum Gerektirir",
+        help_text="Teslimat ekibi bu kategorideki ürünü kurar mı? (örn. çamaşır makinesi, buzdolabı)"
+    )
+    install_duration_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Kurulum Süresi (dk)",
+        help_text="Tek bir adet için ortalama kurulum süresi (dakika). Kurulum yoksa 0."
+    )
+
     class Meta:
         verbose_name_plural = "Categories"
 

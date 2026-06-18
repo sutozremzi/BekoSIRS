@@ -20,17 +20,44 @@ from collections import defaultdict
 from typing import List, Dict, Any, Tuple, Optional
 
 from ..models import (
-    ProductAssignment, Delivery, CustomerAddress, DepotLocation, District
+    ProductAssignment, Delivery, CustomerAddress, DepotLocation, DeliveryRoute
 )
 from .routing_provider import RouteMatrix, get_route_matrix
 
 
 # ── Config ──────────────────────────────────────────────────────────
-MAX_DELIVERIES_PER_DAY = 10
-MAX_HOURS_PER_DAY = 6
-AVG_SPEED_KMH = 60        # KKTC average road speed
-STOP_DURATION_MIN = 5      # time spent at each stop
+# Kapasite artık zaman-bazlı: bir gün, toplam süre (sürüş + durak + kurulum)
+# WORK_MINUTES_PER_DAY'i aşmadığı sürece dolar. MAX_DELIVERIES_PER_DAY yalnızca
+# bir emniyet üst sınırıdır.
+MAX_DELIVERIES_PER_DAY = 25      # güvenlik üst sınırı (asıl kısıt zamandır)
+MAX_HOURS_PER_DAY = 6            # varsayılan günlük çalışma süresi (saat)
+WORK_MINUTES_PER_DAY = MAX_HOURS_PER_DAY * 60  # = 360 dk
+AVG_SPEED_KMH = 50               # KKTC ortalama yol hızı (tek kaynak)
+BASE_HANDLING_MIN = 10           # her durakta indirme/teslim/imza için temel süre
+STOP_DURATION_MIN = BASE_HANDLING_MIN  # geriye dönük uyumluluk (eski kullanımlar)
+AVG_INTER_STOP_MIN = 12          # ön-dağıtım tahmini: duraklar arası ortalama sürüş (dk)
 # ────────────────────────────────────────────────────────────────────
+
+
+# ════════════════════════════════════════════════════════════════════
+# 0. Kurulum süresi yardımcısı
+# ════════════════════════════════════════════════════════════════════
+def assignment_install_min(assignment) -> int:
+    """Bir atamanın toplam kurulum süresi (dk) = kategori süresi × adet."""
+    if not assignment:
+        return 0
+    product = getattr(assignment, 'product', None)
+    cat = getattr(product, 'category', None) if product else None
+    if cat and getattr(cat, 'requires_installation', False):
+        return int(cat.install_duration_min or 0) * int(getattr(assignment, 'quantity', 1) or 1)
+    return 0
+
+
+def delivery_install_min(delivery) -> int:
+    """Bir teslimatın (route stop) kurulum süresi (dk)."""
+    if not delivery:
+        return 0
+    return assignment_install_min(getattr(delivery, 'assignment', None))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -255,7 +282,55 @@ def _find_existing_active_delivery(customer_id: int, start_date: date) -> Option
 
 
 # ════════════════════════════════════════════════════════════════════
-# 5. Main pipeline
+# 5. Main pipeline — yardımcı fonksiyonlar
+# ════════════════════════════════════════════════════════════════════
+WEEKDAY_TR = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
+
+
+def _make_day_entry(d: date) -> dict:
+    return {
+        'date': d.isoformat(),
+        'weekday': WEEKDAY_TR[d.weekday()],
+        'district_names': [],
+        'stops': [],
+        'delivery_count': 0,
+        '_budget_used': 0.0,  # ön-dağıtım tahmini; döndürülmeden önce silinir
+    }
+
+
+def _add_stop_to_day(day: dict, stop: dict) -> None:
+    day['stops'].append(stop)
+    day['delivery_count'] += len(stop['assignment_ids'])
+    day['_budget_used'] = day.get('_budget_used', 0.0) + stop['service_min'] + AVG_INTER_STOP_MIN
+    if stop['district_name'] not in day['district_names']:
+        day['district_names'].append(stop['district_name'])
+
+
+def _day_is_full(day: dict, work_minutes: float) -> bool:
+    """En küçük olası durak bile sığmıyorsa gün dolu sayılır."""
+    min_cost = BASE_HANDLING_MIN + AVG_INTER_STOP_MIN
+    return (
+        day.get('_budget_used', 0.0) + min_cost > work_minutes
+        or day['delivery_count'] >= MAX_DELIVERIES_PER_DAY
+    )
+
+
+def _day_has_capacity(day: dict, stop: dict, work_minutes: float) -> bool:
+    cost = stop['service_min'] + AVG_INTER_STOP_MIN
+    new_budget = day.get('_budget_used', 0.0) + cost
+    new_count = day['delivery_count'] + len(stop['assignment_ids'])
+    return new_budget <= work_minutes and new_count <= MAX_DELIVERIES_PER_DAY
+
+
+def _append_day(day_plan: list, business_days: list, allowed_weekdays: list) -> int:
+    extra = next_delivery_days(business_days[-1], 1, allowed_weekdays)
+    business_days.extend(extra)
+    day_plan.append(_make_day_entry(extra[0]))
+    return len(day_plan) - 1
+
+
+# ════════════════════════════════════════════════════════════════════
+# 6. Main pipeline
 # ════════════════════════════════════════════════════════════════════
 def generate_auto_plan(
     start_date: Optional[date] = None,
@@ -264,9 +339,21 @@ def generate_auto_plan(
     max_hours_per_day: Optional[float] = None,
     depot_id: Optional[int] = None,
     assignment_ids: Optional[List[int]] = None,
+    locked: Optional[Dict[str, List[int]]] = None,
 ) -> Dict[str, Any]:
     """
     Build a multi-day delivery plan preview without writing to DB.
+
+    Kapasite ZAMAN-bazlıdır: bir gün, toplam süre
+    (sürüş + temel handling + kurulum) work_minutes'ı (varsayılan 360 dk)
+    aşana kadar dolar. MAX_DELIVERIES_PER_DAY yalnızca emniyet üst sınırıdır.
+
+    locked parametresi — kullanıcının sürükle-bırak ile kilitlediği duraklar:
+        { "2026-06-16": [assignment_id, ...], "2026-06-17": [...] }
+    Kilitlenen duraklar o günde sabit tutulur; gerisini algoritma dağıtır.
+
+    Her durak; 'service_min' (handling + kurulum), 'install_total_min',
+    'requires_installation' ve ürün bazında kurulum detayları içerir.
 
     Returns:
     {
@@ -276,21 +363,25 @@ def generate_auto_plan(
                 "weekday": "Pazartesi",
                 "district_names": ["Lefkoşa"],
                 "total_distance_km": 42.3,
-                "total_duration_min": 95,
-                "delivery_count": 8,
+                "total_drive_min": 55,
+                "total_service_min": 80,
+                "total_duration_min": 135,
+                "work_budget_min": 360,
+                "delivery_count": 4,
                 "stops": [ { stop detail } ]
             },
             ...
         ],
-        "summary": { "total_deliveries": 30, "total_days": 5, ... },
-        "warnings": { "no_coordinates": [...], "over_capacity_days": [...] }
+        "summary": { "total_deliveries": 12, "total_days": 3, ... },
+        "warnings": { "no_coordinates": [...], "over_time_days": [...] }
     }
     """
     if start_date is None:
         start_date = date.today()
-    daily_limit_hours = float(max_hours_per_day or MAX_HOURS_PER_DAY)
+    work_minutes = float(max_hours_per_day * 60) if max_hours_per_day else float(WORK_MINUTES_PER_DAY)
+    allowed_wd = sorted({int(d) for d in (allowed_weekdays or [0, 1, 2, 3, 4]) if 0 <= int(d) <= 6}) or [0, 1, 2, 3, 4]
 
-    # ── Step 1: Collect pending assignments ──
+    # ── Step 1: Bekleyen atamaları topla ──
     pending = ProductAssignment.objects.filter(
         status__in=['PLANNED', 'PENDING']
     ).exclude(
@@ -298,7 +389,7 @@ def generate_auto_plan(
     ).select_related(
         'customer', 'customer__customer_address',
         'customer__customer_address__district',
-        'product'
+        'product', 'product__category',
     ).order_by('assigned_at')
 
     if assignment_ids:
@@ -311,28 +402,95 @@ def generate_auto_plan(
             'warnings': {},
         }
 
-    # ── Step 2: Resolve coordinates & build stop map ──
-    # Group by customer to create logical stops
-    customer_stops: Dict[int, dict] = {}  # customer_id -> stop dict
-    no_coords: List[int] = []  # assignment IDs with no coords
+    # ── Step 2: Koordinat çöz, servis süresi hesapla, mantıksal durakları oluştur ──
+    customer_stops: Dict[int, dict] = {}
+    split_stops: List[dict] = []   # adedi günlere bölünen büyük siparişlerin parçaları
+    no_coords: List[int] = []
+    skipped_customers: set = set()
+    coords_cache: Dict[int, tuple] = {}
+
+    def _resolve_cached(cust):
+        cid = cust.id
+        if cid in coords_cache:
+            return coords_cache[cid]
+        lat, lng, source = _resolve_customer_coords(cust)
+        district_name = 'Bilinmiyor'
+        if lat is not None:
+            try:
+                district_name = cust.customer_address.district.name if cust.customer_address.district else 'Bilinmiyor'
+            except Exception:
+                pass
+        coords_cache[cid] = (lat, lng, source, district_name)
+        return coords_cache[cid]
 
     for assignment in pending:
         cust = assignment.customer
         cid = cust.id
 
+        if cid in skipped_customers:
+            no_coords.append(assignment.id)
+            continue
+
+        lat, lng, source, district_name = _resolve_cached(cust)
+        if lat is None:
+            no_coords.append(assignment.id)
+            skipped_customers.add(cid)
+            continue
+
+        cat = assignment.product.category
+        install_min_per_unit = (cat.install_duration_min if cat and cat.requires_installation else 0)
+        qty = assignment.quantity
+        install_for_this = install_min_per_unit * qty
+
+        # ── Tek siparişin kurulumu bir günlük bütçeyi aşıyorsa adedi parçalara böl ──
+        # (örn. 26 buzdolabı = 520 dk > 360 dk → 16 adet bir gün + 10 adet ertesi gün)
+        if install_min_per_unit > 0 and (install_for_this + BASE_HANDLING_MIN) > work_minutes:
+            # Bir güne sığacak azami adet (handling + duraklar arası sürüş payı düşülür)
+            usable = work_minutes - BASE_HANDLING_MIN - AVG_INTER_STOP_MIN
+            max_units = max(1, int(usable // install_min_per_unit))
+            total_parts = math.ceil(qty / max_units)
+            remaining = qty
+            part = 0
+            while remaining > 0:
+                part += 1
+                chunk_qty = min(max_units, remaining)
+                remaining -= chunk_qty
+                chunk_install = chunk_qty * install_min_per_unit
+                split_stops.append({
+                    'customer_id': cid,
+                    'customer_name': f"{cust.first_name} {cust.last_name}".strip() or cust.username,
+                    'lat': lat,
+                    'lng': lng,
+                    'coord_source': source,
+                    'district_name': district_name,
+                    'preferred_date': None,
+                    'locked': False,
+                    'existing_route_id': None,
+                    'assignment_ids': [assignment.id],
+                    'products': [{
+                        'assignment_id': assignment.id,
+                        'product_id': assignment.product.id,
+                        'product_name': assignment.product.name,
+                        'quantity': chunk_qty,
+                        'requires_installation': True,
+                        'install_duration_min': install_min_per_unit,
+                        'install_total_min': chunk_install,
+                        'is_split_chunk': True,
+                        'split_index': part,
+                        'split_total': total_parts,
+                    }],
+                    'total_quantity': chunk_qty,
+                    'service_min': BASE_HANDLING_MIN + chunk_install,
+                    'install_total_min': chunk_install,
+                    'requires_installation': True,
+                    'is_split_chunk': True,
+                    'split_index': part,
+                    'split_total': total_parts,
+                })
+            continue
+
+        # ── Normal akış: müşterinin tek durağına ekle ──
         if cid not in customer_stops:
-            lat, lng, source = _resolve_customer_coords(cust)
-            if lat is None:
-                no_coords.append(assignment.id)
-                continue
-
-            # District name
-            district_name = 'Bilinmiyor'
-            try:
-                district_name = cust.customer_address.district.name if cust.customer_address.district else 'Bilinmiyor'
-            except Exception:
-                pass
-
             customer_stops[cid] = {
                 'customer_id': cid,
                 'customer_name': f"{cust.first_name} {cust.last_name}".strip() or cust.username,
@@ -341,34 +499,61 @@ def generate_auto_plan(
                 'coord_source': source,
                 'district_name': district_name,
                 'preferred_date': None,
+                'locked': False,
                 'existing_route_id': None,
                 'assignment_ids': [],
                 'products': [],
                 'total_quantity': 0,
+                # Servis süresi: her durak için temel handling + kurulum toplamı
+                'service_min': BASE_HANDLING_MIN,
+                'install_total_min': 0,
+                'requires_installation': False,
             }
-            existing_delivery = _find_existing_active_delivery(cid, start_date)
-            if existing_delivery:
-                customer_stops[cid]['preferred_date'] = existing_delivery.scheduled_date.isoformat()
+            existing = _find_existing_active_delivery(cid, start_date)
+            if existing:
+                customer_stops[cid]['preferred_date'] = existing.scheduled_date.isoformat()
+                customer_stops[cid]['locked'] = True
                 try:
-                    customer_stops[cid]['existing_route_id'] = existing_delivery.route_stop.route_id
+                    customer_stops[cid]['existing_route_id'] = existing.route_stop.route_id
                 except Exception:
-                    customer_stops[cid]['existing_route_id'] = None
-        elif cid not in customer_stops:
-            # Customer was already skipped due to missing coords
-            no_coords.append(assignment.id)
-            continue
+                    pass
 
-        if cid in customer_stops:
-            customer_stops[cid]['assignment_ids'].append(assignment.id)
-            customer_stops[cid]['products'].append({
-                'assignment_id': assignment.id,
-                'product_id': assignment.product.id,
-                'product_name': assignment.product.name,
-                'quantity': assignment.quantity,
-            })
-            customer_stops[cid]['total_quantity'] += assignment.quantity
+        stop = customer_stops[cid]
+        stop['assignment_ids'].append(assignment.id)
+        stop['products'].append({
+            'assignment_id': assignment.id,
+            'product_id': assignment.product.id,
+            'product_name': assignment.product.name,
+            'quantity': qty,
+            'requires_installation': bool(cat and cat.requires_installation),
+            'install_duration_min': install_min_per_unit,
+            'install_total_min': install_for_this,
+        })
+        stop['total_quantity'] += qty
+        stop['install_total_min'] += install_for_this
+        stop['service_min'] = BASE_HANDLING_MIN + stop['install_total_min']
+        if install_for_this > 0:
+            stop['requires_installation'] = True
 
-    stops_list = list(customer_stops.values())
+    # ── Step 2b: Kullanıcı kilitlerini uygula ──
+    # locked = {"2026-06-16": [aid, ...], ...}
+    # Bir durağın herhangi bir ataması kilitliyse tüm durak o güne sabitlenir.
+    if locked:
+        aid_to_date: Dict[int, str] = {
+            aid: date_str
+            for date_str, aids in locked.items()
+            for aid in aids
+        }
+        for stop in customer_stops.values():
+            if stop['preferred_date']:
+                continue  # zaten sabitlenmiş (mevcut aktif teslimat)
+            for aid in stop['assignment_ids']:
+                if aid in aid_to_date:
+                    stop['preferred_date'] = aid_to_date[aid]
+                    stop['locked'] = True
+                    break
+
+    stops_list = list(customer_stops.values()) + split_stops
 
     if not stops_list:
         return {
@@ -377,7 +562,7 @@ def generate_auto_plan(
             'warnings': {'no_coordinates': no_coords},
         }
 
-    # ── Step 3: Group by district ──
+    # ── Step 3: İlçeye göre grupla ──
     anchored_stops = [s for s in stops_list if s.get('preferred_date')]
     unanchored_stops = [s for s in stops_list if not s.get('preferred_date')]
 
@@ -385,102 +570,119 @@ def generate_auto_plan(
     for stop in unanchored_stops:
         district_groups[stop['district_name']].append(stop)
 
-    # ── Step 4: Distribute to business days ──
-    # Sort districts by stop count (descending) for balanced distribution
-    sorted_districts = sorted(district_groups.items(), key=lambda x: -len(x[1]))
-
-    # Calculate how many days we need
-    total_deliveries = sum(
-        sum(len(s['assignment_ids']) for s in stops)
-        for _, stops in sorted_districts
+    # İlçeleri toplam servis sürelerine göre büyükten küçüğe sırala
+    sorted_districts = sorted(
+        district_groups.items(),
+        key=lambda x: -sum(s['service_min'] for s in x[1]),
     )
-    min_days_needed = math.ceil(total_deliveries / MAX_DELIVERIES_PER_DAY)
-    # At least 1 day, at most we'll expand if needed
-    num_days = max(1, min_days_needed)
 
-    business_days = next_delivery_days(start_date, num_days, allowed_weekdays)
+    # ── Step 4: Zaman-bazlı gün dağıtımı ──
+    total_estimated = sum(s['service_min'] + AVG_INTER_STOP_MIN for _, stops in sorted_districts for s in stops)
+    num_days = max(1, math.ceil(total_estimated / work_minutes))
+    allowed_set = set(allowed_wd)
 
-    # Distribute: fill each day until capacity, district by district
-    day_plan: List[Dict[str, Any]] = [
-        {
-            'date': d.isoformat(),
-            'weekday': ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][d.weekday()],
-            'district_names': [],
-            'stops': [],
-            'delivery_count': 0,
-        }
-        for d in business_days
-    ]
-    day_by_date = {day['date']: day for day in day_plan}
+    # Mevcut açık rotaları yükle — kapasitesi olan günlere yeni atamaları önce ekle.
+    # date__gte: start_date dahil (aynı günde açık rota varsa değerlendir).
+    prefill_budgets: Dict[str, float] = {}
+    for _fr in DeliveryRoute.objects.filter(
+        date__gte=start_date,
+        status__in=['PLANNED', 'WAITING'],
+    ).order_by('date').values('date', 'total_duration_min'):
+        _d = _fr['date']
+        if _d.weekday() not in allowed_set:
+            continue
+        _ds = _d.isoformat()
+        prefill_budgets[_ds] = prefill_budgets.get(_ds, 0.0) + float(_fr.get('total_duration_min') or 0)
 
+    day_plan: List[Dict[str, Any]] = []
+    day_by_date: Dict[str, dict] = {}
+
+    for _ds in sorted(prefill_budgets):
+        _day = _make_day_entry(date.fromisoformat(_ds))
+        _day['_budget_used'] = prefill_budgets[_ds]
+        _day['has_existing_route'] = True
+        day_plan.append(_day)
+        day_by_date[_ds] = _day
+
+    # Mevcut günlerin kalan kapasitesinden fazlası için yeni gün üret
+    existing_cap = sum(max(0.0, work_minutes - prefill_budgets[ds]) for ds in prefill_budgets)
+    extra_needed = max(0.0, total_estimated - existing_cap)
+    fresh_count = max(0, math.ceil(extra_needed / work_minutes)) if prefill_budgets else num_days
+
+    _fresh_added = 0
+    for _d in next_delivery_days(start_date, fresh_count + len(prefill_budgets) + num_days, allowed_wd):
+        if _fresh_added >= fresh_count:
+            break
+        _ds = _d.isoformat()
+        if _ds not in day_by_date:
+            _day = _make_day_entry(_d)
+            day_plan.append(_day)
+            day_by_date[_ds] = _day
+            _fresh_added += 1
+
+    # Hiç gün oluşmadıysa (edge case) varsayılan güne dön
+    if not day_plan:
+        for _d in next_delivery_days(start_date, num_days, allowed_wd):
+            _ds = _d.isoformat()
+            _day = _make_day_entry(_d)
+            day_plan.append(_day)
+            day_by_date[_ds] = _day
+
+    # Kronolojik sırala (prefill + fresh karışık olabilir)
+    day_plan.sort(key=lambda d: d['date'])
+    business_days: List[date] = [date.fromisoformat(d['date']) for d in day_plan]
+
+    # Sabitlenmiş (mevcut aktif teslimatı olan) durakları önce yerleştir
     for stop in anchored_stops:
-        preferred_date = stop['preferred_date']
-        if preferred_date not in day_by_date:
-            preferred_day = date.fromisoformat(preferred_date)
-            day_by_date[preferred_date] = {
-                'date': preferred_date,
-                'weekday': ['Pazartesi', 'SalÄ±', 'Ã‡arÅŸamba', 'PerÅŸembe', 'Cuma', 'Cumartesi', 'Pazar'][preferred_day.weekday()],
-                'district_names': [],
-                'stops': [],
-                'delivery_count': 0,
-                'has_existing_route': True,
-            }
-            day_plan.append(day_by_date[preferred_date])
+        pdate = stop['preferred_date']
+        if pdate not in day_by_date:
+            new_day = _make_day_entry(date.fromisoformat(pdate))
+            new_day['has_existing_route'] = True
+            day_by_date[pdate] = new_day
+            day_plan.append(new_day)
+        target = day_by_date[pdate]
+        _add_stop_to_day(target, stop)
+        target['has_existing_route'] = bool(stop.get('existing_route_id')) or target.get('has_existing_route', False)
 
-        target_day = day_by_date[preferred_date]
-        target_day['stops'].append(stop)
-        target_day['delivery_count'] += len(stop['assignment_ids'])
-        target_day['has_existing_route'] = bool(stop.get('existing_route_id')) or target_day.get('has_existing_route', False)
-        if stop['district_name'] not in target_day['district_names']:
-            target_day['district_names'].append(stop['district_name'])
-
+    # Serbest durakları ilçe ilçe dağıt
     day_idx = 0
-    for district_name, stops in sorted_districts:
-        remaining_stops = list(stops)
-
-        while remaining_stops:
-            # If current day is full, move to next
-            while day_idx < len(day_plan) and day_plan[day_idx]['delivery_count'] >= MAX_DELIVERIES_PER_DAY:
-                day_idx += 1
-
-            # If we ran out of days, add more
+    for _district_name, stops in sorted_districts:
+        remaining = list(stops)
+        while remaining:
             if day_idx >= len(day_plan):
-                extra_days = next_delivery_days(business_days[-1], 1, allowed_weekdays)
-                business_days.extend(extra_days)
-                day_plan.append({
-                    'date': extra_days[0].isoformat(),
-                    'weekday': ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][extra_days[0].weekday()],
-                    'district_names': [],
-                    'stops': [],
-                    'delivery_count': 0,
-                })
+                day_idx = _append_day(day_plan, business_days, allowed_wd)
 
-            capacity_left = MAX_DELIVERIES_PER_DAY - day_plan[day_idx]['delivery_count']
-            # Take as many stops as fit (each stop = number of assignments)
-            batch = []
-            batch_count = 0
+            # Dolu günleri atla
+            while day_idx < len(day_plan) and _day_is_full(day_plan[day_idx], work_minutes):
+                day_idx += 1
+            if day_idx >= len(day_plan):
+                day_idx = _append_day(day_plan, business_days, allowed_wd)
+
+            day = day_plan[day_idx]
             new_remaining = []
-            for s in remaining_stops:
-                assignment_count = len(s['assignment_ids'])
-                if batch_count + assignment_count <= capacity_left:
-                    batch.append(s)
-                    batch_count += assignment_count
+            added_any = False
+            for s in remaining:
+                if _day_has_capacity(day, s, work_minutes):
+                    _add_stop_to_day(day, s)
+                    added_any = True
                 else:
                     new_remaining.append(s)
-            remaining_stops = new_remaining
+            remaining = new_remaining
 
-            if batch:
-                day_plan[day_idx]['stops'].extend(batch)
-                day_plan[day_idx]['delivery_count'] += batch_count
-                if district_name not in day_plan[day_idx]['district_names']:
-                    day_plan[day_idx]['district_names'].append(district_name)
-
-            if remaining_stops:
+            if not added_any and remaining:
+                # Hiçbiri sığmadı. Yalnızca GERÇEKTEN boş güne (mevcut rotası ve
+                # ön-yüklenmiş bütçesi olmayan) zorla ekle — tek bir devasa durak
+                # bütçeyi aşsa bile bir yere konmalı (uyarı verilecek).
+                # Prefill günleri (mevcut rotalı, _budget_used > 0) zorla hedef OLMAZ.
+                if day['delivery_count'] == 0 and day.get('_budget_used', 0.0) <= 0.0:
+                    _add_stop_to_day(day, remaining.pop(0))
                 day_idx += 1
 
-    # ── Step 5: Optimize routes per day ──
-    # Get default depot
-    depot_lat, depot_lng = 35.1856, 33.3823  # Lefkoşa default
+            elif remaining:
+                day_idx += 1
+
+    # ── Step 5: Her gün için rota optimize et, bütçe aşımında son durağı ertele ──
+    depot_lat, depot_lng = 35.1856, 33.3823  # Lefkoşa varsayılan
     default_depot = DepotLocation.objects.filter(id=depot_id).first() if depot_id else None
     if not default_depot:
         default_depot = DepotLocation.objects.filter(is_default=True).first()
@@ -489,33 +691,66 @@ def generate_auto_plan(
         depot_lng = float(default_depot.longitude)
 
     over_time_days = []
+    # Bir sonraki günün başına eklenecek taşma durakları
+    spillover: Dict[int, List[dict]] = defaultdict(list)
 
-    for day in day_plan:
+    for di, day in enumerate(day_plan):
+        # Önceki günden taşan durakları ekle
+        for sp in spillover.pop(di, []):
+            _add_stop_to_day(day, sp)
+
         if not day['stops']:
             continue
 
         optimized = optimize_route((depot_lat, depot_lng), day['stops'])
         day['stops'] = optimized
 
-        # Calculate totals
+        # Gerçek toplam: sürüş + servis (handling + kurulum)
+        total_drive = sum(s['drive_duration_from_prev_min'] for s in optimized)
+        total_service = sum(s['service_min'] for s in optimized)
+        actual_total = total_drive + total_service
+
+        # Bütçeyi aşıyorsa kilitsiz son durakları bir sonraki güne taşı
+        while actual_total > work_minutes and len(optimized) > 1:
+            last = optimized[-1]
+            if last.get('locked'):
+                break
+            optimized.pop()
+            actual_total -= last['drive_duration_from_prev_min'] + last['service_min']
+            day['delivery_count'] -= len(last['assignment_ids'])
+            # Optimizasyon alanlarını temizle (sonraki gün yeniden hesaplanacak)
+            for k in ('dist_from_prev', 'drive_duration_from_prev_min',
+                      'duration_from_prev_min', 'routing_source', 'stop_order'):
+                last.pop(k, None)
+            spillover[di + 1].append(last)
+
+        # Taşma için gün yoksa oluştur
+        if spillover.get(di + 1) and di + 1 >= len(day_plan):
+            _append_day(day_plan, business_days, allowed_wd)
+
+        day['stops'] = optimized
         total_dist = sum(s['dist_from_prev'] for s in optimized)
-        total_min = sum(int(s.get('duration_from_prev_min', 0)) for s in optimized)
+        total_drive = sum(s['drive_duration_from_prev_min'] for s in optimized)
+        total_service = sum(s['service_min'] for s in optimized)
+        actual_total = total_drive + total_service
 
         day['total_distance_km'] = round(total_dist, 2)
-        day['total_duration_min'] = total_min
-        day['max_duration_min'] = int(daily_limit_hours * 60)
+        day['total_drive_min'] = round(total_drive, 1)
+        day['total_service_min'] = round(total_service, 1)
+        day['total_duration_min'] = round(actual_total, 1)
+        day['work_budget_min'] = int(work_minutes)
 
-        if total_min > daily_limit_hours * 60:
+        if actual_total > work_minutes:
             over_time_days.append(day['date'])
 
-        # Add stop_order
         for idx, stop in enumerate(optimized, 1):
             stop['stop_order'] = idx
 
-    # ── Step 6: Remove empty days ──
+    # ── Step 6: Boş günleri ve dahili alanları temizle ──
     day_plan = [d for d in day_plan if d['stops']]
+    for day in day_plan:
+        day.pop('_budget_used', None)
 
-    # ── Build response ──
     warnings: Dict[str, Any] = {}
     if no_coords:
         warnings['no_coordinates'] = no_coords
@@ -528,8 +763,9 @@ def generate_auto_plan(
             'total_deliveries': sum(d['delivery_count'] for d in day_plan),
             'total_days': len(day_plan),
             'total_distance_km': round(sum(d.get('total_distance_km', 0) for d in day_plan), 2),
-            'max_hours_per_day': daily_limit_hours,
-            'allowed_weekdays': sorted(list({int(day) for day in (allowed_weekdays or [0, 1, 2, 3, 4])})),
+            'total_duration_min': round(sum(d.get('total_duration_min', 0) for d in day_plan), 1),
+            'work_budget_min': int(work_minutes),
+            'allowed_weekdays': allowed_wd,
             'depot_id': default_depot.id if default_depot else None,
             'depot_name': default_depot.name if default_depot else "Beko Mağaza, Lefkoşa",
         },
@@ -551,7 +787,12 @@ def recalculate_route_metrics(route) -> None:
     total_distance = 0.0
     stop_count = 0
 
-    stops = list(route.stops.select_related('delivery').order_by('stop_order', 'id'))
+    stops = list(route.stops.select_related(
+        'delivery',
+        'delivery__assignment',
+        'delivery__assignment__product',
+        'delivery__assignment__product__category',
+    ).order_by('stop_order', 'id'))
     matrix = None
     if all(stop.delivery and stop.delivery.address_lat is not None and stop.delivery.address_lng is not None for stop in stops):
         matrix = get_route_matrix(
@@ -562,16 +803,18 @@ def recalculate_route_metrics(route) -> None:
     for idx, stop in enumerate(stops, 1):
         stop_count += 1
         delivery = stop.delivery
+        # Bu durağın kurulum süresi (kategori süresi × adet) — toplam süreye dahil
+        install_min = delivery_install_min(delivery)
         if delivery.address_lat is None or delivery.address_lng is None:
             distance = float(stop.distance_from_previous_km or 0)
-            duration = int((distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN
+            duration = int((distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN + install_min
         else:
             cur_lat = float(delivery.address_lat)
             cur_lng = float(delivery.address_lng)
             matrix_distance = _matrix_distance(matrix, prev_matrix_idx, idx)
             matrix_duration = _matrix_duration(matrix, prev_matrix_idx, idx)
             distance = float(matrix_distance) if matrix_distance is not None else haversine_km(prev_lat, prev_lng, cur_lat, cur_lng)
-            duration = int(matrix_duration if matrix_duration is not None else (distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN
+            duration = int(matrix_duration if matrix_duration is not None else (distance / AVG_SPEED_KMH) * 60) + STOP_DURATION_MIN + install_min
             prev_lat, prev_lng = cur_lat, cur_lng
             prev_matrix_idx = idx
 
@@ -665,6 +908,48 @@ def approve_plan(plan_data: Dict[str, Any]) -> Dict[str, Any]:
         depot_lng = float(default_depot.longitude)
         store_address = default_depot.name
 
+    # ── Ön-işleme: adedi günlere bölünen siparişleri (split chunk) gerçek
+    #    ProductAssignment kayıtlarına dönüştür. Delivery↔assignment OneToOne
+    #    olduğu için her parça kendi atamasına sahip olmalı: ilk parça orijinal
+    #    kaydı kullanır (adedi düşürülür), sonraki parçalar yeni alt-kayıt olur. ──
+    split_seen: Dict[int, bool] = {}
+    for day in plan_data.get('days', []):
+        for stop in day.get('stops', []):
+            new_aids = []
+            for pi in stop.get('products', []):
+                if not pi.get('is_split_chunk'):
+                    new_aids.append(pi['assignment_id'])
+                    continue
+                orig_aid = pi['assignment_id']
+                try:
+                    orig = ProductAssignment.objects.get(id=orig_aid)
+                except ProductAssignment.DoesNotExist:
+                    new_aids.append(orig_aid)
+                    continue
+                if orig_aid not in split_seen:
+                    # İlk parça: orijinal kaydın adedini bu parçaya indir
+                    orig.quantity = pi['quantity']
+                    orig.status = 'PLANNED'
+                    orig.save(update_fields=['quantity', 'status'])
+                    split_seen[orig_aid] = True
+                    new_aids.append(orig_aid)
+                else:
+                    # Sonraki parçalar: yeni alt-kayıt oluştur
+                    child = ProductAssignment.objects.create(
+                        customer=orig.customer,
+                        product=orig.product,
+                        quantity=pi['quantity'],
+                        status='PLANNED',
+                        assigned_by=orig.assigned_by,
+                        notes=(f"[{pi.get('split_index')}/{pi.get('split_total')} parti — "
+                               f"adet günlere bölündü] " + (orig.notes or '')).strip(),
+                    )
+                    pi['assignment_id'] = child.id
+                    new_aids.append(child.id)
+            if any(p.get('is_split_chunk') for p in stop.get('products', [])):
+                # Bu durağın assignment_ids listesini güncel (bölünmüş) id'lerle değiştir
+                stop['assignment_ids'] = new_aids
+
     created_routes = []
 
     for day in plan_data.get('days', []):
@@ -692,7 +977,7 @@ def approve_plan(plan_data: Dict[str, Any]) -> Dict[str, Any]:
         existing_route_id = next((s.get('existing_route_id') for s in day.get('stops', []) if s.get('existing_route_id')), None)
         route = DeliveryRoute.objects.filter(id=existing_route_id).first() if existing_route_id else None
         if not route:
-            route = DeliveryRoute.objects.filter(date=day_date, status='PLANNED').order_by('id').first()
+            route = DeliveryRoute.objects.filter(date=day_date, status__in=['PLANNED', 'WAITING']).order_by('id').first()
 
         route_created = False
         if not route:

@@ -1,11 +1,18 @@
 import axios from 'axios';
 import { getToken } from '../storage/storage.native';
 
-// Development: Set EXPO_PUBLIC_API_URL in .env (e.g. http://192.168.1.5:8000/)
-// Each developer should configure their own local IP address.
+// Set EXPO_PUBLIC_API_URL in local .env for development devices.
+// Examples:
+// - iOS simulator: http://localhost:8000/
+// - Android emulator: http://10.0.2.2:8000/
+// - Physical device: http://<your-lan-ip>:8000/
 export const API_BASE_URL = __DEV__
   ? process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/'
   : process.env.EXPO_PUBLIC_PROD_API_URL || 'https://api.bekosirs.com/';
+
+if (__DEV__) {
+  console.log('API Base URL:', API_BASE_URL);
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -16,29 +23,61 @@ const api = axios.create({
   timeout: 30000, // 30 second timeout for ML-heavy endpoints
 });
 
-// Request interceptor — attach JWT token
+// Request interceptor
 api.interceptors.request.use(
   async (config) => {
     try {
       const token = await getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        if (__DEV__) console.log('Token added to request');
       }
     } catch (error) {
-      // Token retrieval failed silently
+      if (__DEV__) console.error('Error getting token:', error);
     }
+
+    if (__DEV__) console.log('Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    if (__DEV__) console.error('Request interceptor error:', error);
+    return Promise.reject(error);
+  }
 );
 
-// Response interceptor
+// Response interceptor with detailed error logging
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (__DEV__) console.log('Response:', response.status, response.config.url);
+    return response;
+  },
   (error) => {
+    if (__DEV__) {
+      if (error.response) {
+        console.error('Server Error:', {
+          status: error.response.status,
+          data: error.response.data,
+          url: error.config?.url
+        });
+      } else if (error.request) {
+        console.error('Network Error - No Response:', {
+          message: 'Cannot connect to backend',
+          url: error.config?.url,
+          baseURL: API_BASE_URL
+        });
+        console.error('Troubleshooting:');
+        console.error('   1. Is the backend running with: python manage.py runserver 0.0.0.0:8000');
+        console.error('   2. Is EXPO_PUBLIC_API_URL configured for your device or emulator?');
+        console.error('   3. Is the phone on the same network as the backend machine?');
+      } else {
+        console.error('Request Setup Error:', error.message);
+      }
+    }
+
+    // Return a more user-friendly error
     const userError = error.response?.data?.message ||
       error.response?.statusText ||
-      'Bağlantı hatası. Lütfen bağlantınızı kontrol edin.';
+      'Network connection error. Check your connection.';
 
     return Promise.reject({
       ...error,
@@ -47,19 +86,21 @@ api.interceptors.response.use(
   }
 );
 
-/** Test backend reachability (development utility). */
+// Test connection function (only useful in development)
 export const testBackendConnection = async () => {
   try {
+    if (__DEV__) console.log('Testing backend connection...');
     const response = await axios.get(`${API_BASE_URL}admin/`, {
       timeout: 5000,
       validateStatus: () => true
     });
+    if (__DEV__) console.log('Backend is reachable. Status:', response.status);
     return true;
-  } catch {
+  } catch (error: any) {
+    if (__DEV__) console.error('Backend connection test failed:', error.message);
     return false;
   }
 };
-
 
 /**
  * Get full image URL from path.

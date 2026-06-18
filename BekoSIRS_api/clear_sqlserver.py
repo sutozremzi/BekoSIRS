@@ -2,13 +2,24 @@
 """
 Script to force drop all tables in SQL Server by removing constraints first
 """
+import os
+import sys
 import pyodbc
 
 # Database connection details
-SERVER = 'LAPTOP-1Q82AMBK'
-DATABASE = 'Beko_stok'
-USERNAME = 'sa'
-PASSWORD = '1234'
+SERVER = os.getenv('MSSQL_SERVER', 'localhost')
+DATABASE = os.getenv('MSSQL_DATABASE', 'Beko_stok')
+USERNAME = os.getenv('MSSQL_USERNAME')
+PASSWORD = os.getenv('MSSQL_PASSWORD')
+CONFIRMATION = os.getenv('CONFIRM_CLEAR_SQLSERVER')
+
+if CONFIRMATION != 'YES':
+    print("Refusing to clear SQL Server tables without CONFIRM_CLEAR_SQLSERVER=YES.")
+    sys.exit(1)
+
+if not USERNAME or not PASSWORD:
+    print("MSSQL_USERNAME and MSSQL_PASSWORD environment variables are required.")
+    sys.exit(1)
 
 try:
     conn_str = (
@@ -71,5 +82,4 @@ try:
     
 except Exception as e:
     print(f"✗ Error: {e}")
-    import sys
     sys.exit(1)

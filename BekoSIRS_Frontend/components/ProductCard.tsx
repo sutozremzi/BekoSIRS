@@ -136,6 +136,8 @@ export const ProductCard = memo(({
   );
 });
 
+ProductCard.displayName = 'ProductCard';
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: 'white',

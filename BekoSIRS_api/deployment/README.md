@@ -299,6 +299,40 @@ maxmemory 256mb
 maxmemory-policy allkeys-lru
 ```
 
+## 🗺️ OSRM Rota Motoru (Self-Hosted)
+
+BekoSIRS teslimat optimizasyonu için OSRM kullanır. Demo sunucu (`router.project-osrm.org`) geliştirme içindir; production için kendi OSRM instance'ınızı kurmanız gerekir.
+
+### Kurulum (Docker gerekli)
+
+```bash
+# 1. Cyprus haritasını indir ve işle (~5-10 dk, ~70 MB indir)
+cd /var/www/bekosirs/BekoSIRS_api/deployment/osrm
+bash setup.sh
+
+# 2. OSRM servisini başlat
+cd /var/www/bekosirs/BekoSIRS_api
+docker compose -f deployment/docker-compose.osrm.yml up -d
+
+# 3. Sağlık kontrolü
+curl http://127.0.0.1:5000/health
+```
+
+### .env Ayarları
+
+```env
+ROUTING_API_ENABLED=True
+ROUTING_API_BASE_URL=http://127.0.0.1:5000
+ROUTING_API_TIMEOUT_SECONDS=10
+```
+
+### Notlar
+
+- OSRM çalışmazsa sistem otomatik olarak Haversine mesafe hesabına döner (fallback), teslimat planlamaya devam eder.
+- Fallback durumu Django loglarında (`WARNING products.services.routing_provider`) görünür.
+- Harita verisini güncellemek için `setup.sh`'ı tekrar çalıştırın; eski `.osrm` dosyaları üzerine yazılır, ardından servisi restart edin.
+- `max-table-size 500` ayarı 500 noktaya kadar matris hesaplamasına izin verir; günlük teslimat sayısı bu sınıra asla ulaşmaz.
+
 ## 🔒 Security Checklist
 
 - [ ] DEBUG = False

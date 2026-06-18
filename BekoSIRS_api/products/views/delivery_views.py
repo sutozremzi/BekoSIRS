@@ -1,19 +1,21 @@
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from django.db.models import Q, Count, Prefetch
 from django.db import transaction
 from datetime import date as date_type, timedelta
-import math
 from ..models import Delivery, DeliveryRoute, DeliveryRouteStop, ProductAssignment, ProductOwnership, CustomUser, DepotLocation, Notification
 from ..serializers import (
     DeliverySerializer, 
     DeliveryRouteSerializer, 
     ProductAssignmentSerializer
 )
-from ..permissions import IsAdminOrReadOnly, IsDeliveryPerson, IsAdmin
+from ..permissions import IsAdminOrReadOnly, IsDeliveryPerson
 from ..services.routing_provider import get_route_matrix
+from ..services.auto_planner import haversine_km, AVG_SPEED_KMH, delivery_install_min
 
 
 def _assignment_status_filter(status_value):
@@ -56,6 +58,17 @@ def sync_delivery_business_state(delivery, new_status=None):
     elif status_value == 'OUT_FOR_DELIVERY':
         assignment.status = 'OUT_FOR_DELIVERY'
         assignment.save(update_fields=['status'])
+        Notification.objects.get_or_create(
+            user=assignment.customer,
+            notification_type='general',
+            title='Ürününüz Yolda',
+            related_product=assignment.product,
+            defaults={
+                'message': (
+                    f"{assignment.product.name} ürününüz bugün teslim edilmek üzere yola çıktı."
+                )
+            }
+        )
     elif status_value in ['WAITING', 'FAILED']:
         assignment.status = 'SCHEDULED'
         assignment.save(update_fields=['status'])
@@ -67,50 +80,6 @@ class IsAdminOrSellerOrReadOnly(IsAdminOrReadOnly):
         if request.method in permissions.SAFE_METHODS:
             return True
         return request.user.is_authenticated and request.user.role in ['admin', 'seller']
-
-
-# ============================================
-# Haversine Distance Calculator
-# ============================================
-def haversine_km(lat1, lon1, lat2, lon2):
-    """İki koordinat arasındaki mesafeyi km olarak hesaplar."""
-    R = 6371  # Earth radius in km
-    lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    c = 2 * math.asin(math.sqrt(a))
-    return R * c
-
-
-def nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords):
-    """
-    Nearest-Neighbor algoritması ile en kısa rota sıralaması.
-    deliveries_with_coords: [(delivery_obj, lat, lng), ...]
-    Returns: ordered list of (delivery_obj, lat, lng, distance_from_prev)
-    """
-    if not deliveries_with_coords:
-        return []
-    
-    unvisited = list(deliveries_with_coords)
-    route = []
-    current_lat, current_lng = float(depot_lat), float(depot_lng)
-    
-    while unvisited:
-        nearest = None
-        nearest_dist = float('inf')
-        for item in unvisited:
-            d_obj, lat, lng = item
-            dist = haversine_km(current_lat, current_lng, lat, lng)
-            if dist < nearest_dist:
-                nearest_dist = dist
-                nearest = item
-        
-        unvisited.remove(nearest)
-        route.append((nearest[0], nearest[1], nearest[2], nearest_dist))
-        current_lat, current_lng = float(nearest[1]), float(nearest[2])
-    
-    return route
 
 
 def road_aware_nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords):
@@ -159,7 +128,7 @@ def road_aware_nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coor
             except (IndexError, TypeError):
                 duration_min = None
         if duration_min is None:
-            duration_min = (nearest_dist / 40) * 60
+            duration_min = (nearest_dist / AVG_SPEED_KMH) * 60
         route.append((delivery, lat, lng, nearest_dist, duration_min, matrix.source if matrix else 'haversine'))
         current_lat, current_lng = lat, lng
         current_idx = nearest_idx
@@ -194,6 +163,17 @@ class ProductAssignmentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        customer = serializer.validated_data.get('customer')
+        try:
+            addr = customer.customer_address
+            if not addr.latitude or not addr.longitude:
+                raise ValidationError(
+                    {"customer": "Bu müşterinin harita koordinatı eksik. Müşteri profilinden adres konumu ekleyin."}
+                )
+        except ObjectDoesNotExist:
+            raise ValidationError(
+                {"customer": "Bu müşterinin kayıtlı adresi yok. Önce müşteri profilinden adres ekleyin."}
+            )
         assignment = serializer.save(assigned_by=self.request.user if self.request.user.is_authenticated else None)
         # Notify customer that a product has been assigned to them
         Notification.objects.create(
@@ -317,12 +297,88 @@ class ProductAssignmentViewSet(viewsets.ModelViewSet):
             max_hours_per_day=request.data.get('max_hours_per_day') or None,
             depot_id=request.data.get('depot_id') or None,
             assignment_ids=request.data.get('assignment_ids') or None,
+            locked=request.data.get('locked') or None,
+        )
+
+        if not plan.get('days'):
+            no_coords = plan.get('warnings', {}).get('no_coordinates', [])
+            if no_coords:
+                return Response(
+                    {
+                        **plan,
+                        "error": (
+                            f"{len(no_coords)} siparişin müşteri koordinatı eksik — "
+                            "harita üzerinde konumlandırılmadan plana dahil edilemez. "
+                            "Müşteri profilinden adres koordinatı ekleyin."
+                        ),
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY
+                )
+            return Response(
+                {"error": "Planlanacak teslimat bulunamadı. Tüm atamalar zaten planlanmış olabilir."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response(plan)
+
+    @action(detail=False, methods=['post'])
+    def replan(self, request):
+        """
+        Mevcut taslağı kilitli durakları koruyarak yeniden optimize et.
+
+        Kullanıcı sürükle-bırak ile bir durağı belirli bir güne taşıdığında
+        o durağı 'locked' olarak işaretler; bu endpoint gerisini yeniden dağıtır.
+
+        Body:
+        {
+            "start_date":      "2026-06-16",           (opsiyonel, varsayılan: bugün)
+            "assignment_ids":  [1, 2, 3, ...],         (havuz; boşsa tüm bekleyenler)
+            "locked": {                                 (kullanıcı kilitleri)
+                "2026-06-16": [1, 2],
+                "2026-06-17": [3]
+            },
+            "allowed_weekdays": [0, 1, 2, 3, 4],      (opsiyonel)
+            "max_hours_per_day": 6,                    (opsiyonel)
+            "depot_id": null                           (opsiyonel)
+        }
+
+        Döner: auto_plan ile aynı format — DB'ye yazmaz, önizleme döner.
+        Onaylamak için dönen 'days' verisini approve_plan'a gönderin.
+        """
+        from ..services.auto_planner import generate_auto_plan
+        from datetime import date as date_type
+
+        locked = request.data.get('locked')
+        if locked is not None and not isinstance(locked, dict):
+            return Response(
+                {"error": "locked bir dict olmalı: {\"YYYY-MM-DD\": [assignment_id, ...]}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_date_str = request.data.get('start_date')
+        start_date = None
+        if start_date_str:
+            try:
+                start_date = date_type.fromisoformat(start_date_str)
+            except ValueError:
+                return Response(
+                    {"error": "Geçersiz tarih formatı. YYYY-MM-DD kullanın."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        plan = generate_auto_plan(
+            start_date,
+            allowed_weekdays=request.data.get('allowed_weekdays') or None,
+            max_hours_per_day=request.data.get('max_hours_per_day') or None,
+            depot_id=request.data.get('depot_id') or None,
+            assignment_ids=request.data.get('assignment_ids') or None,
+            locked=locked or None,
         )
 
         if not plan.get('days'):
             return Response(
-                {"error": "Planlanacak teslimat bulunamadı. Tüm atamalar zaten planlanmış olabilir."},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "Planlanacak teslimat bulunamadı."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         return Response(plan)
@@ -503,6 +559,11 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         out-for-delivery/completed items stay as-is.
         """
         from ..services.auto_planner import generate_auto_plan, approve_plan
+        import logging
+        logging.getLogger(__name__).warning(
+            "REBALANCE_WEEK v2 (rollback-safe) calisti — week_start=%s",
+            request.data.get('week_start')
+        )
 
         week_start_raw = request.data.get('week_start') or date_type.today().isoformat()
         try:
@@ -523,67 +584,104 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         if not allowed_weekday_set:
             return Response({"error": "En az bir geÃ§erli aktif teslimat gÃ¼nÃ¼ seÃ§ilmeli."}, status=status.HTTP_400_BAD_REQUEST)
 
-        week_end = week_start + timedelta(days=13)
+        # Pencere, frontend'in gösterdiği takvimle (7 gün) aynı olmalı; aksi halde
+        # 2. haftaya itilen teslimatlar takvimde görünmez olup "silinmiş" gibi durur.
+        week_end = week_start + timedelta(days=6)
 
-        with transaction.atomic():
-            open_deliveries = list(Delivery.objects.filter(
-                scheduled_date__gte=week_start,
-                scheduled_date__lte=week_end,
-                status='WAITING',
-            ).select_related('assignment'))
-            deliveries_to_move = [
-                delivery for delivery in open_deliveries
-                if delivery.scheduled_date and delivery.scheduled_date.weekday() not in allowed_weekday_set
-            ]
-            movable_delivery_ids = [delivery.id for delivery in deliveries_to_move]
-            movable_assignment_ids = [
-                delivery.assignment_id for delivery in deliveries_to_move
-                if delivery.assignment_id
-            ]
+        # ── Önce nelerin yeniden planlanabileceğini OKU (hiçbir şey silme) ──
+        genuinely_unscheduled_ids = list(ProductAssignment.objects.filter(
+            status__in=['PLANNED', 'PENDING'],
+            delivery__isnull=True,
+        ).values_list('id', flat=True))
 
-            if movable_assignment_ids:
-                ProductAssignment.objects.filter(id__in=movable_assignment_ids).update(status='PLANNED')
+        open_deliveries = list(Delivery.objects.filter(
+            scheduled_date__gte=week_start,
+            scheduled_date__lte=week_end,
+            status='WAITING',
+        ).select_related('assignment'))
 
-            if movable_delivery_ids:
-                DeliveryRouteStop.objects.filter(delivery_id__in=movable_delivery_ids).delete()
-                Delivery.objects.filter(id__in=movable_delivery_ids).delete()
+        movable_delivery_ids = [d.id for d in open_deliveries]
+        movable_assignment_ids = [d.assignment_id for d in open_deliveries if d.assignment_id]
 
-            DeliveryRoute.objects.filter(
-                date__gte=week_start,
-                date__lte=week_end,
-                status='PLANNED',
-                stops__isnull=True,
-            ).delete()
+        assignment_ids = sorted(set(movable_assignment_ids + genuinely_unscheduled_ids))
+        if not assignment_ids:
+            # Silinecek/planlanacak bir şey yok — mevcut takvime DOKUNMA.
+            return Response({
+                "message": "Yeniden dağıtılacak açık teslimat bulunamadı. Takvim olduğu gibi korundu.",
+                "created_routes": [],
+                "total_routes": 0,
+                "moved_deliveries": 0,
+            })
 
-            unscheduled_assignment_ids = list(ProductAssignment.objects.filter(
-                status__in=['PLANNED', 'PENDING'],
-                delivery__isnull=True,
-            ).values_list('id', flat=True))
+        # ── Silme + yeniden oluşturma TEK atomik blokta. Herhangi bir sorunda
+        #    exception fırlatılır → transaction GERİ ALINIR → mevcut rotalar
+        #    ASLA kaybolmaz. (return ile çıkmak transaction'ı commit ederdi!) ──
+        class _RebalanceAborted(Exception):
+            def __init__(self, message, warnings=None):
+                self.message = message
+                self.warnings = warnings or {}
 
-            assignment_ids = sorted(set(movable_assignment_ids + unscheduled_assignment_ids))
-            if not assignment_ids:
-                return Response({
-                    "message": "Yeniden planlanacak açık teslimat bulunamadı.",
-                    "created_routes": [],
-                    "total_routes": 0,
-                    "moved_deliveries": 0,
+        movable_set = set(movable_assignment_ids)
+
+        try:
+            with transaction.atomic():
+                if movable_assignment_ids:
+                    ProductAssignment.objects.filter(id__in=movable_assignment_ids).update(status='PLANNED')
+
+                if movable_delivery_ids:
+                    DeliveryRouteStop.objects.filter(delivery_id__in=movable_delivery_ids).delete()
+                    Delivery.objects.filter(id__in=movable_delivery_ids).delete()
+
+                # Boş kalan rotaları temizle (PLANNED ve WAITING)
+                DeliveryRoute.objects.filter(
+                    date__gte=week_start,
+                    date__lte=week_end,
+                    status__in=['PLANNED', 'WAITING'],
+                    stops__isnull=True,
+                ).delete()
+
+                plan = generate_auto_plan(
+                    week_start - timedelta(days=1),
+                    allowed_weekdays=sorted(allowed_weekday_set),
+                    max_hours_per_day=request.data.get('max_hours_per_day') or None,
+                    depot_id=request.data.get('depot_id') or None,
+                    assignment_ids=assignment_ids,
+                )
+
+                no_coords = plan.get('warnings', {}).get('no_coordinates', [])
+
+                if not plan.get('days'):
+                    raise _RebalanceAborted(
+                        "Plan oluşturulamadı, takvim değiştirilmedi. "
+                        "Teslimatların müşteri koordinatları eksik olabilir; "
+                        "müşteri profillerinden adres konumlarını kontrol edin.",
+                        {"no_coordinates": len(no_coords)},
+                    )
+
+                result = approve_plan({
+                    'days': plan['days'],
+                    'depot_id': request.data.get('depot_id') or plan.get('summary', {}).get('depot_id'),
                 })
 
-            plan = generate_auto_plan(
-                week_start - timedelta(days=1),
-                allowed_weekdays=sorted(allowed_weekday_set),
-                max_hours_per_day=request.data.get('max_hours_per_day') or None,
-                depot_id=request.data.get('depot_id') or None,
-                assignment_ids=assignment_ids,
+                # ── KURŞUN GEÇMEZ GARANTİ: daha önce planlı olan HER teslimat
+                #    yeniden planlandı mı? Biri bile eksikse hepsini geri al. ──
+                if movable_set:
+                    replanned = set(ProductAssignment.objects.filter(
+                        id__in=movable_set, delivery__isnull=False
+                    ).values_list('id', flat=True))
+                    missing = movable_set - replanned
+                    if missing:
+                        raise _RebalanceAborted(
+                            f"{len(missing)} mevcut teslimat yeniden planlanamadı "
+                            "(koordinat eksik veya kapasite yetersiz). Veri kaybını "
+                            "önlemek için takvim değiştirilmedi.",
+                            {"unplaceable": len(missing)},
+                        )
+        except _RebalanceAborted as exc:
+            return Response(
+                {"error": exc.message, "warnings": exc.warnings},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
-
-            if not plan.get('days'):
-                return Response({"error": "Plan oluşturulamadı."}, status=status.HTTP_400_BAD_REQUEST)
-
-            result = approve_plan({
-                'days': plan['days'],
-                'depot_id': request.data.get('depot_id') or plan.get('summary', {}).get('depot_id'),
-            })
 
         return Response({
             "message": "Haftalık teslimat takvimi yeniden dağıtıldı.",
@@ -665,7 +763,7 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         # Teslimatları getir
         deliveries = Delivery.objects.filter(
             id__in=delivery_ids
-        ).select_related('assignment__customer', 'assignment__product')
+        ).select_related('assignment__customer', 'assignment__product', 'assignment__product__category')
         
         if not deliveries.exists():
             return Response({"error": "Teslimat bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
@@ -703,38 +801,40 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
         # Nearest Neighbor ile rota optimize et
         optimized_route = road_aware_nearest_neighbor_route(depot_lat, depot_lng, deliveries_with_coords)
         
-        # Toplam mesafe ve süre hesapla
+        # Toplam mesafe ve süre hesapla — sürüş + her durakta 5dk handling + KURULUM süresi
         total_distance = sum(item[3] for item in optimized_route)
-        avg_speed_kmh = 40  # KKTC koşullarında ortalama hız
-        total_duration_min = int(sum(item[4] for item in optimized_route)) + len(optimized_route) * 5  # +5dk her durak
+        total_duration_min = 0  # aşağıda durak durak toplanır
 
-        # DeliveryRoute kaydı oluştur
+        # DeliveryRoute kaydı oluştur (süre aşağıda doldurulacak)
         route = DeliveryRoute.objects.create(
             date=date,
             store_address=store_address,
             store_lat=depot_lat,
             store_lng=depot_lng,
             total_distance_km=round(total_distance, 2),
-            total_duration_min=total_duration_min,
+            total_duration_min=0,
             is_optimized=True,
             optimized_at=timezone.now(),
             status='PLANNED'
         )
-        
+
         # DeliveryRouteStop kayıtları oluştur ve teslimat sırasını güncelle
         stops_data = []
         for order, (delivery, lat, lng, dist_from_prev, duration_from_prev, routing_source) in enumerate(optimized_route, 1):
+            install_min = delivery_install_min(delivery)  # kategori süresi × adet
+            stop_duration = int(duration_from_prev) + 5 + install_min
+            total_duration_min += stop_duration
             stop = DeliveryRouteStop.objects.create(
                 route=route,
                 delivery=delivery,
                 stop_order=order,
                 distance_from_previous_km=round(dist_from_prev, 2),
-                duration_from_previous_min=int(duration_from_prev) + 5,
+                duration_from_previous_min=stop_duration,
             )
             # Teslimat sırası güncelle
             delivery.delivery_order = order
             delivery.save(update_fields=['delivery_order'])
-            
+
             stops_data.append({
                 'stop_order': order,
                 'delivery_id': delivery.id,
@@ -744,9 +844,13 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
                 'lat': lat,
                 'lng': lng,
                 'distance_from_previous_km': round(dist_from_prev, 2),
-                'duration_from_previous_min': int(duration_from_prev) + 5,
+                'duration_from_previous_min': stop_duration,
                 'routing_source': routing_source,
             })
+
+        # Toplam süreyi güncelle
+        route.total_duration_min = total_duration_min
+        route.save(update_fields=['total_duration_min'])
         
         return Response({
             'route_id': route.id,
@@ -831,61 +935,17 @@ class DeliveryPersonViewSet(viewsets.GenericViewSet):
         delivery.status = new_status
         sync_delivery_business_state(delivery, new_status)
         delivery.save()
-        return Response(DeliverySerializer(delivery).data)
 
-        if new_status == 'DELIVERED':
-            delivery.delivered_at = timezone.now()
-            if delivery.assignment:
-                delivery.assignment.status = 'DELIVERED'
-                delivery.assignment.save()
-                # Müşteri için ProductOwnership oluştur (yoksa)
-                ProductOwnership.objects.get_or_create(
-                    customer=delivery.assignment.customer,
-                    product=delivery.assignment.product,
-                    defaults={'purchase_date': timezone.now().date()}
-                )
-                # Müşteriyi teslim edildi olarak bilgilendir
-                Notification.objects.create(
-                    user=delivery.assignment.customer,
-                    notification_type='general',
-                    title='Ürününüz Teslim Edildi',
-                    message=(
-                        f"{delivery.assignment.product.name} ürününüz başarıyla teslim edildi. "
-                        f"Artık ürününüzü 'Ürünlerim' bölümünden görebilirsiniz."
-                    ),
-                    related_product=delivery.assignment.product,
-                )
-        elif new_status == 'OUT_FOR_DELIVERY':
-            if delivery.assignment:
-                delivery.assignment.status = 'OUT_FOR_DELIVERY'
-                delivery.assignment.save()
-                # Müşteriyi yolda olduğu konusunda bilgilendir
-                Notification.objects.create(
-                    user=delivery.assignment.customer,
-                    notification_type='general',
-                    title='Ürününüz Yolda',
-                    message=(
-                        f"{delivery.assignment.product.name} ürününüz bugün teslim edilmek üzere yola çıktı."
-                    ),
-                    related_product=delivery.assignment.product,
-                )
-
-        delivery.save()
-        
-        # Rota durumu kontrolü - tüm teslimatlar tamamlandıysa rotayı da kapat
+        # Rotadaki tüm teslimatlar tamamlandıysa rotayı kapat
         if new_status == 'DELIVERED':
             try:
-                route_stop = delivery.route_stop
-                route = route_stop.route
-                all_delivered = not route.stops.exclude(
-                    delivery__status='DELIVERED'
-                ).exists()
-                if all_delivered:
+                route = delivery.route_stop.route
+                if not route.stops.exclude(delivery__status='DELIVERED').exists():
                     route.status = 'COMPLETED'
                     route.save()
             except Exception:
                 pass
-        
+
         return Response(DeliverySerializer(delivery).data)
 
     @action(detail=False, methods=['post'])

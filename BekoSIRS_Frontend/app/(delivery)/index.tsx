@@ -12,8 +12,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { format } from 'date-fns';
-import { tr } from 'date-fns/locale';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 import api from '../../services/api';
