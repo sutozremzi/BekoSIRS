@@ -27,6 +27,8 @@ export interface Customer {
     area: number | null;
     area_name?: string;
     open_address?: string;
+    address_lat?: number | string | null;
+    address_lng?: number | string | null;
     role?: string;
     is_active?: boolean;
 }

@@ -1,0 +1,45 @@
+# Self-hosted OSRM for BekoSIRS delivery routing
+# Cyprus (KKTC dahil) harita verisi ile çalışır.
+#
+# İlk kurulum için önce setup.sh çalıştırın:
+#   cd deployment/osrm && bash setup.sh
+#
+# Servisi başlatmak için:
+#   docker compose -f deployment/docker-compose.osrm.yml up -d
+#
+# Kaldırmak için:
+#   docker compose -f deployment/docker-compose.osrm.yml down
+
+version: "3.9"
+
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    container_name: bekosirs-osrm
+    restart: unless-stopped
+
+    # MLD (Multi-Level Dijkstra) — küçük harita için hızlı ve yeterli
+    command: >
+      osrm-routed
+      --algorithm mld
+      --max-table-size 500
+      /data/cyprus-latest.osrm
+
+    volumes:
+      - ./osrm/data:/data:ro
+
+    ports:
+      - "127.0.0.1:5000:5000"   # Sadece localhost — Nginx proxy üzerinden erişilir
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"

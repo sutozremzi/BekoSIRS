@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger(__name__)
 
 
 Coordinate = Tuple[float, float]
@@ -62,10 +65,18 @@ def _fetch_osrm_table(coordinates: Sequence[Coordinate]) -> Optional[RouteMatrix
     try:
         with urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+    except TimeoutError:
+        logger.warning("OSRM timeout (%.1fs) — Haversine fallback kullanılıyor. URL: %s", timeout, url)
+        return None
+    except (HTTPError, URLError, OSError) as exc:
+        logger.warning("OSRM erişim hatası — Haversine fallback kullanılıyor. Hata: %s", exc)
+        return None
+    except ValueError:
+        logger.warning("OSRM geçersiz JSON yanıtı — Haversine fallback kullanılıyor.")
         return None
 
     if payload.get("code") != "Ok":
+        logger.warning("OSRM code != Ok (%s) — Haversine fallback kullanılıyor.", payload.get("code"))
         return None
 
     distances_m = payload.get("distances")

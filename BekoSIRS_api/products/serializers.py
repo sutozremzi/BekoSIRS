@@ -425,16 +425,19 @@ class CustomerListSerializer(serializers.ModelSerializer):
     district_name = serializers.CharField(source='customer_address.district.name', read_only=True)
     area_name = serializers.CharField(source='customer_address.area.name', read_only=True)
     full_name = serializers.SerializerMethodField()
-    
+
     # Expose ID for frontend filters
     district = serializers.PrimaryKeyRelatedField(source='customer_address.district', read_only=True)
     area = serializers.PrimaryKeyRelatedField(source='customer_address.area', read_only=True)
-    
+    address_lat = serializers.DecimalField(max_digits=10, decimal_places=7, source='customer_address.latitude', read_only=True)
+    address_lng = serializers.DecimalField(max_digits=10, decimal_places=7, source='customer_address.longitude', read_only=True)
+
     class Meta:
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
-            'phone_number', 'district', 'district_name', 'area', 'area_name'
+            'phone_number', 'district', 'district_name', 'area', 'area_name',
+            'address_lat', 'address_lng',
         ]
     
     def get_full_name(self, obj):
