@@ -77,7 +77,7 @@ class ProductSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "email", "first_name", "last_name", "role", "is_active", "phone_number", "biometric_enabled"]
+        fields = ["id", "username", "email", "first_name", "last_name", "role", "is_active", "phone_number"]
 
 
 class UserSearchSerializer(serializers.ModelSerializer):
@@ -384,21 +384,6 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 
 # ---------------------------
-# Biometric Authentication (Face ID via DeepFace)
-# ---------------------------
-class BiometricEnableSerializer(serializers.Serializer):
-    """Verilen yüz fotoğrafını alır ve backend'de temsil vektörü (embedding) çıkarır."""
-    face_image = serializers.ImageField(required=True)
-    refresh_token = serializers.CharField(write_only=True, required=False)
-
-
-class BiometricLoginSerializer(serializers.Serializer):
-    """Mevcut kullanıcının yüzüyle giriş yapmasını sağlar."""
-    username = serializers.CharField(required=True)
-    face_image = serializers.ImageField(required=True)
-
-
-# ---------------------------
 # KKTC Location Serializers
 # ---------------------------
 class DistrictSerializer(serializers.ModelSerializer):
@@ -477,7 +462,7 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
             'address_city', 'address_lat', 'address_lng',
             'notify_service_updates', 'notify_price_drops', 'notify_restock',
             'notify_recommendations', 'notify_warranty_expiry', 'notify_general',
-            'biometric_enabled', 'date_joined', 'last_login'
+            'date_joined', 'last_login'
         ]
         read_only_fields = ['id', 'username', 'role', 'date_joined', 'last_login']
     

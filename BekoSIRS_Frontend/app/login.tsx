@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     TextInput,
@@ -10,144 +10,24 @@ import {
     Platform,
     ScrollView,
     StatusBar,
-    Alert,
-    Modal,
-    Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
-import { useBiometric } from '../hooks/useBiometric';
-import { saveTokens } from '../storage/storage.native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLanguage } from '../context/LanguageContext';
 import { t } from '../i18n';
-
-const { width: SCREEN_W } = Dimensions.get('window');
-const RECORD_SECONDS = 5; // Kayıt süresi (saniye)
 
 const LoginScreen = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
 
-    // Camera & liveness state
-    const [showCamera, setShowCamera] = useState(false);
-    const [permission, requestPermission] = useCameraPermissions();
-    const cameraRef = useRef<any>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [countdown, setCountdown] = useState(RECORD_SECONDS);
-    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const capturedFramesRef = useRef<string[]>([]);
-    const frameIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-
     const { login, loading: authLoading } = useAuth();
-    const { loginWithLivenessUnified, loading: bioLoading } = useBiometric();
     const { language } = useLanguage();
 
     const handleLogin = async () => {
         await login(username, password);
     };
-
-    /** Face ID butonu: izin al, kamerayı aç. */
-    const handleBiometricPress = async () => {
-        let currentUsername = username;
-        if (!currentUsername) {
-            const SecureStore = require('expo-secure-store');
-            const savedUsername = await SecureStore.getItemAsync('lastLoginUsername');
-            if (savedUsername) {
-                currentUsername = savedUsername;
-                setUsername(currentUsername);
-            } else {
-                Alert.alert(t('common.error'), t('login.faceIdInfo'));
-                return;
-            }
-        }
-
-        if (!permission?.granted) {
-            const result = await requestPermission();
-            if (!result.granted) {
-                Alert.alert(t('common.error'), t('login.cameraPermission'));
-                return;
-            }
-        }
-
-        setCountdown(RECORD_SECONDS);
-        setIsRecording(false);
-        setShowCamera(true);
-    };
-
-    /**
-     * Tek adımlı akış: frame çek → hepsini username ile gönder
-     * Backend aynı frame'lerden hem liveness hem yüz eşleştirme yapar.
-     * Zafiyet giderildi: Ayrı selfie adımı yok.
-     */
-    const startRecording = async () => {
-        if (!cameraRef.current || isRecording) return;
-        setIsRecording(true);
-        setCountdown(RECORD_SECONDS);
-        capturedFramesRef.current = [];
-
-        // Countdown timer
-        let remaining = RECORD_SECONDS;
-        countdownRef.current = setInterval(() => {
-            remaining -= 1;
-            setCountdown(remaining);
-            if (remaining <= 0) clearInterval(countdownRef.current!);
-        }, 1000);
-
-        // Her 600ms'de bir frame çek
-        const INTERVAL_MS   = 600;
-        const totalDuration = RECORD_SECONDS * 1000;
-
-        frameIntervalRef.current = setInterval(async () => {
-            if (!cameraRef.current) return;
-            try {
-                const photo = await cameraRef.current.takePictureAsync({
-                    base64: false,
-                    quality: 0.75,
-                    skipProcessing: true,
-                });
-                capturedFramesRef.current.push(photo.uri);
-            } catch { /* tek frame hatasını yoksay */ }
-        }, INTERVAL_MS);
-
-        // 5sn sonra durdur ve hepsini birden gönder
-        await new Promise(r => setTimeout(r, totalDuration));
-        clearInterval(frameIntervalRef.current!);
-        clearInterval(countdownRef.current!);
-        setIsRecording(false);
-        setShowCamera(false);
-
-        const frames = capturedFramesRef.current;
-
-        if (frames.length < 3) {
-            Alert.alert('Hata', 'Yeterli frame yakalanamadı. Lütfen tekrar deneyin.');
-            return;
-        }
-
-        // Tek istekte hem liveness hem yüz doğrulama
-        const result = await loginWithLivenessUnified(username, frames);
-        if (result.success && result.accessToken && result.refreshToken) {
-            await saveTokens(result.accessToken, result.refreshToken);
-            await AsyncStorage.setItem('userRole', 'customer');
-            router.replace('/(drawer)' as any);
-        } else {
-            Alert.alert(t('login.loginFailed'), result.error || 'Giriş başarısız.');
-        }
-    };
-
-    /** Kamerayı kapat ve sıfırla. */
-    const closeCameraModal = () => {
-        clearInterval(frameIntervalRef.current!);
-        clearInterval(countdownRef.current!);
-        setIsRecording(false);
-        setShowCamera(false);
-    };
-
-
-    const isLoading = authLoading || bioLoading;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -173,30 +53,6 @@ const LoginScreen = () => {
                     </View>
 
                     <View style={styles.card}>
-                        <TouchableOpacity
-                            style={styles.biometricButton}
-                            onPress={handleBiometricPress}
-                            disabled={isLoading}
-                            activeOpacity={0.8}
-                        >
-                            {bioLoading ? (
-                                <ActivityIndicator color="#2563EB" />
-                            ) : (
-                                <>
-                                    <Text style={styles.biometricIcon}>👤</Text>
-                                    <Text style={styles.biometricButtonText}>
-                                        {t('login.faceId')}
-                                    </Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-
-                        <View style={styles.divider}>
-                            <View style={styles.line} />
-                            <Text style={styles.dividerText}>{t('login.orPassword')}</Text>
-                            <View style={styles.line} />
-                        </View>
-
                         <View style={styles.inputSection}>
                             <Text style={styles.label}>{t('login.username')}</Text>
                             <View style={styles.inputWrapper}>
@@ -208,7 +64,7 @@ const LoginScreen = () => {
                                     autoCapitalize="none"
                                     autoCorrect={false}
                                     placeholderTextColor="#9CA3AF"
-                                    editable={!isLoading}
+                                    editable={!authLoading}
                                 />
                             </View>
                         </View>
@@ -224,7 +80,7 @@ const LoginScreen = () => {
                                     secureTextEntry={!showPassword}
                                     autoCapitalize="none"
                                     placeholderTextColor="#9CA3AF"
-                                    editable={!isLoading}
+                                    editable={!authLoading}
                                 />
                                 <TouchableOpacity
                                     onPress={() => setShowPassword(!showPassword)}
@@ -245,9 +101,9 @@ const LoginScreen = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.primaryButton, (isLoading || !username || !password) && styles.buttonDisabled]}
+                            style={[styles.primaryButton, (authLoading || !username || !password) && styles.buttonDisabled]}
                             onPress={handleLogin}
-                            disabled={isLoading || !username || !password}
+                            disabled={authLoading || !username || !password}
                             activeOpacity={0.8}
                         >
                             {authLoading ? (
@@ -266,7 +122,7 @@ const LoginScreen = () => {
                         <TouchableOpacity
                             style={styles.secondaryButton}
                             onPress={() => router.push('/register' as any)}
-                            disabled={isLoading}
+                            disabled={authLoading}
                         >
                             <Text style={styles.secondaryButtonText}>{t('login.createAccount')}</Text>
                         </TouchableOpacity>
@@ -279,187 +135,11 @@ const LoginScreen = () => {
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
-
-            {/* Kamera Modali — TEK ADIMLI (Liveness + Doğrulama aynı anda) */}
-            {showCamera && (
-                <Modal animationType="slide" transparent={false} visible={showCamera}>
-                    <View style={styles.cameraContainer}>
-                        <CameraView
-                            style={styles.camera}
-                            facing="front"
-                            ref={cameraRef}
-                        >
-                            {/* Kapat butonu — kayıt sırasında gizle */}
-                            {!isRecording && (
-                                <TouchableOpacity
-                                    style={styles.closeCameraTopBtn}
-                                    onPress={closeCameraModal}
-                                >
-                                    <Text style={styles.closeCameraTopText}>✕</Text>
-                                </TouchableOpacity>
-                            )}
-
-                            {/* ── Liveness + Doğrulama (Tek Adım) ── */}
-                            <View style={styles.cameraOverlay}>
-                                <View style={[
-                                    styles.faceOutline,
-                                    { borderColor: isRecording ? '#EF4444' : '#10B981' }
-                                ]} />
-                                {isRecording ? (
-                                    <View style={styles.countdownContainer}>
-                                        <Text style={styles.countdownNumber}>{countdown}</Text>
-                                        <Text style={styles.countdownLabel}>● KAYIT</Text>
-                                        <Text style={styles.cameraSubText}>
-                                            Başınızı yavaşça sola-sağa çevirin
-                                        </Text>
-                                    </View>
-                                ) : (
-                                    <Text style={styles.cameraText}>
-                                        Butona basın ve başınızı{'\n'}yavaşça sola-sağa çevirin
-                                    </Text>
-                                )}
-                            </View>
-                            {!isRecording && (
-                                <View style={styles.cameraControls}>
-                                    <View style={{ width: 60 }} />
-                                    <TouchableOpacity
-                                        style={styles.captureButton}
-                                        onPress={startRecording}
-                                    >
-                                        <View style={[styles.captureButtonInner, { backgroundColor: '#EF4444' }]} />
-                                    </TouchableOpacity>
-                                    <View style={{ width: 60 }} />
-                                </View>
-                            )}
-                        </CameraView>
-
-                        {/* Analiz yükleniyor */}
-                        {bioLoading && (
-                            <View style={styles.loadingOverlay}>
-                                <ActivityIndicator size="large" color="#fff" />
-                                <Text style={styles.loadingText}>
-                                    Canlılık ve kimlik doğrulanıyor...
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </Modal>
-            )}
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    cameraContainer: { flex: 1, backgroundColor: 'black' },
-    camera: { flex: 1 },
-
-    // Kapat butonu (sol üst)
-    closeCameraTopBtn: {
-        position: 'absolute',
-        top: 50,
-        left: 20,
-        zIndex: 10,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        borderRadius: 20,
-        paddingHorizontal: 14,
-        paddingVertical: 6,
-    },
-    closeCameraTopText: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-
-
-    cameraOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.35)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingTop: 80,
-    },
-    faceOutline: {
-        width: 220,
-        height: 300,
-        borderWidth: 3,
-        borderRadius: 130,
-        borderStyle: 'dashed',
-    },
-    cameraText: {
-        color: 'white',
-        fontSize: 18,
-        marginTop: 24,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        paddingHorizontal: 30,
-        textShadowColor: 'rgba(0,0,0,0.8)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 4,
-    },
-    cameraSubText: {
-        color: 'rgba(255,255,255,0.7)',
-        fontSize: 13,
-        marginTop: 8,
-        fontWeight: '500',
-    },
-    countdownContainer: {
-        alignItems: 'center',
-        marginTop: 20,
-    },
-    countdownNumber: {
-        color: '#EF4444',
-        fontSize: 72,
-        fontWeight: 'bold',
-        lineHeight: 80,
-    },
-    countdownLabel: {
-        color: '#EF4444',
-        fontSize: 14,
-        fontWeight: '700',
-        letterSpacing: 3,
-        marginTop: 4,
-    },
-    cameraControls: {
-        height: 130,
-        backgroundColor: 'rgba(0,0,0,0.85)',
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-        paddingBottom: 24,
-    },
-    captureButton: {
-        width: 76,
-        height: 76,
-        borderRadius: 38,
-        backgroundColor: 'rgba(255, 255, 255, 0.25)',
-        borderWidth: 3,
-        borderColor: 'white',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    captureButtonInner: {
-        width: 62,
-        height: 62,
-        borderRadius: 31,
-        backgroundColor: 'white',
-    },
-
-    // Liveness yükleniyor katmanı
-    loadingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.75)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 16,
-    },
-    loadingText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '600',
-        marginTop: 12,
-    },
-
-
     container: {
         flex: 1,
         backgroundColor: '#FFFFFF',
@@ -502,26 +182,6 @@ const styles = StyleSheet.create({
     },
     card: {
         backgroundColor: '#FFFFFF',
-    },
-    biometricButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#F3F4F6',
-        height: 58,
-        borderRadius: 16,
-        borderWidth: 2,
-        borderColor: '#2563EB',
-        marginBottom: 20,
-    },
-    biometricIcon: {
-        fontSize: 24,
-        marginRight: 10,
-    },
-    biometricButtonText: {
-        color: '#2563EB',
-        fontSize: 16,
-        fontWeight: '700',
     },
     inputSection: {
         marginBottom: 20,

@@ -26,7 +26,7 @@ class CustomUserAdmin(BaseUserAdmin):
     # list_filter: Panel sağ tarafında hızlı filtreleme (Örn: Role göre) kutusu oluşturur.
     list_filter = ('role', 'is_staff')
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Ek Bilgiler', {'fields': ('role', 'phone_number', 'biometric_enabled')}),
+        ('Ek Bilgiler', {'fields': ('role', 'phone_number')}),
     )
     # inlines: Bir kaydı (Kullanıcı) düzenlerken, ona bağlı diğer tabloları (Adres, Tercihler) 
     # aynı ekranın altında görmemizi ve düzenlememizi sağlar.

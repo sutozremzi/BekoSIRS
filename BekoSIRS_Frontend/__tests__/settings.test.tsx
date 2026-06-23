@@ -1,15 +1,13 @@
 /**
  * @file settings.test.tsx
  * @description Ayarlar ekranı için birim testleri.
- * Face ID / biyometrik giriş, şifre değiştirme, e-posta güncelleme
- * ve çıkış yapma işlemlerinin doğru çalışmasını doğrular.
+ * Şifre değiştirme, e-posta güncelleme ve çıkış yapma işlemlerini doğrular.
  */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import SettingsScreen from '../app/(drawer)/settings';
 import api from '../services';
 import { Alert } from 'react-native';
-import { useBiometric } from '../hooks/useBiometric';
 
 // Mock Expo Router
 jest.mock('expo-router', () => ({
@@ -22,17 +20,7 @@ jest.mock('expo-router', () => ({
 jest.mock('../services', () => ({
     get: jest.fn(),
     post: jest.fn(),
-}));
-
-// Mock Biometric Hook
-jest.mock('../hooks/useBiometric', () => ({
-    useBiometric: jest.fn(),
-}));
-
-// Mock expo-camera (used for Face ID registration)
-jest.mock('expo-camera', () => ({
-    CameraView: 'CameraView',
-    useCameraPermissions: () => [{ granted: false }, jest.fn()],
+    patch: jest.fn(),
 }));
 
 // Mock Storage
@@ -54,54 +42,34 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.spyOn(Alert, 'alert');
 
 describe('SettingsScreen Tests', () => {
-    const mockEnableBiometric = jest.fn();
-    const mockDisableBiometric = jest.fn();
-
     beforeEach(() => {
         jest.clearAllMocks();
 
-        (useBiometric as jest.Mock).mockReturnValue({
-            loading: false,
-            enableBiometric: mockEnableBiometric,
-            disableBiometric: mockDisableBiometric,
-        });
-
-        (api.get as jest.Mock).mockImplementation((url: string) => {
-            if (url.includes('biometric/status')) {
-                return Promise.resolve({ data: { biometric_enabled: false } });
-            }
-            return Promise.resolve({ data: { id: 1 } });
-        });
+        (api.get as jest.Mock).mockResolvedValue({ data: { id: 1 } });
         (api.post as jest.Mock).mockResolvedValue({ data: { success: true } });
     });
 
-    it('renders security tab by default and shows biometric options', async () => {
+    it('renders security tab by default with logout button', async () => {
         const { getByText } = render(<SettingsScreen />);
 
         await waitFor(() => {
-            // Tabs
             expect(getByText('Güvenlik')).toBeTruthy();
             expect(getByText('Şifre')).toBeTruthy();
             expect(getByText('İletişim')).toBeTruthy();
-
-            // Biometric info (updated text from Face ID integration)
-            expect(getByText('Biyometrik Giriş (Face ID)')).toBeTruthy();
-            expect(getByText('Yüz Tanıma (Face ID)')).toBeTruthy();
-            expect(getByText('Devre dışı')).toBeTruthy();
+            expect(getByText('Çıkış Yap')).toBeTruthy();
         });
     });
 
     it('switches to password tab and renders form', async () => {
         const { getByText, getByPlaceholderText } = render(<SettingsScreen />);
 
-        // Switch tab
         fireEvent.press(getByText('Şifre'));
 
         await waitFor(() => {
             expect(getByText('Şifre Güncelleme')).toBeTruthy();
             expect(getByText('Hesap güvenliğinizi korumak için şifrenizi güncel tutun.')).toBeTruthy();
-            expect(getByPlaceholderText('••••••••')).toBeTruthy(); // Current pass
-            expect(getByPlaceholderText('En az 6 karakter')).toBeTruthy(); // New pass
+            expect(getByPlaceholderText('••••••••')).toBeTruthy();
+            expect(getByPlaceholderText('En az 6 karakter')).toBeTruthy();
             expect(getByText('Şifreyi Güncelle')).toBeTruthy();
         });
     });
@@ -113,16 +81,13 @@ describe('SettingsScreen Tests', () => {
 
         await waitFor(() => expect(getByText('Şifreyi Güncelle')).toBeTruthy());
 
-        // Try submitting empty
         fireEvent.press(getByText('Şifreyi Güncelle'));
         expect(Alert.alert).toHaveBeenCalledWith('Eksik Bilgi', 'Lütfen tüm alanları doldurun.');
 
-        // Fill the inputs correctly
         fireEvent.changeText(getByPlaceholderText('••••••••'), 'oldPass123');
         fireEvent.changeText(getByPlaceholderText('En az 6 karakter'), 'newPass123');
         fireEvent.changeText(getByPlaceholderText('Tekrar giriniz'), 'newPass123');
 
-        // Submit valid form
         fireEvent.press(getByText('Şifreyi Güncelle'));
 
         await waitFor(() => {
@@ -137,16 +102,13 @@ describe('SettingsScreen Tests', () => {
     it('switches to email tab and handles email change', async () => {
         const { getByText, getByPlaceholderText } = render(<SettingsScreen />);
 
-        // Switch to Email tab
         fireEvent.press(getByText('İletişim'));
 
         await waitFor(() => expect(getByText('E-posta Bilgileri')).toBeTruthy());
 
-        // Fill inputs
         fireEvent.changeText(getByPlaceholderText('ornek@beko.com'), 'test@test.com');
         fireEvent.changeText(getByPlaceholderText('Doğrulama için şifreniz'), 'myPassword123');
 
-        // Submit
         fireEvent.press(getByText('E-postayı Güncelle'));
 
         await waitFor(() => {
@@ -164,8 +126,5 @@ describe('SettingsScreen Tests', () => {
         await waitFor(() => expect(getByText('Oturum İşlemleri')).toBeTruthy());
 
         fireEvent.press(getByText('Çıkış Yap'));
-        // AsyncStorage and router.replace are mocked implicitly above
-        // A thorough setup would test if replace was called with '/login'
     });
 });
-

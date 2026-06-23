@@ -69,15 +69,6 @@ class CustomUser(AbstractUser):
     # Push Notification Token (Expo)
     push_token = models.CharField(max_length=200, blank=True, null=True, verbose_name="Push Token")
 
-    # Biometric Authentication (Face ID / Face Unlock via DeepFace)
-    biometric_enabled = models.BooleanField(default=False, verbose_name="Biyometrik Giriş")
-    face_encoding = models.JSONField(
-        null=True, 
-        blank=True, 
-        verbose_name="Yüz Özellik Vektörü",
-        help_text="Encrypted face embedding (Fernet/AES). Use products.encryption to read."
-    )
-
     # Adres Bilgileri (Taşındı -> CustomerAddress)
     # address_* fields removed
 

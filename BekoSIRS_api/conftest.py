@@ -25,7 +25,3 @@ collect_ignore = [
     "test_dashboard.py",
     "assign_coords.py",
 ]
-
-collect_ignore_glob = [
-    "products/test_biometric.py",
-]

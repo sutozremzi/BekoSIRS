@@ -37,8 +37,6 @@ export default {
   login: {
     welcome: 'Welcome',
     subtitle: 'Secure access to the product management system',
-    faceId: 'Sign in with Face ID',
-    orPassword: 'or with password',
     username: 'Username',
     usernamePlaceholder: 'Enter your username',
     password: 'Password',
@@ -46,12 +44,7 @@ export default {
     login: 'Sign In',
     createAccount: 'Create New Account',
     copyright: '© 2025 Beko Global. All rights reserved.',
-    faceIdInfo: 'To use Face ID, please sign in with your password at least once.',
-    cameraPermission: 'Camera permission is required.',
     loginFailed: 'Login Failed',
-    faceVerifyFailed: 'Face verification failed.',
-    photoError: 'An error occurred while taking the photo.',
-    cameraGuide: 'Please center your face in the frame',
   },
 
   // Settings Page
@@ -60,13 +53,6 @@ export default {
     password: 'Password',
     contact: 'Contact',
     preferences: 'Preferences',
-    // Security
-    biometricTitle: 'Biometric Login (Face ID)',
-    biometricDescription: 'Enable fast and secure system access with Face Recognition. Only biometric representation (mathematical vector) is stored — no photos are saved in our database.',
-    faceIdLabel: 'Face Recognition (Face ID)',
-    faceIdActive: 'Active - You can use it on the login screen',
-    faceIdInactive: 'Disabled',
-    faceIdInfo: 'Face Recognition is enabled. You can sign in using your username on the login page.',
     sessionTitle: 'Session',
     logout: 'Sign Out',
     // Password
@@ -383,5 +369,10 @@ export default {
     chooseLocation: 'Choose Location',
     ok: 'OK',
     mapInstruction: 'Tap on the map to mark your location.',
+    useMyLocation: 'Use My Location',
+    locating: 'Getting location...',
+    locationPermissionDenied: 'Location permission denied. Please enable it in settings.',
+    locationError: 'Could not get location. Please try again.',
+    mapLoading: 'Loading map...',
   },
 };

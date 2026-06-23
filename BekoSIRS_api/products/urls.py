@@ -30,27 +30,18 @@ from products.views import (
     # Password
     password_reset_request,
     password_reset_confirm,
-    # Biometric
-    biometric_enable,
-    biometric_disable,
-    biometric_status,
-    biometric_login,
-    biometric_login_with_liveness,
-    liveness_check,
-    liveness_check_video,
-    liveness_check_multi,
     # Delivery
     DeliveryViewSet,
     DeliveryRouteViewSet,
     ProductAssignmentViewSet,
     # Analytics & Installments
-    InstallmentPlanViewSet, 
-    InstallmentViewSet, 
+    InstallmentPlanViewSet,
+    InstallmentViewSet,
     AuditLogView,
-    ChartsView, 
+    ChartsView,
     SalesForecastView,
     SeasonalAnalysisView,
-    MarketingAutomationView, 
+    MarketingAutomationView,
     StockIntelligenceDashboardView,
 )
 
@@ -95,7 +86,7 @@ router.register(r'assignments', ProductAssignmentViewSet, basename='assignment')
 router.register(r'locations/districts', DistrictViewSet, basename='district')
 router.register(r'locations/areas', AreaViewSet, basename='area')
 
-# Depot Management  
+# Depot Management
 router.register(r'depots', DepotLocationViewSet, basename='depot')
 
 # Customer Management
@@ -113,16 +104,16 @@ router.register(r'delivery-person', DeliveryPersonViewSet, basename='delivery-pe
 urlpatterns = [
     # Router üzerinden gelen tüm endpointler
     path('', include(router.urls)),
-    
+
     # Analytics Endpoints
     path('analytics/charts/', ChartsView.as_view(), name='analytics-charts'),
     path('analytics/forecast/', SalesForecastView.as_view(), name='analytics-forecast'),
     path('analytics/seasonal/', SeasonalAnalysisView.as_view(), name='analytics-seasonal'),
     path('analytics/marketing/', MarketingAutomationView.as_view(), name='analytics-marketing'),
-    
+
     # Stock Intelligence
     path('stock-intelligence/dashboard/', StockIntelligenceDashboardView.as_view(), name='stock-intelligence'),
-    
+
     path("my-products/", my_products_direct, name="my-products"),
     path("profile/", profile_view, name="user-profile"),
     path("notification-settings/", notification_settings_view, name="notification-settings"),
@@ -135,21 +126,11 @@ urlpatterns = [
 
     # Mobil kayıt veya özel kayıt işlemleri için
     path('register/', UserManagementViewSet.as_view({'post': 'create'}), name='auth_register'),
-    
+
     # Password Reset
     path('password-reset/', password_reset_request, name='password_reset_request'),
     path('password-reset/confirm/', password_reset_confirm, name='password_reset_confirm'),
-    
-    # Biometric Authentication (Face ID / Liveness Detection)
-    path('biometric/enable/',                biometric_enable,       name='biometric_enable'),
-    path('biometric/disable/',               biometric_disable,      name='biometric_disable'),
-    path('biometric/status/',                biometric_status,       name='biometric_status'),
-    path('biometric/login/',                 biometric_login,        name='biometric_login'),
-    path('biometric/login-with-liveness/',   biometric_login_with_liveness, name='biometric_login_with_liveness'),
-    path('biometric/liveness-check/',        liveness_check,         name='biometric_liveness_check'),
-    path('biometric/liveness-check-video/',  liveness_check_video,   name='biometric_liveness_check_video'),
-    path('biometric/liveness-check-multi/',  liveness_check_multi,   name='biometric_liveness_check_multi'),
-    
+
     # Excel Export
     path('products/export/excel/', export_products_excel, name='export_products_excel'),
 ]

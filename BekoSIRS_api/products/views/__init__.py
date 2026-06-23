@@ -49,18 +49,6 @@ from .password_views import (
     password_reset_confirm,
 )
 
-# Biometric authentication views
-from .biometric_views import (
-    biometric_enable,
-    biometric_disable,
-    biometric_status,
-    biometric_login,
-    biometric_login_with_liveness,
-    liveness_check,
-    liveness_check_video,
-    liveness_check_multi,
-)
-
 # Delivery and route optimization views
 from .delivery_views import (
     DeliveryViewSet,
@@ -112,27 +100,18 @@ __all__ = [
     # Password
     'password_reset_request',
     'password_reset_confirm',
-    # Biometric
-    'biometric_enable',
-    'biometric_disable',
-    'biometric_status',
-    'biometric_login',
-    'biometric_login_with_liveness',
-    'liveness_check',
-    'liveness_check_video',
-    'liveness_check_multi',
     # Delivery
     'DeliveryViewSet',
     'DeliveryRouteViewSet',
     'ProductAssignmentViewSet',
     'DeliveryPersonViewSet',
     # Analytics & Installments
-    'ChartsView', 
+    'ChartsView',
     'SalesForecastView',
     'SeasonalAnalysisView',
-    'MarketingAutomationView', 
+    'MarketingAutomationView',
     'AuditLogView',
-    'InstallmentPlanViewSet', 
+    'InstallmentPlanViewSet',
     'InstallmentViewSet',
     'StockIntelligenceDashboardView'
 ]

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
-  Modal
 } from 'react-native';
 import api from '../../services';
-import { useBiometric } from '../../hooks/useBiometric';
-import { getToken, getRefreshToken } from '../../storage/storage.native';
+import { getToken } from '../../storage/storage.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLanguage } from '../../context/LanguageContext';
 import { t } from '../../i18n';
 import { useAuth } from '../../hooks/useAuth';
@@ -36,20 +33,6 @@ export default function SettingsScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [passwordForEmail, setPasswordForEmail] = useState('');
 
-  // Camera state
-  const [showCamera, setShowCamera] = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<any>(null);
-
-  // Biometric hook
-  const {
-    enableBiometric,
-    disableBiometric,
-    loading: biometricLoading
-  } = useBiometric();
-  
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
-
   // User info state
   const [userId, setUserId] = useState<number | null>(null);
 
@@ -65,7 +48,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     loadUserInfo();
-    checkBiometricStatus();
     loadNotificationSettings();
   }, []);
 
@@ -86,10 +68,9 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Notification update error:', error);
       Alert.alert(t('common.error'), t('settings.settingFailed') || 'Ayar güncellenemedi');
-      setNotifyPrefs(originalSettings); // rollback on failure
+      setNotifyPrefs(originalSettings);
     }
   };
-
 
   const loadUserInfo = async () => {
     try {
@@ -98,53 +79,6 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Failed to load user info:', error);
     }
-  };
-
-  const checkBiometricStatus = async () => {
-      try {
-          const res = await api.get('/api/v1/biometric/status/');
-          setBiometricEnabled(res.data.biometric_enabled);
-      } catch (err) {
-          console.error("Biometric status fetch error:", err);
-      }
-  };
-
-  const handleBiometricToggle = async (value: boolean) => {
-    if (value) {
-      if (!permission?.granted) {
-          const result = await requestPermission();
-          if (!result.granted) {
-              Alert.alert("Hata", "Kamera izni gereklidir.");
-              return;
-          }
-      }
-      setShowCamera(true);
-    } else {
-      // Disable biometric
-      const success = await disableBiometric();
-      if (success) {
-          setBiometricEnabled(false);
-      }
-    }
-  };
-
-  const takePhotoAndEnable = async () => {
-      if (cameraRef.current) {
-          try {
-              const photo = await cameraRef.current.takePictureAsync({ base64: false });
-              setShowCamera(false);
-              
-              const refreshToken = await getRefreshToken();
-
-              const success = await enableBiometric(photo.uri, refreshToken || undefined);
-              if (success) {
-                  setBiometricEnabled(true);
-              }
-          } catch (error) {
-              setShowCamera(false);
-              Alert.alert("Hata", "Fotoğraf çekilirken bir sorun oluştu.");
-          }
-      }
   };
 
   const handlePasswordChange = async () => {
@@ -258,47 +192,10 @@ export default function SettingsScreen() {
 
         {/* Form Alanı */}
         <View style={styles.formCard}>
-          {/* Security Tab - Biometric Settings */}
+          {/* Security Tab */}
           {activeTab === 'security' && (
             <>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{t('settings.biometricTitle')}</Text>
-                <Text style={styles.sectionSubtitle}>
-                  {t('settings.biometricDescription')}
-                </Text>
-              </View>
-
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>{t('settings.faceIdLabel')}</Text>
-                  <Text style={styles.settingDescription}>
-                    {biometricEnabled
-                      ? t('settings.faceIdActive')
-                      : t('settings.faceIdInactive')}
-                  </Text>
-                </View>
-                {biometricLoading ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : (
-                  <Switch
-                    value={biometricEnabled}
-                    onValueChange={handleBiometricToggle}
-                    trackColor={{ false: '#E5E7EB', true: '#2563EB' }}
-                    thumbColor={biometricEnabled ? '#FFFFFF' : '#F4F4F5'}
-                  />
-                )}
-              </View>
-
-              {biometricEnabled && (
-                <View style={styles.infoBox}>
-                  <Text style={styles.infoIcon}>ℹ️</Text>
-                  <Text style={styles.infoText}>
-                    {t('settings.faceIdInfo')}
-                  </Text>
-                </View>
-              )}
-
-              <View style={[styles.sectionHeader, { marginTop: 30 }]}>
                 <Text style={styles.sectionTitle}>{t('settings.sessionTitle')}</Text>
               </View>
               <TouchableOpacity
@@ -317,8 +214,6 @@ export default function SettingsScreen() {
               >
                 <Text style={styles.saveButtonText}>{t('settings.logout')}</Text>
               </TouchableOpacity>
-
-
             </>
           )}
 
@@ -435,7 +330,7 @@ export default function SettingsScreen() {
             </>
           )}
 
-          {/* Preferences Tab — Issue #39 */}
+          {/* Preferences Tab */}
           {activeTab === 'preferences' && (
             <>
               <View style={styles.sectionHeader}>
@@ -522,101 +417,11 @@ export default function SettingsScreen() {
         </View>
 
       </ScrollView>
-
-      {/* Camera Modal for Face ID Registration */}
-      {showCamera && (
-          <Modal animationType="slide" transparent={false} visible={showCamera}>
-              <View style={styles.cameraContainer}>
-                  <CameraView 
-                      style={styles.camera} 
-                      facing="front" 
-                      ref={cameraRef}
-                  >
-                      <View style={styles.cameraOverlay}>
-                          <View style={styles.faceOutline} />
-                          <Text style={styles.cameraText}>Lütfen yüzünüzü çerçeveye ortalayın ve kaydedin</Text>
-                      </View>
-                      <View style={styles.cameraControls}>
-                          <TouchableOpacity 
-                              style={styles.closeCameraButton} 
-                              onPress={() => setShowCamera(false)}
-                          >
-                              <Text style={styles.cameraButtonText}>İptal</Text>
-                          </TouchableOpacity>
-                          
-                          <TouchableOpacity 
-                              style={styles.captureButton} 
-                              onPress={takePhotoAndEnable}
-                          >
-                              <View style={styles.captureButtonInner} />
-                          </TouchableOpacity>
-                          
-                          <View style={{ width: 60 }} />
-                      </View>
-                  </CameraView>
-              </View>
-          </Modal>
-      )}
-
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  cameraContainer: { flex: 1, backgroundColor: 'black' },
-  camera: { flex: 1 },
-  cameraOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.3)',
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  faceOutline: {
-      width: 250,
-      height: 350,
-      borderWidth: 2,
-      borderColor: '#00FF00',
-      borderRadius: 150,
-      borderStyle: 'dashed',
-  },
-  cameraText: {
-      color: 'white',
-      fontSize: 16,
-      marginTop: 20,
-      fontWeight: 'bold',
-      textAlign: 'center',
-      paddingHorizontal: 20,
-  },
-  cameraControls: {
-      height: 120,
-      backgroundColor: 'black',
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      paddingBottom: 20,
-  },
-  captureButton: {
-      width: 70,
-      height: 70,
-      borderRadius: 35,
-      backgroundColor: 'rgba(255, 255, 255, 0.3)',
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  captureButtonInner: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
-      backgroundColor: 'white',
-  },
-  closeCameraButton: {
-      padding: 15,
-  },
-  cameraButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: 'bold',
-  },
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
@@ -700,40 +505,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     marginTop: 2,
-  },
-  unavailableBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  unavailableIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  unavailableText: {
-    flex: 1,
-    color: '#92400E',
-    fontSize: 14,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#EFF6FF',
-    padding: 16,
-    borderRadius: 12,
-  },
-  infoIcon: {
-    fontSize: 16,
-    marginRight: 10,
-  },
-  infoText: {
-    flex: 1,
-    color: '#1E40AF',
-    fontSize: 13,
-    lineHeight: 18,
   },
   formGroup: {
     marginBottom: 20,

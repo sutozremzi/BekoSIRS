@@ -37,8 +37,6 @@ export default {
   login: {
     welcome: 'Hoş Geldiniz',
     subtitle: 'Ürün yönetim sistemine güvenli erişim sağlayın',
-    faceId: 'Face ID ile Giriş',
-    orPassword: 'veya şifre ile',
     username: 'Kullanıcı Adı',
     usernamePlaceholder: 'Kullanıcı adınızı girin',
     password: 'Şifre',
@@ -46,12 +44,7 @@ export default {
     login: 'Giriş Yap',
     createAccount: 'Yeni Hesap Oluştur',
     copyright: '© 2025 Beko Global. Tüm hakları saklıdır.',
-    faceIdInfo: 'Face ID kullanabilmek için lütfen uygulamanıza en az 1 kere şifrenizle giriş yapın.',
-    cameraPermission: 'Kamera izni gereklidir.',
     loginFailed: 'Giriş Başarısız',
-    faceVerifyFailed: 'Yüz doğrulama başarısız oldu.',
-    photoError: 'Fotoğraf çekilirken bir sorun oluştu.',
-    cameraGuide: 'Lütfen yüzünüzü çerçeveye ortalayın',
   },
 
   // Ayarlar Sayfası
@@ -60,13 +53,6 @@ export default {
     password: 'Şifre',
     contact: 'İletişim',
     preferences: 'Tercihler',
-    // Güvenlik
-    biometricTitle: 'Biyometrik Giriş (Face ID)',
-    biometricDescription: 'Yüz Tanıma ile hızlı ve güvenli sistem kullanımı sağlayın. Sadece biyometrik temsil (matematiksel vektör) sistemlerimize kaydedilir ve hiçbir fotoğraf veritabanımızda tutulmaz.',
-    faceIdLabel: 'Yüz Tanıma (Face ID)',
-    faceIdActive: 'Aktif - Giriş ekranında kullanabilirsiniz',
-    faceIdInactive: 'Devre dışı',
-    faceIdInfo: 'Yüz Tanıma etkinleştirildi. Giriş sayfasından kullanıcı adınız ile sistemlerimize giriş yapabilirsiniz.',
     sessionTitle: 'Oturum İşlemleri',
     logout: 'Çıkış Yap',
     // Şifre
@@ -383,5 +369,10 @@ export default {
     chooseLocation: 'Konum Seç',
     ok: 'Tamam',
     mapInstruction: 'Haritada konumunuzu işaretlemek için dokunun.',
+    useMyLocation: 'Konumumu Kullan',
+    locating: 'Konum alınıyor...',
+    locationPermissionDenied: 'Konum izni verilmedi. Lütfen ayarlardan izin verin.',
+    locationError: 'Konum alınamadı. Lütfen tekrar deneyin.',
+    mapLoading: 'Harita yükleniyor...',
   },
 };
